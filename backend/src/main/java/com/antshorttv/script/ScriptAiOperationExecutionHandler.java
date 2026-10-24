@@ -38,6 +38,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
+    @org.springframework.beans.factory.annotation.Autowired private CharacterPromptSimilarityService characterSimilarity;
+    @org.springframework.beans.factory.annotation.Autowired private PropSimplificationService propSimplification;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.transaction.PlatformTransactionManager transactions;
     private final ScriptAiOperationMapper operationMapper;
@@ -109,7 +111,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         if(failure instanceof com.antshorttv.common.BusinessException business
             && business.getErrorCode()==com.antshorttv.common.ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED)
             return AiExecutionRetryPolicy.none();
-        return failure instanceof NonRetryableStoryboardException || failure instanceof NonRetryableAssetNormalizationException
+        return failure instanceof NonRetryableStoryboardException || failure instanceof NonRetryableAssetNormalizationException || failure instanceof NonRetryablePropSimplificationException
+            || failure instanceof CharacterPromptSimilarityAnalysis.InvalidResult
             ? AiExecutionRetryPolicy.none()
             : retryPolicy();
     }
@@ -181,7 +184,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
 
     private <T> T withCurrentAttempt(ScriptAiOperationEntity operation, AiExecutionContext context,
                                     java.util.function.Supplier<T> work) {
-        if(transactions==null || !Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operation.operationType)) return work.get();
+        if(transactions==null || !Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION","PROP_SIMPLIFICATION").contains(operation.operationType)) return work.get();
         return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status -> {
             AiExecutionTaskEntity current=executionService.requireTaskForUpdate(context.task().id);
             if(!"RUNNING".equals(current.status)
@@ -225,6 +228,12 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         try {
             if (operation.resultId != null) {
                 return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
+            }
+            if (CharacterPromptSimilarityService.OPERATION.equals(operation.operationType)) {
+                return characterSimilarity.analyze(operation, context);
+            }
+            if ("PROP_SIMPLIFICATION".equals(operation.operationType)) {
+                return propSimplification.analyze(operation, context);
             }
             if ("ASSET_NORMALIZATION".equals(operation.operationType)) {
                 return workflowService.executeAssetNormalizationOperation(operation, context);

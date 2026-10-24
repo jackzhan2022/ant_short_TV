@@ -101,6 +101,11 @@ export type AssetImagePreview = {
   pendingImageThumbnailUrl?: string | null;
 };
 
+export type AssetVisualSummary = {
+  variantCount: number;
+  episodeCount: number;
+};
+
 export type CharacterAsset = {
   id: number;
   name: string;
@@ -115,6 +120,7 @@ export type CharacterAsset = {
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
   imagePreview?: AssetImagePreview;
+  visualSummary?: AssetVisualSummary;
   visual?: AssetVisualWorkspace;
 };
 
@@ -130,10 +136,12 @@ export type SceneAsset = {
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
   imagePreview?: AssetImagePreview;
+  visualSummary?: AssetVisualSummary;
   visual?: AssetVisualWorkspace;
 };
 
 export type PropAsset = {
+  production?: { name: string; mode: string; sourceNames: string[] };
   id: number;
   name: string;
   propType: string;
@@ -144,6 +152,7 @@ export type PropAsset = {
   mergeTargetId?: number | null;
   mainImageThumbnailUrl?: string | null;
   imagePreview?: AssetImagePreview;
+  visualSummary?: AssetVisualSummary;
   visual?: AssetVisualWorkspace;
 };
 
@@ -190,7 +199,7 @@ export type StoryboardAssetReference = {
   imageThumbnailUrl?: string | null;
   referenceRole: 'VISIBLE' | 'MAIN' | 'SUPPORTING' | 'TRANSITION';
   sortOrder: number;
-  resolutionStatus: 'RESOLVED' | 'ASSET_PENDING' | 'UNRESOLVED';
+  resolutionStatus: 'RESOLVED' | 'ASSET_PENDING' | 'UNRESOLVED' | 'SCENE_INCLUDED';
   sourceType: 'AI' | 'MANUAL' | 'LEGACY';
   sourceName?: string | null;
   lockedByUser: boolean;

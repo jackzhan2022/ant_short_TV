@@ -1,0 +1,41 @@
+.actions {
+  position: fixed;
+  bottom: 46px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.actions > * {
+  pointer-events: auto;
+}
+
+.centered {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.anchored {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.rightAligned {
+  right: 28px;
+}
+
+.actionHost {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}

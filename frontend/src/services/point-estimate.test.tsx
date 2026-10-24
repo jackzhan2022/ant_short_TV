@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { submitAssetNormalization } from '@/pages/projects/production-workbench/normalization-service';
 import {
   confirmPointEstimates,
   formatPoints,
@@ -92,6 +93,27 @@ describe('point estimates before submission', () => {
     mocks.confirm.mock.calls[0][0].onOk();
     await pending;
     expect(mocks.request).toHaveBeenLastCalledWith('/api/script-review/submissions', expect.objectContaining({ method: 'POST', data }));
+  });
+
+  it('confirms a quote before submitting a character prompt similarity check', async () => {
+    const url = '/api/projects/56/character-prompt-similarity';
+    const pending = pointEstimatedRequest(url, { method: 'POST' });
+    await flush();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    expect(mocks.request.mock.calls[0][0]).toBe('/api/tenants/7/points/estimate');
+    mocks.confirm.mock.calls[0][0].onOk();
+    await pending;
+    expect(mocks.request).toHaveBeenLastCalledWith(url, expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('keeps normalization behind point confirmation after moving its button', async () => {
+    const pending = submitAssetNormalization(56);
+    await flush();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    expect(mocks.request.mock.calls[0][0]).toBe('/api/tenants/7/points/estimate');
+    mocks.confirm.mock.calls[0][0].onCancel();
+    await expect(pending).rejects.toBeInstanceOf(PointEstimateCancelledError);
+    expect(mocks.request).toHaveBeenCalledTimes(1);
   });
 
   it('cancels without a paid request, even while the estimate is loading', async () => {
@@ -205,6 +227,7 @@ describe('point estimates before submission', () => {
     '/api/projects/1/episodes/2/assets/regenerate',
     '/api/projects/1/asset-reextraction',
     '/api/projects/1/asset-normalization',
+    '/api/projects/1/prop-simplification',
     '/api/projects/1/asset-image-batches',
     '/api/projects/1/asset-image-batches/2/retry-failed',
     '/api/projects/1/storyboard-batches',

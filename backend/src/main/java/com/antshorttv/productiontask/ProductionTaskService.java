@@ -20,15 +20,20 @@ public class ProductionTaskService {
     private com.antshorttv.freecreation.FreeCreationMediaService freeCreationMedia;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
-    private static final Map<String,String> OPERATION_PERMISSIONS=Map.of(
-        "SCRIPT_GENERATE","SCRIPT:AI_GENERATE", "SCRIPT_REWRITE","SCRIPT:AI_REWRITE",
-        "ASSET_NORMALIZATION","ELEMENT:AI_EXTRACT", "ELEMENT_EXTRACT","ELEMENT:AI_EXTRACT", "SCOPED_ASSET_REEXTRACTION","ELEMENT:AI_EXTRACT",
-        "STORYBOARD_BREAKDOWN","STORYBOARD:AI_BREAKDOWN", "PROMPT_GENERATE","PROMPT:AI_GENERATE",
-        "SCRIPT_EPISODE_SPLIT","SCRIPT:EDIT", "SCRIPT_EPISODE_SUMMARY","SCRIPT:EDIT", "SCRIPT_EPISODE_ASSETS","SCRIPT:EDIT");
-    private static final Map<String,String> OPERATION_NAMES=Map.of(
-        "ASSET_NORMALIZATION","资产自动归一", "SCRIPT_GENERATE","剧本生成", "SCRIPT_REWRITE","剧本改写", "ELEMENT_EXTRACT","资产提取",
-        "SCOPED_ASSET_REEXTRACTION","范围资产重提取", "STORYBOARD_BREAKDOWN","分镜生成", "PROMPT_GENERATE","提示词生成",
-        "SCRIPT_EPISODE_SPLIT","剧集拆分", "SCRIPT_EPISODE_SUMMARY","剧集概要", "SCRIPT_EPISODE_ASSETS","剧集资产识别");
+    private static final Map<String,String> OPERATION_PERMISSIONS=Map.ofEntries(
+        Map.entry("SCRIPT_GENERATE","SCRIPT:AI_GENERATE"), Map.entry("SCRIPT_REWRITE","SCRIPT:AI_REWRITE"),
+        Map.entry("ASSET_NORMALIZATION","ELEMENT:AI_EXTRACT"), Map.entry("ELEMENT_EXTRACT","ELEMENT:AI_EXTRACT"),
+        Map.entry("SCOPED_ASSET_REEXTRACTION","ELEMENT:AI_EXTRACT"), Map.entry("STORYBOARD_BREAKDOWN","STORYBOARD:AI_BREAKDOWN"),
+        Map.entry("PROMPT_GENERATE","PROMPT:AI_GENERATE"), Map.entry("SCRIPT_EPISODE_SPLIT","SCRIPT:EDIT"),
+        Map.entry("SCRIPT_EPISODE_SUMMARY","SCRIPT:EDIT"), Map.entry("SCRIPT_EPISODE_ASSETS","SCRIPT:EDIT"),
+        Map.entry("CHARACTER_PROMPT_SIMILARITY","ELEMENT:AI_EXTRACT"));
+    private static final Map<String,String> OPERATION_NAMES=Map.ofEntries(
+        Map.entry("ASSET_NORMALIZATION","资产自动归一"), Map.entry("SCRIPT_GENERATE","剧本生成"),
+        Map.entry("SCRIPT_REWRITE","剧本改写"), Map.entry("ELEMENT_EXTRACT","资产提取"),
+        Map.entry("SCOPED_ASSET_REEXTRACTION","范围资产重提取"), Map.entry("STORYBOARD_BREAKDOWN","分镜生成"),
+        Map.entry("PROMPT_GENERATE","提示词生成"), Map.entry("SCRIPT_EPISODE_SPLIT","剧集拆分"),
+        Map.entry("SCRIPT_EPISODE_SUMMARY","剧集概要"), Map.entry("SCRIPT_EPISODE_ASSETS","剧集资产识别"),
+        Map.entry("CHARACTER_PROMPT_SIMILARITY","角色提示词相似度检查"));
     private final JdbcTemplate jdbc;
     private final NamedParameterJdbcTemplate sql;
     private final TenantContextResolver tenants;

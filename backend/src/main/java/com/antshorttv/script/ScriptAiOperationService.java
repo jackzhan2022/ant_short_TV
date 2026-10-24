@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class ScriptAiOperationService {
+    @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
     @org.springframework.beans.factory.annotation.Autowired
     private AssetExtractionCoordination assetCoordination;
@@ -59,6 +60,7 @@ class ScriptAiOperationService {
     ) {
         if (normalizationGuard!=null && (scene==AiBusinessScene.STORYBOARD_BREAKDOWN || scene==AiBusinessScene.PROMPT_GENERATE))
             normalizationGuard.requireReady(context.tenantId(),projectId);
+        if(propProduction!=null) propProduction.lockProject(context.tenantId(),projectId);
         if (resumableInput instanceof ScopedAssetReextractionRequest request) {
             resumableInput = new ScopedAssetReextractionRequest(
                 request.targetType().trim().toUpperCase(java.util.Locale.ROOT),
@@ -68,7 +70,7 @@ class ScriptAiOperationService {
             context.tenantId(), operationType, idempotencyKey
         );
         if (existing != null && existing.executionId != null) {
-            if (java.util.Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operationType)
+            if (java.util.Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION","PROP_SIMPLIFICATION",CharacterPromptSimilarityService.OPERATION).contains(operationType)
                 && (!java.util.Objects.equals(existing.createdBy,context.userId())
                     || !java.util.Objects.equals(existing.projectId,projectId)
                     || !java.util.Objects.equals(existing.scriptId,scriptId)

@@ -1,12 +1,14 @@
 import PointEstimateButton from '@/components/PointEstimateButton';
 import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import {
+  AudioOutlined,
+  CloseOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import { useParams } from '@umijs/max';
+import { useOutletContext, useParams } from '@umijs/max';
 import {
   App,
   Button,
@@ -34,7 +36,13 @@ import { isPointEstimateCancelled } from '@/services/point-estimate';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
 import AssetLocalImageUpload from './AssetLocalImageUpload';
 import AssetNormalizationPanel from './AssetNormalizationPanel';
+import AssetVisualPromptEditor from './AssetVisualPromptEditor';
+import type { ProductionWorkbenchOutletContext } from './index';
 import AssetVariantGenerationModal from './AssetVariantGenerationModal';
+import CharacterVoiceModal from './CharacterVoiceModal';
+import PropSimplificationControl from './PropSimplificationControl';
+import { propProductionView, type PropSimplificationStatus } from './prop-simplification-service';
+import CharacterPromptSimilarity from './CharacterPromptSimilarity';
 import {
   type ProjectModelOption,
   queryProjectAiConfig,
@@ -78,6 +86,7 @@ import {
 
 type ElementType = Exclude<ScriptElementType, 'ALL'>;
 type AssetRecord = CharacterAsset | SceneAsset | PropAsset;
+const assetDisplayName = (item: AssetRecord) => ('production' in item ? item.production?.name : undefined) || item.name;
 
 const emptyWorkspace = (projectId: number): AssetSettingsWorkspace => ({
   projectId,
@@ -204,6 +213,7 @@ const AssetCard = ({
   onDelete,
   onSave,
   onManageVisual,
+  onConfigureVoice,
   selected,
   visualActive,
   readOnly,
@@ -214,6 +224,7 @@ const AssetCard = ({
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
+  onConfigureVoice: (item: CharacterAsset) => void;
   selected: boolean;
   visualActive: boolean;
   readOnly: boolean;
@@ -245,7 +256,7 @@ const AssetCard = ({
         ]
       : [];
   });
-  const episodeCount = new Set(
+  const episodeCount = item.visualSummary?.episodeCount ?? new Set(
     bindings
       .filter((binding) => binding.status === 'ACTIVE')
       .map((binding) => binding.episodeId),
@@ -387,7 +398,7 @@ const AssetCard = ({
         <div style={{ padding: '10px 0 0' }}>
           <Flex align="center" gap={8}>
             <Checkbox
-              aria-label={`选择${item.name}`}
+              aria-label={`选择${assetDisplayName(item)}`}
               checked={selected}
               onChange={(event) => onSelectedChange(event.target.checked)}
             />
@@ -401,7 +412,7 @@ const AssetCard = ({
                 color: 'var(--app-color-text)',
               }}
             >
-              {item.name}
+              {assetDisplayName(item)}
             </Typography.Text>
           </Flex>
           <div
@@ -417,7 +428,7 @@ const AssetCard = ({
             }}
           >
             <span style={{ color: 'var(--app-color-text)' }}>
-              {visualLabel} {item.visual?.variantCount ?? 0} 个
+              {visualLabel} {item.visualSummary?.variantCount ?? item.visual?.variantCount ?? 0} 个
             </span>
             <span
               style={{ padding: '0 6px', color: 'var(--app-color-border)' }}
@@ -429,9 +440,12 @@ const AssetCard = ({
               '暂无设定描述'}
           </div>
           <Flex justify="space-between" align="center" style={{ marginTop: 8 }}>
+            {'production' in item && item.production ? <span style={{ color: 'var(--app-color-primary)', fontSize: 12 }}>共用来源：{item.production.sourceNames.length} 项原道具</span> : null}
             <span
               title={
-                variantEpisodes.length
+                item.visualSummary
+                  ? episodeCount > 0 ? `共关联 ${episodeCount} 集` : '尚未关联剧集'
+                  : variantEpisodes.length
                   ? variantEpisodes.map((variant) => variant.label).join('\n')
                   : '尚未关联剧集'
               }
@@ -443,7 +457,13 @@ const AssetCard = ({
             >
               关联 {episodeCount} 集
             </span>
-            <Button
+            {type === 'CHARACTER' ? <Button
+              size="small"
+              icon={<AudioOutlined />}
+              disabled={readOnly}
+              onClick={() => onConfigureVoice(item as CharacterAsset)}
+              aria-label={`配置${item.name}音色`}
+            >配置音色</Button> : <Button
               type="text"
               size="small"
               onClick={() => onManageVisual(type, item)}
@@ -452,7 +472,7 @@ const AssetCard = ({
               style={{ padding: 0, color: 'var(--app-color-primary)' }}
             >
               视觉形象
-            </Button>
+            </Button>}
           </Flex>
         </div>
       </div>
@@ -463,6 +483,14 @@ const AssetCard = ({
 const ProductionWorkbenchSettings = () => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
+  const { footerActionHost, setSettingsActionHost } = useOutletContext<ProductionWorkbenchOutletContext>() ?? {};
+  const [noticeVisible, setNoticeVisible] = useState(true);
+  useEffect(() => { setNoticeVisible(true); }, [projectId]);
+  const [voiceCharacter, setVoiceCharacter] = useState<CharacterAsset>();
+  const [propSimplification, setPropSimplification] = useState<PropSimplificationStatus>();
+  const [showSceneProps, setShowSceneProps] = useState(false);
+  useEffect(() => { setPropSimplification(undefined); setShowSceneProps(false); }, [projectId]);
+  useEffect(() => { setVoiceCharacter(undefined); }, [projectId]);
   const { message } = App.useApp();
   const messageRef = useRef(message);
   messageRef.current = message;
@@ -725,13 +753,14 @@ const ProductionWorkbenchSettings = () => {
     };
   }, [activeImageBatch?.id, activeImageBatch?.status, projectId]);
 
+  const productionProps = useMemo(() => propProductionView(workspace.props, propSimplification?.production.policies ?? []), [workspace.props, propSimplification?.production.policies]);
   const assetsByType = useMemo(
     () => ({
       CHARACTER: workspace.characters,
       SCENE: workspace.scenes,
-      PROP: workspace.props,
+      PROP: productionProps.items,
     }),
-    [workspace.characters, workspace.props, workspace.scenes],
+    [workspace.characters, productionProps.items, workspace.scenes],
   );
 
   const activeAssets = assetsByType[activeType];
@@ -1041,6 +1070,31 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
+  const applySavedCharacterPrompt = (saved: VisualVariant) => {
+    const patchCharacter = <T extends AssetRecord>(item: T): T => {
+      if (item.id !== saved.assetId) return item;
+      const patchVariant = (variant: VisualVariant | null | undefined) =>
+        variant?.id === saved.id ? { ...variant, prompt: saved.prompt } : variant;
+      return {
+        ...item,
+        ...(saved.primary ? { prompt: saved.prompt || '' } : {}),
+        visual: item.visual ? {
+          ...item.visual,
+          primaryVariant: patchVariant(item.visual.primaryVariant),
+          selectedVariant: patchVariant(item.visual.selectedVariant),
+          variants: item.visual.variants.map((variant) => patchVariant(variant) as VisualVariant),
+        } : item.visual,
+      };
+    };
+    setWorkspace((current) => current.projectId === projectId ? {
+      ...current,
+      characters: current.characters.map(patchCharacter),
+    } : current);
+    setVisualAsset((current) => current?.type === 'CHARACTER' ? {
+      ...current, item: patchCharacter(current.item),
+    } : current);
+  };
+
   const closeVisualGallery = () => {
     visualRequestIdRef.current += 1;
     setVisualLoading(false);
@@ -1203,11 +1257,13 @@ const ProductionWorkbenchSettings = () => {
     return null;
   }
 
-  const notice = (
+  const notice = noticeVisible ? (
     <section
+      aria-label="资产设定提示"
       style={{
+        position: 'relative',
         marginBottom: 16,
-        padding: '10px 16px',
+        padding: '10px 48px 10px 16px',
         background: 'var(--app-color-primary-bg)',
         border: '1px solid var(--app-color-primary-bg)',
         borderRadius: 8,
@@ -1216,9 +1272,16 @@ const ProductionWorkbenchSettings = () => {
         lineHeight: '20px',
       }}
     >
-      请确保角色、场景及道具已全部生成。点击角色图片可配置【变装】，未配置的变装将导致分镜无参考图可用，直接影响视频准确性。
+      请确保需要独立制作的角色、场景及道具已生成。点击图片可配置视觉形象，关键状态请分别保留参考图；随场景呈现的物品需确认或更新对应场景图。
+      <Button
+        type="text"
+        aria-label="关闭资产设定提示"
+        icon={<CloseOutlined />}
+        onClick={() => setNoticeVisible(false)}
+        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, padding: 0, color: 'inherit' }}
+      />
     </section>
-  );
+  ) : null;
 
   if (loading) {
     return (
@@ -1280,7 +1343,7 @@ const ProductionWorkbenchSettings = () => {
             </button>
           </div>
         ) : null}
-        <AssetNormalizationPanel projectId={projectId} onTrack={follow} onBlocked={(blocked, reason) => {
+        <AssetNormalizationPanel projectId={projectId} actionHost={footerActionHost} onTrack={follow} onBlocked={(blocked, reason) => {
           setNormalizationBlocked(blocked);
           setNormalizationBlockReason(reason);
         }} onRefresh={reload} />
@@ -1436,6 +1499,7 @@ const ProductionWorkbenchSettings = () => {
         ) : null}
         </fieldset>
         <div className={`${styles.workspace} ${visualAsset ? styles.workspaceOpen : ''}`}>
+        <div className={styles.assetColumn}>
         <section aria-label="资产列表" className={styles.assetList}>
         <div className={styles.toolbarRow}>
           <div
@@ -1562,6 +1626,14 @@ const ProductionWorkbenchSettings = () => {
                 资产提取
               </Button>
             </Dropdown>
+            <PropSimplificationControl key={`prop-simplification-${projectId}`} projectId={projectId} visible={activeType === 'PROP'} disabled={normalizationBlocked}
+              revision={workspace.props.map((item) => `${item.id}:${item.name}:${item.appearance}`).join('|')}
+              onChange={setPropSimplification} onTrack={follow}
+              onRefresh={async () => { closeVisualGallery(); setSelectedAssetIds([]); setShowSceneProps(false); await reload(); }} />
+            {activeType === 'CHARACTER' ? (
+              <CharacterPromptSimilarity key={`character-similarity-${projectId}`} projectId={projectId} characterCount={workspace.characters.length}
+                disabled={normalizationBlocked || extractionBusy} onApplied={reload} />
+            ) : null}
             <Dropdown
               trigger={['click']}
               disabled={!selectedAssetIds.length || batchLoading}
@@ -1587,7 +1659,17 @@ const ProductionWorkbenchSettings = () => {
           </fieldset>
         </div>
 
-        {(() => {
+        {activeType === 'PROP' && (propSimplification?.appliedPlanId || propSimplification?.production.needsReview) ? (
+          <section aria-label="道具制作清单" style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8, background: 'var(--app-color-primary-bg)' }}>
+            <span>{propSimplification.production.needsReview ? '原资产或剧本已变化，请重新分析精简方案。' : `当前按 ${productionProps.items.length} 项独立制作展示，${productionProps.sceneItems.length} 项随场景呈现。原名称及使用记录保留。`}</span>
+            <Button type="link" onClick={() => setShowSceneProps((value) => !value)}>{showSceneProps ? '返回独立制作' : '查看场景内物品'}</Button>
+          </section>
+        ) : null}
+        {activeType === 'PROP' && showSceneProps ? <section aria-label="随场景呈现的道具">
+          {productionProps.sceneItems.length ? productionProps.sceneItems.map((item) => <div key={item.sourceId} style={{ padding: '14px 16px', marginBottom: 8, borderRadius: 8, background: 'var(--app-color-bg-container)' }}>
+            <strong>{item.sourceName}</strong><span style={{ marginLeft: 12, color: 'var(--app-color-text-secondary)' }}>{item.sceneIds.map((id) => workspace.scenes.find((scene) => scene.id === id)?.name ?? `场景 #${id}`).join('、')} · 场景待确认 / 更新</span>
+          </div>) : <Empty description="暂无随场景呈现的物品" />}
+        </section> : (() => {
           const section =
             assetSections.find((item) => item.type === activeType) ??
             assetSections[0];
@@ -1616,6 +1698,7 @@ const ProductionWorkbenchSettings = () => {
                       onManageVisual={(type, item) => {
                         void openVisualGallery(type, item);
                       }}
+                      onConfigureVoice={setVoiceCharacter}
                     />
                   ))}
                 </div>
@@ -1637,6 +1720,8 @@ const ProductionWorkbenchSettings = () => {
           );
         })()}
         </section>
+        <div ref={setSettingsActionHost} className={styles.workbenchActionSlot} />
+        </div>
         {visualAsset
           ? (() => {
               const visual = visualAsset.item.visual;
@@ -1652,6 +1737,7 @@ const ProductionWorkbenchSettings = () => {
                 ) ??
                 variants.find((variant) => variant.primary) ??
                 variants[0];
+              const primaryVariant = variants.find((variant) => variant.primary);
               const selectedVariantEpisodes = selectedVariant
                 ? (visualAsset.item.visual?.episodeBindings ?? [])
                     .filter(
@@ -1686,9 +1772,11 @@ const ProductionWorkbenchSettings = () => {
                     <header className={styles.visualHeader}>
                       <div className={styles.visualHeading}>
                         <Typography.Title level={5} style={{ margin: 0 }}>
-                          {visualAsset.item.name}
+                          {assetDisplayName(visualAsset.item)}
                           {selectedVariant && !selectedVariant.primary ? ` · ${selectedVariant.name}` : ''}
                         </Typography.Title>
+                      </div>
+                      <div className={styles.visualMeta}>
                         <div className={styles.episodeInfo}>
                           <span>出镜剧集</span>
                           <span
@@ -1699,6 +1787,7 @@ const ProductionWorkbenchSettings = () => {
                             {episodeNumberLabel ? `第 ${episodeNumberLabel} 集` : '暂未关联剧集'}
                           </span>
                         </div>
+                        {'production' in visualAsset.item && visualAsset.item.production ? <div className={styles.episodeInfo}><span>共用来源</span><span>{visualAsset.item.production.sourceNames.join('、')}</span></div> : null}
                       </div>
                       <Button
                         type="text"
@@ -1709,7 +1798,7 @@ const ProductionWorkbenchSettings = () => {
                         ×
                       </Button>
                     </header>
-                    <div className={styles.panelContent}>
+                    <div className={`${styles.panelContent} ${visualAsset.type === 'CHARACTER' ? styles.characterPanelContent : ''}`}>
                       <div className={styles.visualContent}>
                         {visualLoading ? (
                           <div role="status">视觉形象加载中</div>
@@ -1889,15 +1978,26 @@ const ProductionWorkbenchSettings = () => {
                             />
                           ) : null}
                         </div>
-                        <p className={styles.assetDescription}>
+                        {visualAsset.type !== 'CHARACTER' ? <p className={styles.assetDescription}>
                           {getDescription(visualAsset.type, visualAsset.item) ||
                             getSummary(visualAsset.type, visualAsset.item) ||
                             '暂无设定描述'}
-                        </p>
+                        </p> : null}
                         {selectedVariant?.errorMessage ? (
                           <Typography.Text type="danger">{selectedVariant.errorMessage}</Typography.Text>
                         ) : null}
                       </div>
+                      {visualAsset.type === 'CHARACTER' ? (
+                        <AssetVisualPromptEditor
+                          key={`${projectId}-${visualAsset.item.id}-${primaryVariant?.id}`}
+                          projectId={projectId}
+                          assetName={visualAsset.item.name}
+                          primaryVariant={primaryVariant}
+                          fallbackPrompt={visualAsset.item.prompt}
+                          blockedReason={visualEditBlockReason}
+                          onSaved={applySavedCharacterPrompt}
+                        />
+                      ) : null}
                       {selectedEditBlockReason ? (
                         <p role="status" aria-label="视觉形象操作提示" id="visual-edit-block-reason" className={styles.visualBlockReason}>
                           {selectedEditBlockReason}
@@ -1975,6 +2075,8 @@ const ProductionWorkbenchSettings = () => {
             })()
           : null}
 
+          {voiceCharacter ? <CharacterVoiceModal key={`${projectId}-${voiceCharacter.id}`} projectId={projectId} characterId={voiceCharacter.id} characterName={voiceCharacter.name}
+            disabled={normalizationBlocked} onClose={() => setVoiceCharacter(undefined)} onSaved={() => setVoiceCharacter(undefined)} /> : null}
         </div>
       </div>
     </div>

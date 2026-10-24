@@ -1629,6 +1629,14 @@ public class ScriptWorkflowService {
         Long tenantId, Long projectId, String assetType, Long assetId, Integer current, Integer pageSize, Long selectedVariantId
     ) {
         assetId=AssetNormalizationGuard.canonicalId(jdbcTemplate,tenantId,projectId,assetType,assetId);
+        Long productionSourceId=assetId;
+        if("PROP".equals(assetType)) {
+            var target=new PropProductionService(jdbcTemplate,objectMapper).target(tenantId,projectId,assetId,selectedVariantId,null);
+            if(target.scene()) return new AssetVisualWorkspace(0,null,null,List.of(),1,20,0,Map.of(),List.of(),null,"SCENE_INCLUDED",null);
+            if(selectedVariantId!=null && target.unresolved()) throw new BusinessException(ErrorCode.VALIDATION_ERROR,"视觉形象不属于该道具的制作关系。");
+            assetId=target.assetId();
+            if(selectedVariantId!=null && target.variantId()!=null) selectedVariantId=target.variantId();
+        }
         MediaPage<AssetVisualVariantService.VariantResponse> page =
             assetVisualVariantService.page(tenantId, projectId, assetType, assetId, current, pageSize);
         AssetVisualVariantService.VariantResponse primary =
@@ -1636,7 +1644,7 @@ public class ScriptWorkflowService {
         Map<String, Long> generationSummary =
             assetVisualVariantService.generationSummary(tenantId, projectId, assetType, assetId);
         EpisodeAwareVisualResolver.ResolvedVisual resolved =
-            episodeAwareVisualResolver.resolve(tenantId, projectId, assetType, assetId, null);
+            episodeAwareVisualResolver.resolve(tenantId, projectId, assetType, productionSourceId, null);
         AssetVisualVariantService.VariantResponse selected =
             assetVisualVariantService.selectedVariant(tenantId, projectId, assetType, assetId, selectedVariantId, resolved);
         java.util.Set<Long> relevantIds = page.data().stream().map(AssetVisualVariantService.VariantResponse::id)
@@ -1654,6 +1662,18 @@ public class ScriptWorkflowService {
     private String assetImagePreviewColumns(String assetType) {
         // Keep the summary at three projected queries; never expand every asset's visual workspace.
         return """
+            (select count(*) from asset_visual_variant v
+              where v.tenant_id = asset.tenant_id and v.project_id = asset.project_id
+                and v.asset_type = '%1$s' and v.asset_id = asset.id and v.deleted_at is null) as variant_count,
+            (select count(distinct b.episode_id) from asset_visual_variant_episode b
+              join asset_visual_variant v on v.id = b.variant_id and v.tenant_id = b.tenant_id
+                and v.project_id = b.project_id and v.asset_type = b.asset_type and v.asset_id = b.asset_id
+                and v.deleted_at is null
+              join script_episode e on e.id = b.episode_id and e.tenant_id = b.tenant_id
+                and e.project_id = b.project_id and e.status = 'ACTIVE' and e.retired_at is null
+              where b.tenant_id = asset.tenant_id and b.project_id = asset.project_id
+                and b.asset_type = '%1$s' and b.asset_id = asset.id
+                and b.binding_status = 'ACTIVE' and b.retired_at is null) as episode_count,
             (select v.generation_status from asset_visual_variant v
               where v.tenant_id = asset.tenant_id and v.project_id = asset.project_id
                 and v.asset_type = '%1$s' and v.asset_id = asset.id and v.deleted_at is null
@@ -1693,7 +1713,8 @@ public class ScriptWorkflowService {
                 materialFileAccessService.publicUrl(rs.getString("main_image_url")),
                 mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
                 new AssetImagePreview(rs.getString("image_generation_status"),
-                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class))),
+                new AssetVisualSummary(rs.getInt("variant_count"), rs.getInt("episode_count"))),
             tenantId, projectId, scriptId);
     }
 
@@ -1712,7 +1733,8 @@ public class ScriptWorkflowService {
                 rs.getObject("merge_target_id", Long.class), materialFileAccessService.publicUrl(rs.getString("main_image_url")),
                 mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
                 new AssetImagePreview(rs.getString("image_generation_status"),
-                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class))),
+                new AssetVisualSummary(rs.getInt("variant_count"), rs.getInt("episode_count"))),
             tenantId, projectId, scriptId);
     }
 
@@ -1730,7 +1752,8 @@ public class ScriptWorkflowService {
                 materialFileAccessService.publicUrl(rs.getString("main_image_url")),
                 mainImageThumbnailUrl(projectId, rs.getObject("main_image_result_id", Long.class)),
                 new AssetImagePreview(rs.getString("image_generation_status"),
-                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class)))),
+                    mainImageThumbnailUrl(projectId, rs.getObject("pending_image_result_id", Long.class))),
+                new AssetVisualSummary(rs.getInt("variant_count"), rs.getInt("episode_count"))),
             tenantId, projectId, scriptId);
     }
 

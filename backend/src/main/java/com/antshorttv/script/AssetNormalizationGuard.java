@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AssetNormalizationGuard {
+    @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     public AssetNormalizationGuard(JdbcTemplate jdbc,ObjectMapper json) { this.jdbc=jdbc; this.json=json; }
@@ -40,6 +41,7 @@ public class AssetNormalizationGuard {
         return result;
     }
     public void requireReady(long tenant,long project) {
+        if(propProduction!=null) propProduction.lockProject(tenant,project);
         if(Boolean.TRUE.equals(status(tenant,project).get("blocked")))
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,"资产提取或归一尚未完成，请等待完成或重试归一后再编辑和生成。");
     }

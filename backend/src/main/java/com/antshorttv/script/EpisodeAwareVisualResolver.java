@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class EpisodeAwareVisualResolver {
+    @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     private final JdbcTemplate jdbc;
     private final AtomicLong legacyFallbackCount = new AtomicLong();
 
@@ -20,6 +21,21 @@ public class EpisodeAwareVisualResolver {
         Long tenantId, Long projectId, String assetType, Long assetId, Long episodeId
     ) {
         AssetType type = AssetType.fromStorageValue(assetType);
+        if (type == AssetType.PROP && propProduction != null) {
+            var target = propProduction.target(tenantId, projectId, assetId, null, episodeId);
+            if (target.scene()) return new ResolvedVisual(null, null, null, "SCENE_INCLUDED");
+            if (target.unresolved()) return new ResolvedVisual(null, null, null, "REQUIRED_VARIANT_PENDING");
+            if (target.variantId() != null) {
+                var rows = jdbc.query("""
+                    select id,current_image_result_id,current_image_url from asset_visual_variant
+                    where tenant_id=? and project_id=? and asset_type='PROP' and asset_id=? and id=?
+                      and deleted_at is null and generation_status='COMPLETED'
+                    """, (rs,n) -> new ResolvedVisual(rs.getLong(1), nullableLong(rs.getObject(2)), rs.getString(3), "PROP_PRODUCTION"),
+                    tenantId,projectId,target.assetId(),target.variantId());
+                return rows.isEmpty()?new ResolvedVisual(null,null,null,"REQUIRED_VARIANT_PENDING"):rows.get(0);
+            }
+            assetId = target.assetId();
+        }
         if (episodeId != null) {
             List<ResolvedVisual> preferred = jdbc.query("""
                 select v.id, v.current_image_result_id, v.current_image_url

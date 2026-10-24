@@ -143,6 +143,39 @@ class ProjectAssetLibraryServiceTest {
     }
 
     @Test
+    void browsesUploadedAndGeneratedAudioWithinTheSelectedProject() {
+        jdbc.update("""
+            insert into project_audio_asset(tenant_id,project_id,name,upload_session_token,storage_path,mime_type,
+              file_size,duration_seconds,status,created_by,created_at,updated_at)
+            values (91001,91002,'林夏参考.wav','audio-one','materials/91001/91002/audio.wav','audio/wav',100,12,'ACTIVE',99,now(),now()),
+                   (91001,91003,'其他项目.wav','audio-two','materials/91001/91003/audio.wav','audio/wav',100,12,'ACTIVE',99,now(),now()),
+                   (99999,91002,'其他团队.wav','audio-three','materials/99999/91002/audio.wav','audio/wav',100,12,'ACTIVE',99,now(),now())
+            """);
+        jdbc.update("""
+            insert into ai_voice_task(id,tenant_id,project_id,storyboard_id,provider_code,model,
+              voice_type,speaker_name,voice_id,text_content,speed,pitch,volume,status,created_by,created_at,updated_at)
+            values (91901,91001,91002,91401,'mock','mock','DIALOGUE','林夏','voice','对白',1,1,1,'SUCCEEDED',99,now(),now())
+            """);
+        jdbc.update("""
+            insert into ai_voice_result(id,tenant_id,project_id,task_id,storyboard_id,audio_url,storage_path,duration_seconds,is_selected,status,created_at,updated_at)
+            values (91902,91001,91002,91901,91401,'/audio','materials/91001/91002/generated.wav',5,true,'ACTIVE',now(),now())
+            """);
+        var all = service.list(91001L,91002L,"AUDIO",null,null,null,1,24);
+        assertThat(all.items().total()).isEqualTo(2);
+        assertThat(all.categoryCounts()).containsEntry("REFERENCE",1L).containsEntry("GENERATED",1L);
+        assertThat(all.items().data()).extracting(ProjectAssetLibraryService.LibraryItem::resourceType)
+            .containsExactlyInAnyOrder("PROJECT_AUDIO_ASSET","AI_VOICE_RESULT");
+        assertThat(all.items().data()).allSatisfy(item -> assertThat(item.previewUrl()).endsWith("/playback"));
+        assertThat(service.list(91001L,91002L,"AUDIO","REFERENCE",null,"林夏",1,24).items().data()).hasSize(1);
+        assertThat(service.list(91001L,91003L,"AUDIO",null,null,null,1,24).items().data()).hasSize(1);
+        assertThat(service.list(91001L,91002L,"AUDIO",null,null,null,2,1).items().data()).hasSize(1);
+        jdbc.update("update ai_voice_task set deleted_at=now() where id=91901");
+        assertThat(service.list(91001L,91002L,"AUDIO",null,null,null,1,24).items().total()).isEqualTo(1);
+        grant(91001,91002,Set.of());
+        assertThatThrownBy(() -> service.list(91001L,91002L,"AUDIO",null,null,null,1,24)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     void rejectsUnavailableProjectsAndMissingMediaPermissions() {
         when(access.requireView(99999L,91002L)).thenThrow(new BusinessException(ErrorCode.FORBIDDEN,"denied"));
         assertThatThrownBy(() -> service.list(99999L,91002L,"IMAGE",null,null,null,1,24)).hasMessage("denied");

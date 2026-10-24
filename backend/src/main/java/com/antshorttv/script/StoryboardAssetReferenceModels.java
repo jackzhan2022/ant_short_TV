@@ -36,7 +36,7 @@ enum StoryboardReferenceRole {
 }
 
 enum StoryboardReferenceResolutionStatus {
-    RESOLVED, ASSET_PENDING, UNRESOLVED
+    RESOLVED, ASSET_PENDING, UNRESOLVED, SCENE_INCLUDED
 }
 
 enum StoryboardReferenceSourceType {

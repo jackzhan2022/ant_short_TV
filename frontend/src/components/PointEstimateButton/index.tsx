@@ -1,8 +1,8 @@
 import { Button, type ButtonProps, Tooltip } from 'antd';
 import { useId } from 'react';
 import {
-  type PointEstimateOperation,
   formatPoints,
+  type PointEstimateOperation,
 } from '@/services/point-estimate';
 import usePointEstimate from './usePointEstimate';
 
@@ -10,12 +10,14 @@ export type PointEstimateButtonProps = ButtonProps & {
   operations: PointEstimateOperation[] | undefined;
   tenantId?: number;
   estimateEnabled?: boolean;
+  showEstimate?: boolean;
 };
 
 export default function PointEstimateButton({
   operations,
   tenantId,
   estimateEnabled = true,
+  showEstimate = true,
   children,
   disabled,
   loading,
@@ -33,6 +35,7 @@ export default function PointEstimateButton({
       loading={loading}
       onClick={onClick}
       quote={quote}
+      showEstimate={showEstimate}
     >
       {children}
     </PointEstimateButtonView>
@@ -44,10 +47,12 @@ export function PointEstimateButtonView({
   children,
   disabled,
   loading,
+  showEstimate = true,
   onClick,
   ...props
 }: ButtonProps & {
   quote: ReturnType<typeof usePointEstimate>;
+  showEstimate?: boolean;
 }) {
   const descriptionId = useId();
   const suffix = quote.loading
@@ -58,7 +63,7 @@ export function PointEstimateButtonView({
         ? `预计 ${formatPoints(quote.estimate.estimatedPoints)} 积分${quote.estimate.sufficient ? '' : ' · 积分不足'}`
         : undefined;
   return (
-    <Tooltip title={quote.reason}>
+    <Tooltip title={quote.reason || (!showEstimate ? suffix : undefined)}>
       <span
         style={{
           display: props.block ? 'block' : 'inline-flex',
@@ -93,6 +98,7 @@ export function PointEstimateButtonView({
             <span
               id={descriptionId}
               aria-live="polite"
+              hidden={!showEstimate}
               style={{ fontSize: '0.9em' }}
             >
               {' '}

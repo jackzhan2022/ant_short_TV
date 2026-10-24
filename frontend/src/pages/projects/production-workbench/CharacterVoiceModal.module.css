@@ -1,0 +1,253 @@
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.scopeHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: var(--app-color-primary-bg);
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.role {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 18px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.sourceTabs {
+  display: flex;
+  padding: 4px;
+  gap: 4px;
+  background: var(--app-color-fill-secondary);
+  border-radius: 9px;
+}
+.sourceTabs button {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--app-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.sourceTabs button[aria-selected="true"] {
+  border-color: var(--app-color-border);
+  background: var(--app-color-bg-container);
+  box-shadow: 0 1px 3px rgb(30 30 60 / 6%);
+}
+.panel {
+  padding-top: 18px;
+  min-height: 350px;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  color: var(--app-color-text-secondary);
+}
+.viewTabs {
+  display: flex;
+  gap: 22px;
+}
+.viewTabs button {
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--app-color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+.viewTabs button[aria-selected="true"] {
+  color: var(--app-color-text);
+  border-bottom-color: var(--app-color-primary);
+}
+.breadcrumb {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+  align-items: center;
+  font-size: 13px;
+}
+.breadcrumb button {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  color: var(--app-color-primary);
+  cursor: pointer;
+  font: inherit;
+}
+.projectGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.projectGrid button {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 17px;
+  text-align: left;
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 8px;
+  background: var(--app-color-bg-container);
+  color: var(--app-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.projectGrid button:hover {
+  border-color: var(--app-color-primary);
+}
+.projectGrid button > :first-child {
+  font-size: 25px;
+  color: var(--app-color-primary);
+}
+.projectGrid strong,
+.audioRow strong {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.projectGrid small,
+.audioRow small {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+}
+.audioList {
+  display: grid;
+  gap: 9px;
+}
+.audioRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 8px;
+}
+.audioRow[data-selected="true"] {
+  border-color: var(--app-color-primary);
+  background: var(--app-color-primary-bg);
+}
+.audioRow label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.audioRow input {
+  flex-shrink: 0;
+  accent-color: var(--app-color-primary);
+}
+.duration {
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0 0;
+}
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 45px 0;
+  color: var(--app-color-text-secondary);
+}
+.dropzone {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--app-color-border);
+  border-radius: 9px;
+  background: var(--app-color-fill-secondary);
+  cursor: pointer;
+}
+.uploadIcon {
+  font-size: 30px;
+  color: var(--app-color-text-tertiary);
+}
+.dropzone small {
+  color: var(--app-color-text-secondary);
+}
+.dropzone input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.dragging,
+.dropzone:focus-within {
+  border-color: var(--app-color-primary);
+}
+.fileInfo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--app-color-primary-bg);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.fileInfo > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.fileInfo small {
+  display: block;
+  color: var(--app-color-text-secondary);
+}
+.uploaded audio,
+.player audio {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+}
+.player {
+  margin-top: 16px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.selection {
+  padding-top: 16px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .projectGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

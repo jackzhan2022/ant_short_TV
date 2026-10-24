@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -25,12 +26,22 @@ public class AssetCatalogService {
     private static final Map<String,String> TABLES = Map.of(
         "CHARACTER","character_asset","SCENE","scene_asset","PROP","prop_asset");
     private static final Map<String,String> PREFIXES = Map.of("CHARACTER","c_","SCENE","s_","PROP","p_");
+    private static final Pattern CHARACTER_IDENTITY_FIELD = Pattern.compile(
+        "(?m)^[\\t ]*-[\\t ]*\\*\\*(脸型|眉眼|鼻部|嘴唇|肤质|发型|身材|性别|年龄)\\*\\*[\\t ]*[:：][\\t ]*([^\\r\\n]+)");
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final ProjectPermissionGuard permissionGuard;
+    private final com.antshorttv.script.PropProductionService propProduction;
 
     public AssetCatalogService(JdbcTemplate jdbc, ObjectMapper json, ProjectPermissionGuard permissionGuard) {
+        this(jdbc,json,permissionGuard,null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AssetCatalogService(JdbcTemplate jdbc,ObjectMapper json,ProjectPermissionGuard permissionGuard,
+        com.antshorttv.script.PropProductionService propProduction) {
         this.jdbc=jdbc; this.json=json; this.permissionGuard=permissionGuard;
+        this.propProduction=propProduction;
     }
 
     public ObjectNode search(ToolExecutionContext context, JsonNode args) {
@@ -121,7 +132,13 @@ public class AssetCatalogService {
                 context.tenantId(), context.projectId(), context.scriptId(), id);
             if (rows.size() != 1) throw invalid("资产 key 不属于当前剧本或已删除。");
             ObjectNode asset = summary(type, rows.get(0));
-            asset.set("content", parse(rows.get(0).get("content_json")));
+            JsonNode content = parse(rows.get(0).get("content_json"));
+            if ("CHARACTER".equals(type) && content.isObject()) {
+                // Visual design lives in the canonical prompt, not extraction metadata.
+                ObjectNode identity = characterIdentity(rows.get(0).get("prompt"));
+                if (!identity.isEmpty()) ((ObjectNode) content).set("visualIdentity", identity);
+            }
+            asset.set("content", content);
             long after = cursor(context, args.path("cursor").asText(""), "variant:" + key);
             List<Map<String, Object>> variants = jdbc.queryForList("""
                 select id,name,content_json,prompt,is_primary from asset_visual_variant
@@ -207,7 +224,27 @@ public class AssetCatalogService {
             int length = description.codePointCount(0, description.length());
             summary.put("description", description.substring(0, description.offsetByCodePoints(0, Math.min(120, length))));
         }
+        ObjectNode identity = json.createObjectNode();
+        for (String field : List.of("脸型", "性别", "年龄")) {
+            String value = content.path("visualIdentity").path(field).asText("");
+            if (!value.isBlank()) {
+                int length = value.codePointCount(0, value.length());
+                identity.put(field, value.substring(0, value.offsetByCodePoints(0, Math.min(180, length))));
+            }
+        }
+        if (!identity.isEmpty()) summary.set("visualIdentity", identity);
         return summary;
+    }
+
+    private ObjectNode characterIdentity(Object prompt) {
+        ObjectNode identity = json.createObjectNode();
+        if (prompt == null) return identity;
+        var fields = CHARACTER_IDENTITY_FIELD.matcher(prompt.toString());
+        while (fields.find()) {
+            String value = fields.group(2).trim();
+            if (!value.isBlank()) identity.put(fields.group(1), value);
+        }
+        return identity;
     }
 
     public ObjectNode candidates(ToolExecutionContext context,String content) {
@@ -276,6 +313,7 @@ public class AssetCatalogService {
                 values.add(item);
             }
         }
+        applyPropProduction(context, assets);
         EpisodeCatalog selected = new EpisodeCatalog(context.tenantId(), context.projectId(), context.scriptId(),
             context.episodeId(), scope, content, assets, totals);
         context.runState().put("episodeAssetCatalog", selected);
@@ -284,6 +322,32 @@ public class AssetCatalogService {
 
     private record EpisodeCatalog(Long tenantId, Long projectId, Long scriptId, Long episodeId,
                                   String scope, String content, ObjectNode assets, Map<String, Integer> totals) {}
+
+    private void applyPropProduction(ToolExecutionContext context,ObjectNode assets) {
+        if(propProduction==null) return;
+        var production=propProduction;
+        JsonNode policies=production.catalog(context.tenantId(),context.projectId()).path("policies");
+        if(policies.isEmpty()) return;
+        Map<Long,JsonNode> bySource=new LinkedHashMap<>();
+        policies.forEach(p -> bySource.put(p.path("sourceId").asLong(),p));
+        for(JsonNode prop:assets.path("props")) {
+            long id=parseId(prop.path("assetKey").asText());JsonNode policy=bySource.get(id);
+            if(policy==null || !(prop instanceof ObjectNode item)) continue;
+            item.set("production",policy);
+            ArrayNode variants=item.putArray("variants");
+            if("SCENE".equals(policy.path("mode").asText())) continue;
+            for(JsonNode allowed:policy.path("allowedVariantIds")) {
+                var rows=jdbc.queryForList("select id,name,generation_status,current_image_result_id,current_image_url from asset_visual_variant where tenant_id=? and project_id=? and asset_type='PROP' and asset_id=? and id=? and deleted_at is null",
+                    context.tenantId(),context.projectId(),policy.path("targetId").asLong(),allowed.asLong());
+                for(var row:rows) variants.addObject().put("variantKey","v_"+row.get("id"))
+                    .put("name",String.valueOf(row.get("name"))).put("primary",allowed.asLong()==policy.path("defaultVariantId").asLong())
+                    .put("hasPrompt",true).put("episodeBound",false).put("episodePreferred",false)
+                    .put("generationStatus",String.valueOf(row.get("generation_status")))
+                    .put("imageReady","COMPLETED".equals(row.get("generation_status")) && (row.get("current_image_result_id")!=null||row.get("current_image_url")!=null));
+            }
+        }
+        assets.put("sceneProductionContext",production.sceneContext(context.tenantId(),context.projectId(),null));
+    }
 
     private Map<Long, ArrayNode> candidateVariants(
         ToolExecutionContext context, String type, List<Long> assetIds

@@ -1,7 +1,13 @@
-import { request } from '@umijs/max';
+import { pointEstimatedRequest as request } from '@/services/point-estimate';
 
 export type AssetNormalizationStatus = {
-  status: 'IDLE' | 'EXTRACTING' | 'NORMALIZING' | 'RUNNING' | 'FAILED' | 'SUCCEEDED';
+  status:
+    | 'IDLE'
+    | 'EXTRACTING'
+    | 'NORMALIZING'
+    | 'RUNNING'
+    | 'FAILED'
+    | 'SUCCEEDED';
   blocked: boolean;
   executionId?: number;
   errorMessage?: string;
@@ -9,10 +15,15 @@ export type AssetNormalizationStatus = {
 };
 
 export const queryAssetNormalization = (projectId: number) =>
-  request<{ data: AssetNormalizationStatus }>(`/api/projects/${projectId}/asset-normalization`);
+  request<{ data: AssetNormalizationStatus }>(
+    `/api/projects/${projectId}/asset-normalization`,
+  );
 
 export const submitAssetNormalization = (projectId: number) =>
-  request<{ data: API.AiExecutionResponse }>(`/api/projects/${projectId}/asset-normalization`, {
-    method: 'POST',
-    headers: { 'Idempotency-Key': crypto.randomUUID() },
-  });
+  request<{ data: API.AiExecutionResponse }>(
+    `/api/projects/${projectId}/asset-normalization`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+    },
+  );

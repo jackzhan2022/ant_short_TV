@@ -40,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ScreenplayToolDataService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.PropProductionService propProduction;
     private static final int ADJACENT_EXCERPT_CODE_POINTS = 600;
     private static final Pattern SCENE_HEADING = Pattern.compile(
         "(?m)^## S\\d{2,} \\| (?:内景|外景) · .+ \\| .+$");
@@ -232,12 +233,13 @@ public class ScreenplayToolDataService {
             if (contents.isEmpty()) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "当前正式剧集不存在或已退役。");
             }
-            return new AssetCatalogService(jdbc, json, permissionGuard).episodeAssets(context, contents.get(0));
+            return new AssetCatalogService(jdbc, json, permissionGuard,propProduction).episodeAssets(context, contents.get(0));
         } else {
             result.set("characters", currentScriptAssets(context, "character_asset", "CHARACTER", "c_"));
             result.set("scenes", currentScriptAssets(context, "scene_asset", "SCENE", "s_"));
             result.set("props", currentScriptAssets(context, "prop_asset", "PROP", "p_"));
         }
+        if(propProduction!=null) result.put("sceneProductionContext",propProduction.sceneContext(context.tenantId(),context.projectId(),null));
         return result;
     }
 
@@ -412,7 +414,7 @@ public class ScreenplayToolDataService {
         context.runState().put("currentEpisodeFingerprint", fingerprint);
         context.runState().put("currentEpisodeContentHash", sha256(content));
         context.runState().put("currentEpisodeContent", content);
-        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json, permissionGuard);
+        AssetCatalogService catalogs = new AssetCatalogService(jdbc, json, permissionGuard,propProduction);
         ObjectNode candidateCatalog = catalogs.candidates(context, content);
         // Analysis precedes asset extraction; text classification must not depend on its results.
         // Storyboard runs retain catalog-backed classification for source coverage validation.

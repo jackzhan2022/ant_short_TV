@@ -30,6 +30,8 @@ class AssetSummaryImagePreviewTest {
         jdbc.execute("create table prop_asset (" + common + ", prop_type varchar(30), appearance varchar(50), plot_function varchar(50))");
         jdbc.execute("create table asset_visual_variant (id bigint, tenant_id bigint, project_id bigint, asset_type varchar(30), asset_id bigint, is_primary boolean, generation_status varchar(30), generation_task_id bigint, current_image_result_id bigint, deleted_at timestamp)");
         jdbc.execute("create table ai_image_result (id bigint, tenant_id bigint, project_id bigint, target_type varchar(30), target_id bigint, task_id bigint, is_selected boolean, status varchar(30))");
+        jdbc.execute("create table script_episode (id bigint, tenant_id bigint, project_id bigint, status varchar(30), retired_at timestamp)");
+        jdbc.execute("create table asset_visual_variant_episode (id bigint, tenant_id bigint, project_id bigint, asset_type varchar(30), asset_id bigint, variant_id bigint, episode_id bigint, binding_status varchar(30), retired_at timestamp)");
         for (String table : java.util.List.of("character_asset", "scene_asset", "prop_asset")) {
             jdbc.update("insert into " + table + " (id, tenant_id, project_id, name, status) values (1, 10, 33, 'Asset', 'CONFIRMED')");
         }
@@ -53,6 +55,47 @@ class AssetSummaryImagePreviewTest {
 
     private JsonNode summary() {
         return new ObjectMapper().valueToTree(service.assetSettingsSummary(10L, 33L));
+    }
+
+    @Test
+    void countsAllVariantsAndDistinctActiveEpisodesForEveryAssetType() {
+        jdbc.update("insert into script_episode values (101,10,33,'ACTIVE',null), (102,10,33,'ACTIVE',null), (103,10,33,'RETIRED',current_timestamp), (104,10,99,'ACTIVE',null), (105,10,33,'ACTIVE',null)");
+        long base = 0;
+        for (String type : java.util.List.of("CHARACTER", "SCENE", "PROP")) {
+            variant(base + 11, type, true, "COMPLETED", 80);
+            variant(base + 12, type, false, "NOT_STARTED", 81);
+            variant(base + 13, type, false, "FAILED", 82);
+            jdbc.update("update asset_visual_variant set deleted_at = current_timestamp where id = ?", base + 13);
+            jdbc.update("""
+                insert into asset_visual_variant_episode values
+                (1,10,33,?,1,?,101,'ACTIVE',null),
+                (2,10,33,?,1,?,101,'ACTIVE',null),
+                (3,10,33,?,1,?,102,'ACTIVE',null),
+                (4,10,33,?,1,?,103,'ACTIVE',null),
+                (5,10,33,?,1,?,105,'ACTIVE',null),
+                (6,10,33,?,1,?,104,'ACTIVE',null),
+                (7,10,33,?,1,?,105,'RETIRED',current_timestamp),
+                (8,99,33,?,1,?,105,'ACTIVE',null),
+                (9,10,33,?,2,?,105,'ACTIVE',null)
+                """, type, base + 11, type, base + 12, type, base + 12,
+                type, base + 12, type, base + 13, type, base + 12,
+                type, base + 12, type, base + 12, type, base + 12);
+            base += 10;
+        }
+        JsonNode result = summary();
+        for (String key : java.util.List.of("characters", "scenes", "props")) {
+            JsonNode asset = result.path(key).get(0);
+            assertThat(asset.path("visualSummary").path("variantCount").asInt()).isEqualTo(2);
+            assertThat(asset.path("visualSummary").path("episodeCount").asInt()).isEqualTo(2);
+            assertThat(asset.has("visual")).isFalse();
+        }
+    }
+
+    @Test
+    void reportsZeroWhenThereAreNoVariantsOrBindings() {
+        JsonNode asset = summary().path("characters").get(0).path("visualSummary");
+        assertThat(asset.path("variantCount").asInt(-1)).isZero();
+        assertThat(asset.path("episodeCount").asInt(-1)).isZero();
     }
 
     @Test

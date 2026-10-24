@@ -248,7 +248,7 @@ public class WorkflowAgentRunner {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRunTimeoutSeconds();
             case "short-drama-asset-recognition" -> properties.getAssetRecognitionRunTimeoutSeconds();
-            case "short-drama-asset-normalization" -> properties.getAssetNormalizationRunTimeoutSeconds();
+            case "short-drama-asset-normalization", "short-drama-prop-simplification" -> properties.getAssetNormalizationRunTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRunTimeoutSeconds();
             default -> properties.getRunTimeoutSeconds();
         };
@@ -258,7 +258,7 @@ public class WorkflowAgentRunner {
         return switch (agentCode) {
             case "short-drama-episode-summary" -> properties.getEpisodeSummaryRequestTimeoutSeconds();
             case "short-drama-asset-recognition" -> properties.getAssetRecognitionRequestTimeoutSeconds();
-            case "short-drama-asset-normalization" -> properties.getAssetNormalizationRequestTimeoutSeconds();
+            case "short-drama-asset-normalization", "short-drama-prop-simplification" -> properties.getAssetNormalizationRequestTimeoutSeconds();
             case "short-drama-storyboard" -> properties.getStoryboardRequestTimeoutSeconds();
             default -> Integer.MAX_VALUE;
         };

@@ -98,8 +98,9 @@ public class StoryboardAssetReferenceRepository {
                     rs.getString("source_type"), rs.getString("source_name"),
                     rs.getBoolean("locked_by_user"))), arguments.toArray());
         Map<Long, List<StoryboardAssetReferenceResponse>> grouped = new LinkedHashMap<>();
+        var production=new PropProductionService(jdbc,new com.fasterxml.jackson.databind.ObjectMapper());
         rows.forEach(row -> grouped.computeIfAbsent(row.getKey(), ignored -> new ArrayList<>())
-            .add(row.getValue()));
+            .add(production.reference(tenantId,projectId,row.getValue())));
         return grouped;
     }
 

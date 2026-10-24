@@ -1,7 +1,8 @@
-import { App, Button } from 'antd';
+import { App } from 'antd';
 import { useEffect, useRef, useState } from 'react';
-import { isPointEstimateCancelled } from '@/services/point-estimate';
+import { createPortal } from 'react-dom';
 import PointEstimateButton from '@/components/PointEstimateButton';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
 import {
   type AssetNormalizationStatus,
   queryAssetNormalization,
@@ -10,6 +11,7 @@ import {
 
 type Props = {
   projectId: number;
+  actionHost?: HTMLElement | null;
   onTrack: (executionId: number) => void;
   onBlocked: (blocked: boolean, reason?: string) => void;
   onRefresh: () => unknown;
@@ -25,7 +27,9 @@ export default function AssetNormalizationPanel(props: Props) {
   const [readFailed, setReadFailed] = useState(false);
   const submittingRef = useRef(false);
   const previous = useRef<AssetNormalizationStatus | undefined>(undefined);
-  const busy = submitting || ['EXTRACTING', 'NORMALIZING', 'RUNNING'].includes(status?.status || '');
+  const busy =
+    submitting ||
+    ['EXTRACTING', 'NORMALIZING', 'RUNNING'].includes(status?.status || '');
 
   useEffect(() => {
     let active = true;
@@ -38,22 +42,32 @@ export default function AssetNormalizationPanel(props: Props) {
         const next = response.data;
         setStatus(next);
         setReadFailed(false);
-        callbacks.current.onBlocked(next.blocked, next.blocked
-          ? next.status === 'FAILED'
-            ? '资产提取或归一失败，可继续浏览；请在上方重试资产归一，完成后可编辑和生成。'
-            : '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
-          : undefined);
-        if (previous.current?.blocked && !next.blocked) await callbacks.current.onRefresh();
+        callbacks.current.onBlocked(
+          next.blocked,
+          next.blocked
+            ? next.status === 'FAILED'
+              ? '资产提取或归一失败，可继续浏览；请点击底部“资产归一”重试，完成后可编辑和生成。'
+              : '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
+            : undefined,
+        );
+        if (previous.current?.blocked && !next.blocked)
+          await callbacks.current.onRefresh();
         previous.current = next;
       } catch {
         if (!active) return;
         setReadFailed(true);
-        callbacks.current.onBlocked(true, '归一状态读取失败，正在自动重试；可继续浏览，编辑和生成暂不可用。');
+        callbacks.current.onBlocked(
+          true,
+          '归一状态读取失败，正在自动重试；可继续浏览，编辑和生成暂不可用。',
+        );
       }
       if (active) timer = setTimeout(poll, 3000);
     };
     void poll();
-    return () => { active = false; clearTimeout(timer); };
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [projectId]);
 
   const submit = async () => {
@@ -63,34 +77,60 @@ export default function AssetNormalizationPanel(props: Props) {
     try {
       const response = await submitAssetNormalization(projectId);
       if (!response.data.id) throw new Error('归一任务未返回任务编号');
-      setStatus({ status: 'NORMALIZING', blocked: true, executionId: response.data.id });
-      callbacks.current.onBlocked(true, '正在提取或归一资产，可继续浏览；完成后可编辑和生成。');
+      setStatus({
+        status: 'NORMALIZING',
+        blocked: true,
+        executionId: response.data.id,
+      });
+      callbacks.current.onBlocked(
+        true,
+        '正在提取或归一资产，可继续浏览；完成后可编辑和生成。',
+      );
       callbacks.current.onTrack(response.data.id);
     } catch (error) {
-      if (!isPointEstimateCancelled(error)) message.error(error instanceof Error ? error.message : '归一任务提交失败');
+      if (!isPointEstimateCancelled(error))
+        message.error(
+          error instanceof Error ? error.message : '归一任务提交失败',
+        );
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
-  return (
-    <section aria-label="全剧资产归一" style={{ marginBottom: 16 }}>
-      <PointEstimateButton operations={[{ url: `/api/projects/${projectId}/asset-normalization` }]} loading={submitting} disabled={!status || readFailed || busy} onClick={() => void submit()}>
-        {status?.status === 'FAILED' ? '重试资产归一' : '全剧资产归一'}
-      </PointEstimateButton>
-      <span role="status" style={{ marginLeft: 12 }}>
-        {readFailed ? '归一状态读取失败，正在重试' : busy ? '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
-          : status?.status === 'FAILED' ? '归一尚未完成，可重试；完成后可编辑和生成。'
-            : status?.result ? `归一已完成：合并 ${status.result.mergedAssets} 条重复资产，拆分 ${status.result.splitGroups} 组混用记录。`
-              : '自动统一角色、场景和道具身份，保留图片及视觉形态。'}
-      </span>
-      {status?.errorMessage ? <div>{status.errorMessage}</div> : null}
-      {status?.executionId ? (
-        <Button type="link" onClick={() => status.executionId && callbacks.current.onTrack(status.executionId)}>
-          查看任务 #{status.executionId}
-        </Button>
-      ) : null}
-    </section>
+  const description = readFailed
+    ? '归一状态读取失败，正在重试'
+    : busy
+      ? '正在提取或归一资产，可继续浏览；完成后可编辑和生成。'
+      : status?.status === 'FAILED'
+        ? status.errorMessage || '归一尚未完成，可重试；完成后可编辑和生成。'
+        : status?.result
+          ? `归一已完成：合并 ${status.result.mergedAssets} 条重复资产，拆分 ${status.result.splitGroups} 组混用记录。`
+          : '自动统一角色、场景和道具身份，保留图片及视觉形态。';
+  const action = (
+    <PointEstimateButton
+      aria-label="资产归一"
+      title={description}
+      showEstimate={false}
+      operations={[{ url: `/api/projects/${projectId}/asset-normalization` }]}
+      loading={busy}
+      disabled={!status || readFailed || busy}
+      danger={readFailed || status?.status === 'FAILED'}
+      onClick={() => void submit()}
+      style={{
+        minHeight: 44,
+        minWidth: 128,
+        paddingInline: 20,
+        borderRadius: 22,
+        background: '#fff',
+        fontSize: 14,
+        lineHeight: '22px',
+        boxShadow: '0 2px 8px rgb(0 0 0 / 5%)',
+      }}
+    >
+      资产归一
+    </PointEstimateButton>
   );
+  if (props.actionHost === undefined) return action;
+  return props.actionHost ? createPortal(action, props.actionHost) : null;
 }

@@ -1283,6 +1283,7 @@ const StoryboardCard = ({
 
           {item.assetReferences !== undefined ? (
             <StoryboardAssetReferenceEditor
+              projectId={projectId}
               storyboardId={item.id}
               storyboardNo={index + 1}
               references={item.assetReferences}
@@ -2445,11 +2446,21 @@ const ProductionWorkbenchStoryboard = () => {
         displayName: variant.name || asset.name,
       }] : [];
     });
+    const formalImages: NamedImageReference[] = (storyboard.assetReferences ?? []).flatMap((reference) =>
+      reference.resolutionStatus === 'RESOLVED' && reference.variantId && reference.assetId ? [{
+        assetName: reference.sourceName || reference.assetName || '', type: 'mention' as const, mediaType: 'IMAGE' as const,
+        sourceType: 'ASSET_VISUAL_VARIANT', sourceId: reference.variantId, assetId: reference.assetId,
+        assetType: reference.assetType, variantId: reference.variantId, displayName: reference.variantName || reference.assetName || '',
+      }] : []);
+    const productionBindings = [...bindings.filter((binding) => !formalImages.some((reference) => reference.assetId === binding.assetId && reference.assetType === binding.assetType)), ...formalImages];
     let document = hydratePromptDocument(
       draft?.promptDocument || storyboard.promptDocument,
       draft?.videoPrompt || getStoryboardPrompt(storyboard),
-      bindings,
+      productionBindings,
     );
+    document = { ...document, nodes: document.nodes.map((node) => node.type === 'mention' && node.assetId != null
+      && storyboard.assetReferences?.some((reference) => reference.assetId === node.assetId && reference.assetType === node.assetType && reference.resolutionStatus === 'SCENE_INCLUDED')
+      ? { type: 'text' as const, text: node.displayName } : node) };
     if (!hasImageReference(document) && (storyboard.firstFrameUrl || selectedFirstFrame(storyboard.id))) {
       document = withFirstFrameReference(
         document, storyboard.id, `分镜${storyboard.storyboardNo || storyboard.shotNo}首帧`,
@@ -3002,7 +3013,7 @@ const ProductionWorkbenchStoryboard = () => {
     const missing = submissions.flatMap(({ storyboard, promptDocument }) => {
       const bindings = storyboard.assetReferences || [];
       const names = new Set(bindings
-        .filter((binding) => binding.resolutionStatus !== 'RESOLVED' || !binding.variantId || !binding.imageUrl?.trim())
+        .filter((binding) => binding.resolutionStatus !== 'SCENE_INCLUDED' && (binding.resolutionStatus !== 'RESOLVED' || !binding.variantId || !binding.imageUrl?.trim()))
         .map((binding) => binding.sourceName || binding.assetName || '参考图片'));
       for (const node of promptDocument.nodes) {
         if (node.type !== 'mention' || node.mediaType !== 'IMAGE') continue;

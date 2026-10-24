@@ -473,6 +473,20 @@ public class StoryboardToolDataService {
             childPath(path, "assetKey"), storyboardNo, "素材 key 不属于当前剧本：" + key);
         Map<String, Object> row = rows.get(0);
         Long variantId = null;
+        if ("PROP".equals(kind.assetType)) {
+            var production = new com.antshorttv.script.PropProductionService(jdbc,json);
+            if (!production.policy(context.tenantId(),context.projectId(),assetId).isEmpty()) {
+                Long requested = variantKey != null && variantKey.matches("v_\\d+") ? Long.parseLong(variantKey.substring(2)) : null;
+                if(variantKey!=null && !variantKey.isBlank() && requested==null)
+                    throw validation("VARIANT_KEY_INVALID",childPath(path,"variantKey"),storyboardNo,"视觉形象 key 无效。");
+                var target=production.target(context.tenantId(),context.projectId(),assetId,requested,context.episodeId());
+                Long mapped=target.unresolved()||target.scene()?null:target.variantId();
+                String name=String.valueOf(row.get("name"));
+                String version=mapped==null?null:jdbc.queryForObject("select name from asset_visual_variant where tenant_id=? and project_id=? and asset_id=? and id=? and deleted_at is null",String.class,context.tenantId(),context.projectId(),target.assetId(),mapped);
+                return new Material(kind,key,assetId,mapped,name,version,role==null||role.isBlank()?defaultRole(kind):role,
+                    sourceName==null||sourceName.isBlank()?name:sourceName,target.scene()?"SCENE_INCLUDED":variantUsable(mapped)?"RESOLVED":"ASSET_PENDING","AI",false,sortOrder,context.userId());
+            }
+        }
         if (variantKey != null && !variantKey.isBlank()) {
             if (!variantKey.matches("v_\\d+")) throw validation("VARIANT_KEY_INVALID",
                 childPath(path, "variantKey"), storyboardNo, "视觉形象 key 无效：" + variantKey);

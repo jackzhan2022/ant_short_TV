@@ -11,6 +11,7 @@ import {
 import { history, Outlet, useLocation, useParams } from '@umijs/max';
 import { App, Button, Flex, Input, Modal, Result, Spin, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount } from '@/services/account-team/points';
 import type { Project } from '@/services/account-team/types';
@@ -18,6 +19,7 @@ import { queryProjectMetadata, updateProject } from '@/services/account-team/pro
 import { formatPoints } from '@/utils/points';
 import { queryScriptContent } from './service';
 import ProjectAiConfigPage from './ai-config';
+import actionStyles from './WorkbenchActions.module.css';
 
 const topSteps = [
   { key: 'script', label: '剧本', icon: <BookOutlined /> },
@@ -33,7 +35,11 @@ const stepPaths = {
   video: 'video',
 } as const;
 
-export type ProductionWorkbenchOutletContext = { project?: Project };
+export type ProductionWorkbenchOutletContext = {
+  project?: Project;
+  footerActionHost?: HTMLElement | null;
+  setSettingsActionHost?: (host: HTMLDivElement | null) => void;
+};
 
 const ProductionWorkbench = () => {
   const params = useParams<{ id: string }>();
@@ -50,6 +56,8 @@ const ProductionWorkbench = () => {
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [footerActionHost, setFooterActionHost] = useState<HTMLDivElement | null>(null);
+  const [settingsActionHost, setSettingsActionHost] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!projectId) {
@@ -333,7 +341,7 @@ const ProductionWorkbench = () => {
           minHeight: boundedWorkspace ? 0 : 'calc(100vh - 100px)',
         }}
       >
-        <Outlet context={{ project }} />
+        <Outlet context={{ project, footerActionHost, setSettingsActionHost }} />
       </main>
 
       <Modal title="项目 AI 模型" open={aiConfigOpen} footer={null} width={1100} onCancel={() => setAiConfigOpen(false)}>
@@ -350,30 +358,36 @@ const ProductionWorkbench = () => {
         <Input aria-label="项目名称" value={projectName} onChange={(event) => setProjectName(event.target.value)} onPressEnter={saveProjectName} autoFocus />
       </Modal>
 
-      {nextStep ? (
-        <Button
-          type="primary"
-          icon={<ArrowRightOutlined />}
-          onClick={() =>
-            history.push(
-              `/projects/${projectId}/production-workbench/${stepPaths[nextStep]}`,
-            )
-          }
-          style={{
-            position: 'fixed',
-            right: 28,
-            bottom: 46,
-            zIndex: 20,
-            height: 44,
-            paddingInline: 20,
-            borderRadius: 22,
-            background: '#111111',
-            boxShadow: '0 10px 24px rgba(17, 17, 17, 0.22)',
-          }}
-        >
-          进入下一步
-        </Button>
-      ) : null}
+      {nextStep ? (() => {
+        const actions = (
+          <section
+            className={`${actionStyles.actions} ${activeStep === 'settings' ? settingsActionHost ? actionStyles.anchored : actionStyles.centered : actionStyles.rightAligned}`}
+            aria-label="工作台操作"
+          >
+            {activeStep === 'settings' ? (
+              <div ref={setFooterActionHost} className={actionStyles.actionHost} />
+            ) : null}
+            <Button
+              type="primary"
+              icon={<ArrowRightOutlined />}
+              onClick={() => history.push(`/projects/${projectId}/production-workbench/${stepPaths[nextStep]}`)}
+              style={{
+                height: 44,
+                minWidth: 140,
+                paddingInline: 20,
+                borderRadius: 22,
+                background: '#111111',
+                boxShadow: '0 10px 24px rgba(17, 17, 17, 0.22)',
+              }}
+            >
+              进入下一步
+            </Button>
+          </section>
+        );
+        return activeStep === 'settings' && settingsActionHost
+          ? createPortal(actions, settingsActionHost)
+          : actions;
+      })() : null}
 
       <div
         style={{

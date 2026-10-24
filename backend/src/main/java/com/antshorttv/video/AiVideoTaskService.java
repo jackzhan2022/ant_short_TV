@@ -84,6 +84,7 @@ import org.slf4j.LoggerFactory;
 
 @Service
 public class AiVideoTaskService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.PropProductionService propProduction;
     private static final Logger LOGGER = LoggerFactory.getLogger(AiVideoTaskService.class);
     private static final List<String> CANCELABLE_STATUSES = List.of("PENDING", "SUBMITTING", "GENERATING");
     private static final List<Integer> SUPPORTED_DURATIONS = List.of(5, 8, 10);
@@ -107,6 +108,7 @@ public class AiVideoTaskService {
     private final StoryboardPromptCompiler promptCompiler;
     private final StoryboardAssetReferenceRepository storyboardReferenceRepository;
     private final VideoTaskReferenceResolver referenceResolver;
+    private final CharacterVoiceVideoReferences characterVoiceReferences;
     private final VideoReferenceSubsetSelector referenceSubsetSelector;
     private final SeedanceVideoRequestValidator seedanceValidator;
     private final com.antshorttv.ai.AiInvocationService invocationService;
@@ -148,6 +150,7 @@ public class AiVideoTaskService {
         StoryboardPromptCompiler promptCompiler,
         StoryboardAssetReferenceRepository storyboardReferenceRepository,
         VideoTaskReferenceResolver referenceResolver,
+        CharacterVoiceVideoReferences characterVoiceReferences,
         VideoReferenceSubsetSelector referenceSubsetSelector,
         SeedanceVideoRequestValidator seedanceValidator,
         com.antshorttv.ai.AiInvocationService invocationService,
@@ -188,6 +191,7 @@ public class AiVideoTaskService {
         this.promptCompiler = promptCompiler;
         this.storyboardReferenceRepository = storyboardReferenceRepository;
         this.referenceResolver = referenceResolver;
+        this.characterVoiceReferences = characterVoiceReferences;
         this.referenceSubsetSelector = referenceSubsetSelector;
         this.seedanceValidator = seedanceValidator;
         this.invocationService = invocationService;
@@ -274,6 +278,7 @@ public class AiVideoTaskService {
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ProjectEntity project = requireProjectAccess(context, projectId);
+        if(propProduction!=null) propProduction.lockProject(tenantId,projectId);
         StoryboardEntity storyboard = requireStoryboard(tenantId, projectId, request.storyboardId());
         AiModelRoute route = resolveVideoModel(tenantId, projectId, request.modelId());
         PreparedVideoRequest prepared = isSeedance(route)
@@ -754,6 +759,11 @@ public class AiVideoTaskService {
         AiModelRoute route,
         CreateAiVideoTaskRequest request
     ) {
+        if (!Boolean.FALSE.equals(request.generateAudio()) && characterVoiceReferences.hasVoices(
+            storyboard.tenantId, storyboard.projectId, storyboard.id)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "所选视频模型不支持角色参考音色，请选择支持参考音频的 Seedance 模型。");
+        }
         if (Boolean.TRUE.equals(request.textOnly())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "所选视频模型暂不支持纯文生视频，请选择 Seedance 模型。");
@@ -788,8 +798,27 @@ public class AiVideoTaskService {
         List<StoryboardAssetReferenceEntity> formalRows = textOnly ? List.of() : storyboardReferenceRepository.listActive(
             storyboard.tenantId, storyboard.projectId, storyboard.id);
         List<Map<String, Object>> omittedReferences = new ArrayList<>();
+        Map<Long,Long> propVariantRemap=new java.util.HashMap<>();
+        Map<Long,String> scenePropMentions=new java.util.HashMap<>();
         List<StoryboardPromptCompiler.BindingReference> formalBindings = new ArrayList<>();
         for (StoryboardAssetReferenceEntity row : formalRows) {
+            if ("PROP".equals(row.assetType) && row.assetId!=null && propProduction!=null) {
+                var target=propProduction.target(storyboard.tenantId,storyboard.projectId,row.assetId,
+                    row.variantId,storyboard.episodeId);
+                if(target.scene()) {
+                    var policy=propProduction.policy(storyboard.tenantId,storyboard.projectId,row.assetId);
+                    boolean scenePresent=false;
+                    for(JsonNode sceneId:policy.path("sceneIds")) if(formalRows.stream().anyMatch(r -> "SCENE".equals(r.assetType) && r.assetId!=null && r.assetId==sceneId.asLong())) scenePresent=true;
+                    if(!scenePresent) throw new BusinessException(ErrorCode.VALIDATION_ERROR,"场景内道具需要先绑定对应场景参考图。");
+                    if(row.variantId!=null) scenePropMentions.put(row.variantId,row.sourceName==null?policy.path("sourceName").asText():row.sourceName);
+                    continue;
+                }
+                if(!propProduction.policy(storyboard.tenantId,storyboard.projectId,row.assetId).isEmpty()) {
+                    if(target.unresolved()||target.variantId()==null) throw new BusinessException(ErrorCode.VALIDATION_ERROR,"道具关键版本未确定，请先选择正确的视觉形象。");
+                    if(row.variantId!=null) propVariantRemap.put(row.variantId,target.variantId());
+                    row.variantId=target.variantId();row.resolutionStatus="RESOLVED";
+                }
+            }
             if (!"RESOLVED".equals(row.resolutionStatus) || row.variantId == null) {
                 throw new BusinessException(ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED,
                     "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。");
@@ -812,6 +841,12 @@ public class AiVideoTaskService {
                     document = objectMapper.readTree(storyboard.promptDocumentJson);
                 }
                 for (JsonNode node : document.path("nodes")) {
+                    if(node instanceof com.fasterxml.jackson.databind.node.ObjectNode mention && "mention".equals(node.path("type").asText())
+                        && "FORMAL".equals(node.path("bindingSource").asText()) && "IMAGE".equals(node.path("mediaType").asText())) {
+                        long original=node.path("sourceId").asLong();
+                        if(scenePropMentions.containsKey(original)) {mention.removeAll();mention.put("type","text").put("text",scenePropMentions.get(original));}
+                        else if(propVariantRemap.containsKey(original)) mention.put("sourceId",propVariantRemap.get(original));
+                    }
                     if ("mention".equals(node.path("type").asText())
                         && "IMAGE".equals(node.path("mediaType").asText())
                         && "FORMAL".equals(node.path("bindingSource").asText())
@@ -843,10 +878,19 @@ public class AiVideoTaskService {
         boolean watermark = request.watermark() == null
             ? Boolean.TRUE.equals(project.videoWatermark)
             : request.watermark();
+        var characterVoices = generateAudio
+            ? characterVoiceReferences.append(storyboard.tenantId, storyboard.projectId, storyboard.id, resolvedReferences)
+            : new CharacterVoiceVideoReferences.Augmentation(resolvedReferences, List.of());
+        resolvedReferences = characterVoices.references();
         JsonNode constraints = seedanceValidator.constraints(route.model());
         VideoReferenceSubsetSelector.Selection selection = referenceSubsetSelector.select(
             resolvedReferences, constraints);
-        List<VideoTaskReferenceResolver.ResolvedReference> references = selection.kept();
+        List<VideoTaskReferenceResolver.ResolvedReference> references = characterVoices.selectedReferences(selection.kept());
+        String compiledPrompt = characterVoices.prompt(compiled.text(), references);
+        if(propProduction!=null) {
+            for(var row:formalRows) if("SCENE".equals(row.assetType) && row.assetId!=null)
+                compiledPrompt+=propProduction.sceneContext(storyboard.tenantId,storyboard.projectId,row.assetId);
+        }
         omittedReferences.addAll(selection.omitted().stream()
             .map(item -> objectMapper.convertValue(item,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}))
@@ -865,7 +909,8 @@ public class AiVideoTaskService {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("modelId", route.model().getId());
         snapshot.put("endpointId", route.model().getModelCode());
-        snapshot.put("compiledPrompt", compiled.text());
+        snapshot.put("compiledPrompt", compiledPrompt);
+        snapshot.put("characterVoices", characterVoices.assignments());
         snapshot.put("duration", duration);
         snapshot.put("billingDurationSeconds", billingDuration);
         snapshot.put("ratio", aspectRatio);
@@ -886,7 +931,7 @@ public class AiVideoTaskService {
             throw new IllegalStateException("Unable to serialize video request snapshot.", exception);
         }
         return new PreparedVideoRequest(
-            compiled.text(), firstFrameUrl, duration, aspectRatio, resolution, generateAudio, watermark,
+            compiledPrompt, firstFrameUrl, duration, aspectRatio, resolution, generateAudio, watermark,
             snapshotJson, hash(snapshotJson), billingDuration, references);
     }
 

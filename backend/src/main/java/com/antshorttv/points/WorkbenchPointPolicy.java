@@ -16,7 +16,7 @@ public class WorkbenchPointPolicy {
         + "'script_character_scene_recognition','scoped_asset_reextraction','storyboard_breakdown'";
     private static final Set<String> AGENTS = Set.of("short-drama-global-understanding",
         "short-drama-episode-splitting", "short-drama-episode-summary",
-        "short-drama-asset-recognition", "short-drama-asset-normalization", "short-drama-storyboard");
+        "short-drama-asset-recognition", "short-drama-asset-normalization", "short-drama-prop-simplification", "short-drama-storyboard");
     private final JdbcTemplate jdbc;
 
     public WorkbenchPointPolicy(JdbcTemplate jdbc) { this.jdbc = jdbc; }

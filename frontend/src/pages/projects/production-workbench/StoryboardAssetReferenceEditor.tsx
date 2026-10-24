@@ -26,7 +26,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Cascader, Empty, Flex, Input, Spin, Tag, Tooltip, Typography } from 'antd';
 import LazyMediaImage from '@/components/LazyMediaImage';
-import { type CSSProperties, useState } from 'react';
+import { type CSSProperties, lazy, Suspense, useEffect, useState } from 'react';
 import type {
   CharacterAsset,
   PropAsset,
@@ -36,6 +36,7 @@ import type {
 } from './service';
 
 type Asset = CharacterAsset | SceneAsset | PropAsset;
+const CharacterVoiceModal = lazy(() => import('./CharacterVoiceModal'));
 type AssetType = StoryboardAssetReference['assetType'];
 type ClientKeyedReference = StoryboardAssetReference & { clientKey?: string };
 type MaterialOption = {
@@ -60,12 +61,14 @@ const statusLabel = (status: StoryboardAssetReference['resolutionStatus']) => ({
   RESOLVED: '已就绪',
   ASSET_PENDING: '待生成',
   UNRESOLVED: '待确认',
+  SCENE_INCLUDED: '随场景呈现',
 }[status]);
 
 const statusColor = (status: StoryboardAssetReference['resolutionStatus']) => ({
   RESOLVED: 'success',
   ASSET_PENDING: 'warning',
   UNRESOLVED: 'error',
+  SCENE_INCLUDED: 'default',
 }[status]);
 
 const variantsFor = (assets: Asset[], assetId?: number | null) => {
@@ -75,6 +78,7 @@ const variantsFor = (assets: Asset[], assetId?: number | null) => {
 };
 
 export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
+  if (reference.resolutionStatus === 'SCENE_INCLUDED') return undefined;
   const asset = assets.find((candidate) => candidate.id === reference.assetId);
   const variant = reference.variantId != null
     ? variantsFor(assets, reference.assetId)
@@ -88,6 +92,7 @@ export const referenceReady = (
   reference: StoryboardAssetReference,
   variant?: VisualVariant,
 ) => reference.resolutionStatus === 'RESOLVED'
+  || reference.resolutionStatus === 'SCENE_INCLUDED'
   || (reference.resolutionStatus === 'ASSET_PENDING' && Boolean(variant?.usable));
 
 const defaultVariant = (asset?: Asset): VisualVariant | undefined =>
@@ -167,6 +172,7 @@ function SortableAssetCard({
   onReplace,
   onRemove,
   onVoice,
+  onConfigureVoice,
   onGenerateImage,
   isGenerating,
   onLoadVariants,
@@ -180,6 +186,7 @@ function SortableAssetCard({
   onReplace: (next: StoryboardAssetReference) => void;
   onRemove: () => void;
   onVoice: (name: string) => void;
+  onConfigureVoice?: (reference: StoryboardAssetReference) => void;
   onGenerateImage: () => void;
   isGenerating: boolean;
   onLoadVariants?: (
@@ -413,11 +420,15 @@ function SortableAssetCard({
             加载更多{labels[assetType]}形态
           </Button>
         ) : null}
+      {assetType === 'CHARACTER' && onConfigureVoice ? <Button size="small" icon={<AudioOutlined />}
+        disabled={!reference.assetId} aria-label={`分镜${storyboardNo}${reference.assetName || reference.sourceName || '角色'}${reference.variantName ? ` ${reference.variantName}` : ''}配置音色`}
+        onClick={() => onConfigureVoice(reference)}>配置音色</Button> : null}
     </li>
   );
 }
 
 export default function StoryboardAssetReferenceEditor({
+  projectId,
   storyboardId,
   storyboardNo,
   references,
@@ -430,6 +441,7 @@ export default function StoryboardAssetReferenceEditor({
   generatingReferenceKeys,
   onLoadVariants,
 }: {
+  projectId?: number;
   storyboardId: number;
   storyboardNo: number;
   references: StoryboardAssetReference[];
@@ -445,6 +457,8 @@ export default function StoryboardAssetReferenceEditor({
     current?: number, pageSize?: number,
   ) => Promise<void>;
 }) {
+  const [voiceTarget, setVoiceTarget] = useState<StoryboardAssetReference>();
+  useEffect(() => { setVoiceTarget(undefined); }, [projectId, storyboardId]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -538,6 +552,7 @@ export default function StoryboardAssetReferenceEditor({
                         onReplace={(next) => replace(reference, next)}
                         onRemove={() => remove(reference)}
                         onVoice={onVoice}
+                        onConfigureVoice={projectId ? setVoiceTarget : undefined}
                         onGenerateImage={() => onGenerateImage(
                           reference,
                           `${storyboardId}:${sortableIds[rowIndex]}`,
@@ -554,6 +569,12 @@ export default function StoryboardAssetReferenceEditor({
           </section>
         );
       })}
+      {projectId && voiceTarget?.assetId ? <Suspense fallback={null}>
+        <CharacterVoiceModal projectId={projectId} characterId={voiceTarget.assetId}
+          characterName={voiceTarget.assetName || voiceTarget.sourceName || '角色'}
+          storyboard={{ id: storyboardId, variantId: voiceTarget.variantId, variantName: voiceTarget.variantName }}
+          onClose={() => setVoiceTarget(undefined)} onSaved={() => setVoiceTarget(undefined)} />
+      </Suspense> : null}
     </div>
   );
 }

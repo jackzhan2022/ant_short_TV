@@ -11,8 +11,8 @@ import {
   setCurrentTenantId,
 } from '@/services/account-team/auth';
 import {
-  pointEstimatedRequest,
   type PointEstimate,
+  pointEstimatedRequest,
 } from '@/services/point-estimate';
 import PointEstimateButton from '.';
 import PointEstimateModal from './Modal';
@@ -63,6 +63,26 @@ afterEach(() => {
 });
 
 describe('live button point estimates', () => {
+  it('can hide the inline estimate while retaining its accessible description and quote gate', async () => {
+    const submit = vi.fn();
+    render(
+      <PointEstimateButton
+        showEstimate={false}
+        operations={operations()}
+        onClick={submit}
+      >
+        资产归一
+      </PointEstimateButton>,
+    );
+    const button = screen.getByRole('button', { name: '资产归一' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(submit).not.toHaveBeenCalled();
+    await advance();
+    expect(button).toBeEnabled();
+    expect(button).toHaveAccessibleDescription(/预计 10 积分/);
+    expect(screen.getByText(/预计 10 积分/)).not.toBeVisible();
+  });
   it('debounces parameters and blocks clicks until the latest read-only quote succeeds', async () => {
     const pending = deferred();
     mocks.request.mockReturnValue(pending.promise);

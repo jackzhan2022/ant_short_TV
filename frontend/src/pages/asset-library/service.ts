@@ -4,7 +4,7 @@ import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 
 export type AssetLibraryItem = {
   id: number;
-  resourceType: 'AI_IMAGE_RESULT' | 'AI_VIDEO_RESULT' | 'SHOT_COMPOSE_RESULT' | 'EPISODE_VIDEO_VERSION';
+  resourceType: 'AI_IMAGE_RESULT' | 'AI_VIDEO_RESULT' | 'SHOT_COMPOSE_RESULT' | 'EPISODE_VIDEO_VERSION' | 'PROJECT_AUDIO_ASSET' | 'AI_VOICE_RESULT';
   name: string;
   category: string;
   sourceType: string;
@@ -24,6 +24,6 @@ export type AssetLibraryResponse = {
 };
 export const queryProjectAssetLibrary = (
   projectId: number,
-  params: MediaPageParams & { mediaType: 'IMAGE' | 'VIDEO'; category?: string; episodeNo?: number; keyword?: string },
+  params: MediaPageParams & { mediaType: 'IMAGE' | 'VIDEO' | 'AUDIO'; category?: string; episodeNo?: number; keyword?: string },
   signal?: AbortSignal,
 ) => request<ApiResponse<AssetLibraryResponse>>(`/api/projects/${projectId}/asset-library`, { params, signal });

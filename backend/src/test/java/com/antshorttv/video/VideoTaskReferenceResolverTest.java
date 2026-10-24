@@ -39,6 +39,7 @@ class VideoTaskReferenceResolverTest {
 
     @MockBean
     private ObjectStorageService objectStorageService;
+    @MockBean private com.antshorttv.rbac.ProjectPermissionGuard projectPermissions;
 
     @BeforeEach
     void seedReferences() {
@@ -109,6 +110,89 @@ class VideoTaskReferenceResolverTest {
         assertThatThrownBy(() -> resolver.resolve(TENANT_ID, PROJECT_ID, List.of(
             reference("IMAGE", 1, "reference_image", "ASSET_VISUAL_VARIANT", 99998L, "图片1"))))
             .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void sendsBoundCharacterAudioAndFreezesOverridesIntoTheActualProviderRequest() throws Exception {
+        org.mockito.Mockito.when(projectPermissions.require(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(new com.antshorttv.security.TenantContext(1L, TENANT_ID, 1L, "OWNER"));
+        jdbc.update("""
+            insert into character_asset(id,tenant_id,project_id,name,role_type,status,created_by,created_at,updated_at)
+            values (97112,?,?,'陈志国','LEAD','CONFIRMED',1,now(),now())
+            """, TENANT_ID, PROJECT_ID);
+        jdbc.update("update asset_visual_variant set name='常态' where id=97111");
+        jdbc.update("""
+            insert into storyboard(id,tenant_id,project_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at)
+            values (97402,?,?,1,2,'角色说话','DRAFT',1,now(),now())
+            """, TENANT_ID, PROJECT_ID);
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,created_at,updated_at)
+            values (?,?,97402,'CHARACTER',97112,97111,'MAIN',0,'RESOLVED','MANUAL','陈志国',true,1,now(),now())
+            """, TENANT_ID, PROJECT_ID);
+        for (long id : java.util.List.of(97410L, 97411L)) {
+            long sourceProject = id == 97410 ? PROJECT_ID : PROJECT_ID + 1;
+            jdbc.update("""
+                insert into project_audio_asset
+                  (id,tenant_id,project_id,name,upload_session_token,storage_path,mime_type,file_size,duration_seconds,status,created_by,created_at,updated_at)
+                values (?,?,?,'角色声音',?,?,'audio/wav',1000,3,'ACTIVE',1,now(),now())
+                """, id, TENANT_ID, sourceProject, "voice-" + id,
+                "materials/" + TENANT_ID + "/" + sourceProject + "/voices/" + id + ".wav");
+        }
+        jdbc.update("""
+            insert into character_voice_reference
+              (tenant_id,project_id,character_id,source_project_id,resource_type,resource_id,updated_by,created_at,updated_at)
+            values (?,?,97112,?,'PROJECT_AUDIO_ASSET',97410,1,now(),now())
+            """, TENANT_ID, PROJECT_ID, PROJECT_ID);
+        var model = new com.antshorttv.ai.AiModelEntity(); model.setId(99L); model.setModelCode("ep-character-voice");
+        model.setConfigJson(jdbc.queryForObject("select config_json from ai_model where code='SEEDANCE_2_0_MINI'", String.class));
+        var project = new com.antshorttv.project.ProjectEntity(); project.aspectRatio="9:16"; project.videoResolution="720p";
+        var storyboard = new com.antshorttv.script.StoryboardEntity();
+        storyboard.id=97402L; storyboard.tenantId=TENANT_ID; storyboard.projectId=PROJECT_ID;
+        var request = new CreateAiVideoTaskRequest(storyboard.id,99L,"角色说话",null,null,null,null,null,
+            5,"9:16","720p",true,false,null,null,null,null);
+        Object target = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(videoTasks);
+        Object prepared = org.springframework.test.util.ReflectionTestUtils.invokeMethod(target,"prepareSeedanceRequest",project,storyboard,
+            new com.antshorttv.ai.AiModelRoute(model,null,null,null),request);
+        var task = new AiVideoTaskEntity(); task.prompt="角色说话"; task.generateAudio=true; task.durationSeconds=5; task.aspectRatio="9:16"; task.resolution="720p";
+        task.compiledPrompt=org.springframework.test.util.ReflectionTestUtils.invokeMethod(prepared,"compiledPrompt");
+        task.requestSnapshotJson=org.springframework.test.util.ReflectionTestUtils.invokeMethod(prepared,"snapshotJson");
+        assertThat(task.compiledPrompt).contains("陈志国", "常态", "使用音频1作为音色参考");
+        assertThat(task.requestSnapshotJson).contains("characterVoices", "97410");
+
+        jdbc.update("""
+            insert into storyboard_character_voice
+              (tenant_id,project_id,storyboard_id,character_id,variant_id,source_project_id,resource_type,resource_id,updated_by,created_at,updated_at)
+            values (?,?,97402,97112,97111,?,'PROJECT_AUDIO_ASSET',97411,1,now(),now())
+            """, TENANT_ID,PROJECT_ID,PROJECT_ID+1);
+        Object overridden = org.springframework.test.util.ReflectionTestUtils.invokeMethod(target,"prepareSeedanceRequest",project,storyboard,
+            new com.antshorttv.ai.AiModelRoute(model,null,null,null),request);
+        String updatedSnapshot=org.springframework.test.util.ReflectionTestUtils.invokeMethod(overridden,"snapshotJson");
+        assertThat(updatedSnapshot).contains("97411.wav", "\"overridden\":true").doesNotContain("97410.wav");
+        assertThat(jdbc.queryForObject("select resource_id from character_voice_reference where tenant_id=? and project_id=? and character_id=97112",
+            Long.class,TENANT_ID,PROJECT_ID)).isEqualTo(97410L);
+
+        var body = new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.JsonNode>();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            body.set(json.readTree(exchange.getRequestBody().readAllBytes()));
+            byte[] response="{\"id\":\"voice-task\",\"status\":\"queued\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type","application/json"); exchange.sendResponseHeaders(200,response.length);
+            try (var output=exchange.getResponseBody()) { output.write(response); }
+        });
+        server.start();
+        try {
+            var codec=new com.antshorttv.ai.AiSecretCodec("character-voice-test-key");
+            var config=new com.antshorttv.ai.AiProviderConfigEntity();
+            config.setBaseUrl("http://127.0.0.1:"+server.getAddress().getPort()+"/api/v3"); config.setApiKeyCipher(codec.encrypt("test-key"));
+            new SeedanceArkVideoProviderAdapter(codec,json).submit(config,model,task,"voice-request");
+            var content=body.get().path("content");
+            assertThat(content.get(0).path("text").asText()).contains("陈志国", "音频1");
+            assertThat(content.get(2).path("type").asText()).isEqualTo("audio_url");
+            assertThat(content.get(2).path("role").asText()).isEqualTo("reference_audio");
+            assertThat(content.get(2).path("audio_url").path("url").asText()).contains("97410.wav").doesNotContain("97411.wav","/playback");
+        } finally { server.stop(0); }
     }
 
     @Test

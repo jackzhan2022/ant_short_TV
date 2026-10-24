@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetVisualVariantService {
+    @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     private final AssetVisualVariantMapper variantMapper;
     private final JdbcTemplate jdbc;
 
@@ -474,6 +475,8 @@ public class AssetVisualVariantService {
 
     private GenerationInput generationInput(Long tenantId, Long projectId, AssetVisualVariantEntity variant, String prompt) {
         AssetType type = AssetType.fromStorageValue(variant.getAssetType());
+        if (type == AssetType.SCENE && propProduction != null && prompt != null && !prompt.isBlank())
+            prompt += propProduction.sceneContext(tenantId,projectId,variant.getAssetId());
         boolean primaryVariant = Boolean.TRUE.equals(variant.getIsPrimary());
         if (prompt == null || prompt.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, primaryVariant
@@ -596,6 +599,7 @@ public class AssetVisualVariantService {
     }
 
     private void requireAsset(Long tenantId, Long projectId, AssetType type, Long assetId) {
+        if(propProduction!=null) propProduction.lockProject(tenantId,projectId);
         String table = switch (type) {
             case CHARACTER -> "character_asset";
             case SCENE -> "scene_asset";
@@ -612,6 +616,7 @@ public class AssetVisualVariantService {
     private AssetVisualVariantEntity requireVariant(
         Long tenantId, Long projectId, Long variantId, boolean active
     ) {
+        if(propProduction!=null) propProduction.lockProject(tenantId,projectId);
         QueryWrapper<AssetVisualVariantEntity> query = new QueryWrapper<AssetVisualVariantEntity>()
             .eq("tenant_id", tenantId).eq("project_id", projectId).eq("id", variantId);
         if (active) query.isNull("deleted_at");

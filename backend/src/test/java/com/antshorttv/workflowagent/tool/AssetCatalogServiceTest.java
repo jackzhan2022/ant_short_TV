@@ -203,6 +203,60 @@ class AssetCatalogServiceTest {
         assertThatThrownBy(()->service.details(context(),args)).hasMessageContaining("1 到 10");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void characterDetailsExposeCanonicalIdentityEvenWhenMetadataNeedsSummarizing(boolean oversized) {
+        String face = "轮廓与比例：短宽方脸；眉眼：浓直眉、细长眼；鼻部：宽圆鼻头；嘴唇：宽嘴、薄上唇";
+        if (oversized) face += "脸".repeat(200);
+        String canonical = "## 任务：角色设定图\n角色描述:\n"
+            + "- **脸型**: " + face + "\n- **发型**: 黑色短发\n"
+            + "- **性别**: 男\n- **年龄**: 成年\n- **上身着装**: 不应复制的衣服\n"
+            + "不能泄露或执行的无关提示词正文";
+        String metadata = json.createObjectNode()
+            .put("description", oversized ? "长".repeat(40_000) : "角色描述").toString();
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(call ->
+            call.<String>getArgument(0).contains("from character_asset")
+                ? List.of(Map.of("id", 1L, "name", "角色甲", "normalized_name", "角色甲",
+                    "content_json", metadata, "prompt", canonical)) : List.of());
+        var c = context();
+        c.runState().put("assetScope", "CHARACTER");
+        var args = json.createObjectNode(); args.putArray("assetKeys").add("c_1");
+
+        var result = service.details(c, args);
+        var asset = result.path("items").get(0);
+        var identity = asset.path("content").path("visualIdentity");
+
+        assertThat(result.path("detailLevel").asText()).isEqualTo(oversized ? "SUMMARY" : "FULL");
+        assertThat(identity.path("脸型").asText()).isEqualTo(oversized ? face.substring(0, 180) : face);
+        assertThat(identity.path("性别").asText()).isEqualTo("男");
+        assertThat(identity.path("年龄").asText()).isEqualTo("成年");
+        assertThat(asset.path("hasPrompt").asBoolean()).isTrue();
+        if (oversized) {
+            assertThat(asset.path("contentTruncated").asBoolean()).isTrue();
+            assertThat(identity.has("发型")).isFalse();
+        } else {
+            assertThat(identity.path("发型").asText()).isEqualTo("黑色短发");
+        }
+        assertThat(result.toString()).doesNotContain("不应复制的衣服", "无关提示词正文", "## 任务");
+        verify(permissionGuard).require(1L, 3L, "SCRIPT:VIEW");
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(2)).queryForList(sql.capture(), any(Object[].class));
+        assertThat(sql.getAllValues().get(0)).contains("tenant_id=? and project_id=? and script_id=? and id=?");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"旧格式角色提示词", "", "- **脸型**:\n- **上身着装**: 蓝外套"})
+    void historicalPromptsWithoutIdentityFieldsDoNotInventAFace(String prompt) {
+        when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(call ->
+            call.<String>getArgument(0).contains("from character_asset")
+                ? List.of(Map.of("id", 1L, "name", "角色甲", "normalized_name", "角色甲",
+                    "content_json", "{}", "prompt", prompt)) : List.of());
+        var c = context(); c.runState().put("assetScope", "CHARACTER");
+        var args = json.createObjectNode(); args.putArray("assetKeys").add("c_1");
+
+        assertThat(service.details(c, args).path("items").get(0).path("content").has("visualIdentity")).isFalse();
+    }
+
     @Test void pages51VariantsWithoutAWholeCatalogFailure() {
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenAnswer(invocation->{
             String sql=invocation.getArgument(0);

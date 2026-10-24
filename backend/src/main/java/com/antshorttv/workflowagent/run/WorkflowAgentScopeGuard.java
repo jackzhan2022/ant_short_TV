@@ -14,6 +14,7 @@ public class WorkflowAgentScopeGuard {
         "read_review_context", "read_review_content"
     );
     private static final Set<String> PROJECT_TOOLS = Set.of(
+        "save_prop_simplification",
         "read_asset_normalization_inventory", "read_asset_normalization_episodes", "save_asset_normalization",
         "search_script_assets", "read_asset_details",
         "read_project_context", "list_episode_scripts", "read_episode_script", "read_project_full_script",
@@ -27,6 +28,7 @@ public class WorkflowAgentScopeGuard {
         "read_current_episode", "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
     );
     private static final Set<String> SCRIPT_TOOLS = Set.of(
+        "save_prop_simplification",
         "read_asset_normalization_inventory", "read_asset_normalization_episodes", "save_asset_normalization",
         "search_script_assets", "read_asset_details",
         "read_current_script", "save_global_understanding", "read_current_episode",
@@ -34,6 +36,7 @@ public class WorkflowAgentScopeGuard {
         , "read_script_structure", "analyze_script_chunks"
     );
     private static final Set<String> WRITE_TOOLS = Set.of(
+        "save_prop_simplification",
         "save_asset_normalization",
         "save_episode_script", "save_global_understanding", "save_episode_splitting",
         "save_episode_summary", "save_episode_assets", "save_episode_storyboards"
@@ -216,6 +219,7 @@ public class WorkflowAgentScopeGuard {
                 if("SCRIPT_AI_OPERATION".equals(businessType) && Set.of("ASSET_NORMALIZATION","SCOPED_ASSET_REEXTRACTION","SCRIPT_EPISODE_ASSETS").contains(actual)) yield actual;
                 throw invalid("归一 Agent 与后台操作类型不匹配。");
             }
+            case "short-drama-prop-simplification" -> "PROP_SIMPLIFICATION";
             case "short-drama-storyboard" -> "STORYBOARD_BREAKDOWN";
             case "short-drama-episode-splitting", "short-drama-episode-summary", "short-drama-asset-recognition" -> {
                 String businessType = jdbc.queryForObject(

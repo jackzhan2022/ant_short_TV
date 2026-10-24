@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class StoryboardAssetReferenceService {
+    @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     private final ProjectPermissionGuard permissionGuard;
     private final JdbcTemplate jdbc;
     private final StoryboardAssetReferenceRepository repository;
@@ -40,6 +41,7 @@ public class StoryboardAssetReferenceService {
         ReplaceStoryboardAssetReferencesRequest request
     ) {
         TenantContext context = permissionGuard.require(tenantId, projectId, "STORYBOARD:EDIT");
+        if(propProduction!=null) propProduction.lockProject(tenantId,projectId);
         StoryboardScope storyboard = requireStoryboard(tenantId, projectId, storyboardId);
         List<StoryboardAssetReferenceCommand> commands = request == null || request.references() == null
             ? List.of() : request.references();
@@ -152,6 +154,9 @@ public class StoryboardAssetReferenceService {
         StoryboardReferenceResolutionStatus status = variant != null && variant.usable()
             ? StoryboardReferenceResolutionStatus.RESOLVED
             : StoryboardReferenceResolutionStatus.ASSET_PENDING;
+        if (type == StoryboardReferenceAssetType.PROP && propProduction != null
+            && propProduction.target(tenantId,projectId,command.assetId(),null,episodeId).scene())
+            status = StoryboardReferenceResolutionStatus.SCENE_INCLUDED;
         String sourceName = command.sourceName() == null || command.sourceName().isBlank()
             ? asset.name() : command.sourceName().trim();
         return new ResolvedReference(
@@ -185,10 +190,18 @@ public class StoryboardAssetReferenceService {
         Long variantId,
         boolean lock
     ) {
-        return variants(tenantId, projectId, type, assetId, lock).stream()
+        var own = variants(tenantId, projectId, type, assetId, lock).stream()
             .filter(item -> item.id().equals(variantId))
-            .findFirst()
-            .orElseThrow(() -> StoryboardAssetReferenceValidation.invalid("视觉形象不属于所选素材。"));
+            .findFirst();
+        if (own.isPresent()) return own.get();
+        if (type == StoryboardReferenceAssetType.PROP && propProduction != null) {
+            var target=propProduction.target(tenantId,projectId,assetId,variantId,null);
+            if (!target.scene() && !target.unresolved() && target.variantId()!=null)
+                return variants(tenantId,projectId,type,target.assetId(),lock).stream()
+                    .filter(v -> v.id().equals(target.variantId())).findFirst()
+                    .orElseThrow(() -> StoryboardAssetReferenceValidation.invalid("制作形态不存在。"));
+        }
+        throw StoryboardAssetReferenceValidation.invalid("视觉形象不属于所选素材或已确认的制作关系。");
     }
 
     private VariantRef chooseVariant(
@@ -198,6 +211,13 @@ public class StoryboardAssetReferenceService {
         StoryboardReferenceAssetType type,
         Long assetId
     ) {
+        if (type == StoryboardReferenceAssetType.PROP && propProduction != null && !propProduction.policy(tenantId,projectId,assetId).isEmpty()) {
+            var target=propProduction.target(tenantId,projectId,assetId,null,episodeId);
+            if(target.scene() || target.unresolved()) return null;
+            if(target.variantId()!=null) return variants(tenantId,projectId,type,target.assetId(),true).stream()
+                .filter(v -> v.id().equals(target.variantId())).findFirst().orElse(null);
+            assetId=target.assetId();
+        }
         List<VariantRef> variants = variants(tenantId, projectId, type, assetId, true);
         if (variants.isEmpty()) return null;
         if (episodeId != null) {
@@ -266,12 +286,13 @@ public class StoryboardAssetReferenceService {
         AssetRef asset = entity.assetId == null ? null : requireAsset(tenantId, projectId, type, entity.assetId);
         VariantRef variant = entity.variantId == null ? null
             : requireVariant(tenantId, projectId, type, entity.assetId, entity.variantId, false);
-        return new StoryboardAssetReferenceResponse(
+        var response = new StoryboardAssetReferenceResponse(
             entity.id, entity.assetType, entity.assetId, asset == null ? null : asset.name(),
             entity.variantId, variant == null ? null : variant.name(),
             variant == null ? null : variant.imageUrl(), entity.referenceRole, entity.sortOrder,
             entity.resolutionStatus, entity.sourceType, entity.sourceName,
             Boolean.TRUE.equals(entity.lockedByUser));
+        return propProduction==null?response:propProduction.reference(tenantId,projectId,response);
     }
 
     private record StoryboardScope(Long id, Long episodeId) {

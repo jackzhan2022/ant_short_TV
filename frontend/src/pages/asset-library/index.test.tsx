@@ -69,6 +69,25 @@ it('filters project videos by episode and stops playback when the preview closes
     expect.objectContaining({ mediaType: 'VIDEO', episodeNo: 2 }), expect.any(AbortSignal)));
 });
 
+it('adds an audio entry that opens project folders before querying audio assets', async () => {
+  const view = render(<AssetLibrary />);
+  fireEvent.click(screen.getByRole('tab', { name: '音频' }));
+  view.rerender(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('button', { name: '打开长夜未央资产库' }));
+  expect(mocks.push).toHaveBeenLastCalledWith('/asset-library/projects/1?type=AUDIO');
+  expect(mocks.library).not.toHaveBeenCalled();
+});
+
+it('queries and plays only the selected projects audio assets', async () => {
+  route('/asset-library/projects/1?type=AUDIO');
+  mocks.library.mockResolvedValue(response([{ ...image, resourceType: 'PROJECT_AUDIO_ASSET', name: '角色音色.wav', previewUrl: '/audio/playback' }]));
+  render(<AssetLibrary />);
+  expect(await screen.findByLabelText('角色音色.wav音频预览')).toHaveAttribute('src', '/audio/playback');
+  expect(mocks.library).toHaveBeenCalledWith(1, expect.objectContaining({ mediaType: 'AUDIO', category: undefined }), expect.any(AbortSignal));
+  expect(screen.queryByLabelText('筛选剧集')).not.toBeInTheDocument();
+  expect(screen.queryByAltText('角色音色.wav')).not.toBeInTheDocument();
+});
+
 it('searches project folders on the server and paginates without fetching project details', async () => {
   route('/asset-library?keyword=长夜&page=2');
   mocks.projects.mockResolvedValue({ success: true, data: { data: [project], total: 25 } });

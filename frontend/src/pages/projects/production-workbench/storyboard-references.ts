@@ -22,7 +22,13 @@ export const hydratePromptDocument = (
     byName.set(reference.assetName, [...(byName.get(reference.assetName) || []), reference]);
   }
   const hydrated = nodes.flatMap((node): StoryboardPromptNode[] => {
-    if (node.type !== 'text') return [node];
+    if (node.type !== 'text') {
+      if (node.sourceType === 'ASSET_VISUAL_VARIANT' && node.assetId != null) {
+        const matches = references.filter((reference) => reference.assetId === node.assetId && reference.assetType === node.assetType);
+        if (matches.length === 1) return [{ ...node, sourceId: matches[0].sourceId, variantId: matches[0].variantId }];
+      }
+      return [node];
+    }
     const result: StoryboardPromptNode[] = [];
     let cursor = 0;
     for (const match of node.text.matchAll(/<([^<>\n]+)>/g)) {

@@ -33,6 +33,8 @@ public record WorkflowAgentRunContract(
                 List.of("read_current_episode", "save_episode_summary"),
                 "save_episode_summary"
             );
+            case "short-drama-prop-simplification" -> new WorkflowAgentRunContract(
+                List.of("save_prop_simplification"), "save_prop_simplification");
             case "short-drama-asset-normalization" -> new WorkflowAgentRunContract(
                 List.of("read_asset_normalization_inventory", "save_asset_normalization"), "save_asset_normalization");
             case "short-drama-asset-recognition" -> new WorkflowAgentRunContract(

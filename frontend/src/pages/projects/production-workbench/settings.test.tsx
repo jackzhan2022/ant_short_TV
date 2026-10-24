@@ -10,6 +10,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssetSettingsWorkspace } from './service';
 import ProductionWorkbenchSettings from './settings';
+vi.mock('./CharacterVoiceModal', () => ({
+  default: ({ characterName, onClose }: { characterName: string; onClose: () => void }) => <section aria-label={`配置${characterName}音色弹窗`}><button type="button" onClick={onClose}>关闭音色弹窗</button></section>,
+}));
 vi.mock('./AssetNormalizationPanel', () => ({
   default: ({ onBlocked }: { onBlocked: (blocked: boolean, reason?: string) => void }) => (
     <>
@@ -51,6 +54,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@umijs/max', () => ({
   useParams: () => ({ id: '1' }),
+  useOutletContext: () => ({}),
   useIntl: () => ({
     formatMessage: ({ defaultMessage }: { defaultMessage: string }) =>
       defaultMessage,
@@ -109,13 +113,17 @@ vi.mock('@/components/AiExecutionStatus', () => ({
 }));
 
 vi.mock('@ant-design/icons', () => ({
+  CompressOutlined: () => <span>compress</span>,
+  AudioOutlined: () => <span>audio</span>,
   CheckOutlined: () => <span>check</span>,
+  CloseOutlined: () => <span>close</span>,
   DeleteOutlined: () => <span>delete</span>,
   EditOutlined: () => <span>edit</span>,
   PictureOutlined: () => <span>picture</span>,
   PlusOutlined: () => <span>plus</span>,
   RobotOutlined: () => <span>robot</span>,
   SearchOutlined: () => <span>search</span>,
+  ScanOutlined: () => <span>scan</span>,
   UploadOutlined: () => <span>upload</span>,
 }));
 
@@ -259,6 +267,8 @@ const workspace = {
         variantCount: 2,
         primaryVariant: {
           id: 11,
+          assetType: 'CHARACTER',
+          assetId: 1,
           name: '日常形象',
           primary: true,
           usable: true,
@@ -269,6 +279,8 @@ const workspace = {
         variants: [
           {
             id: 11,
+            assetType: 'CHARACTER',
+            assetId: 1,
             name: '日常形象',
             prompt: '6岁男孩，写实都市风格',
             primary: true,
@@ -279,6 +291,8 @@ const workspace = {
           },
           {
             id: 12,
+            assetType: 'CHARACTER',
+            assetId: 1,
             name: '婚礼礼服',
             prompt: '性别:男；衣着描述:白色礼服，领结',
             primary: false,
@@ -530,7 +544,7 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.queryAssetVisualWorkspace.mockRejectedValueOnce(new Error('offline'));
     render(<ProductionWorkbenchSettings />);
     const open = await screen.findByRole('button', {
-      name: '管理斌斌视觉形象',
+      name: '查看斌斌视觉形象',
     });
     expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
     expect(mocks.queryScriptWorkspace).not.toHaveBeenCalled();
@@ -575,7 +589,8 @@ describe('ProductionWorkbenchSettings', () => {
 
     const panel = screen.getByRole('region', { name: '视觉形象画廊' });
     const list = screen.getByRole('region', { name: '资产列表' });
-    expect(panel.parentElement).toBe(list.parentElement);
+    expect(panel.parentElement).toContainElement(list);
+    expect(list).not.toContainElement(panel);
     expect(panel.closest('.ant-modal')).toBeNull();
     expect(image).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(screen.getByLabelText('选择斌斌'));
@@ -585,7 +600,7 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: '关闭视觉形象' }));
     expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
     expect(image).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('tab', { name: /场景/ }));
     expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看地下停车场视觉形象' }));
@@ -650,6 +665,43 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByLabelText('新视觉形象名称')).toHaveValue('林夏礼服');
   });
 
+  it.each([
+    { visual: undefined, variantCount: 25, episodeCount: 12 },
+    { visual: workspace.characters[0].visual, variantCount: 25, episodeCount: 12 },
+    { visual: workspace.characters[0].visual, variantCount: 0, episodeCount: 0 },
+  ])('shows authoritative summary counts without loading visual details ($variantCount variants)', async ({ visual, variantCount, episodeCount }) => {
+    mocks.queryAssetSettingsSummary.mockResolvedValue({
+      data: {
+        projectId: 1,
+        characters: [{
+          ...workspace.characters[0],
+          visual,
+          visualSummary: { variantCount, episodeCount },
+        }],
+        scenes: [],
+        props: [],
+      },
+    });
+    render(<ProductionWorkbenchSettings />);
+
+    expect(await screen.findByText(`变装 ${variantCount} 个`)).toBeInTheDocument();
+    expect(screen.getByText(`关联 ${episodeCount} 集`)).toHaveAttribute(
+      'title', episodeCount ? `共关联 ${episodeCount} 集` : '尚未关联剧集',
+    );
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('replaces character visual buttons with voice configuration while preserving image access', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '配置斌斌音色' }));
+    expect(screen.getByRole('region', { name: '配置斌斌音色弹窗' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '管理斌斌视觉形象' })).not.toBeInTheDocument();
+    expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '关闭音色弹窗' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
+    expect(await screen.findByRole('region', { name: '视觉形象画廊' })).toBeInTheDocument();
+  });
+
   it('manages visual variants and shows their existing episode bindings on the preview', async () => {
     render(<ProductionWorkbenchSettings />);
 
@@ -667,7 +719,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.getByRole('button', { name: '保存斌斌' }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
 
     expect(
       screen.getByRole('region', { name: '视觉形象画廊' }),
@@ -684,7 +736,7 @@ describe('ProductionWorkbenchSettings', () => {
       'src',
       '/daily-thumb.png',
     );
-    expect(screen.queryByLabelText('斌斌主体提示词')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('斌斌主要形态提示词')).toHaveValue('6岁男孩，写实都市风格');
     const mainPreview = screen.getByTestId('视觉形象主图预览');
     const dailyOriginal = screen.getByAltText('日常形象预览图');
     const dailyPreview = mainPreview.querySelector<HTMLImageElement>(
@@ -716,6 +768,8 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.load(weddingOriginal);
     await waitFor(() => expect(weddingOriginal).toHaveStyle({ opacity: '1' }));
     expect(screen.getAllByText('婚礼礼服').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('斌斌主要形态提示词')).toHaveValue('6岁男孩，写实都市风格');
+    expect(screen.queryByRole('tab', { name: '当前变装' })).not.toBeInTheDocument();
     expect(screen.getByText('生成超时')).toBeInTheDocument();
     expect(screen.getByLabelText('婚礼礼服主预览生成状态')).toHaveTextContent(
       '生成失败',
@@ -797,7 +851,7 @@ describe('ProductionWorkbenchSettings', () => {
         total: 25,
       } }));
     render(<ProductionWorkbenchSettings />);
-    fireEvent.click(await screen.findByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
     expect(await screen.findByRole('button', { name: '选择历史礼服' })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(
@@ -934,7 +988,7 @@ describe('ProductionWorkbenchSettings', () => {
     ).toHaveTextContent('暂无图片');
     fireEvent.mouseEnter(assetImage);
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
 
     expect(
       within(screen.getByTestId('视觉形象主图预览')).getByRole('img', {
@@ -1035,6 +1089,52 @@ describe('ProductionWorkbenchSettings', () => {
     expect(within(screen.getByTestId('asset-image-CHARACTER-1')).getByText('待确认')).toBeInTheDocument();
   });
 
+  it('edits only the primary prompt when a wardrobe is selected and reuses the saved prompt for redraw', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    await screen.findByRole('button', { name: '选择婚礼礼服' });
+    fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
+    const editor = within(screen.getByRole('region', { name: '角色提示词' }));
+    const prompt = editor.getByLabelText('斌斌主要形态提示词');
+    fireEvent.click(editor.getByRole('button', { name: '编辑主要形态提示词' }));
+    fireEvent.change(prompt, { target: { value: '取消的修改' } });
+    fireEvent.click(editor.getByRole('button', { name: '取消' }));
+    expect(prompt).toHaveValue('6岁男孩，写实都市风格');
+    expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+    fireEvent.click(editor.getByRole('button', { name: '编辑主要形态提示词' }));
+    fireEvent.change(prompt, { target: { value: '6岁男孩，圆脸，短发，写实都市风格' } });
+    fireEvent.click(editor.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(prompt).toHaveAttribute('readonly'));
+    expect(mocks.updateVisualVariant).toHaveBeenCalledWith(1, 11, {
+      name: '日常形象', appearance: undefined, prompt: '6岁男孩，圆脸，短发，写实都市风格',
+    });
+    expect(screen.getByRole('button', { name: '选择婚礼礼服' })).toHaveAttribute('aria-pressed', 'true');
+    expect(prompt).toHaveValue('6岁男孩，圆脸，短发，写实都市风格');
+    fireEvent.click(screen.getByRole('button', { name: '选择日常形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
+    expect(await screen.findByLabelText('日常形象生成提示词')).toHaveValue('6岁男孩，圆脸，短发，写实都市风格');
+    expect(mocks.createAiImageTask).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late prompt save after closing the gallery', async () => {
+    let finishSave!: (value: { data: object }) => void;
+    mocks.updateVisualVariant.mockReturnValueOnce(new Promise((resolve) => { finishSave = resolve; }));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    await screen.findByRole('button', { name: '选择婚礼礼服' });
+    fireEvent.click(screen.getByRole('button', { name: '编辑主要形态提示词' }));
+    fireEvent.change(screen.getByLabelText('斌斌主要形态提示词'), { target: { value: '旧请求提示词' } });
+    fireEvent.click(within(screen.getByRole('region', { name: '角色提示词' })).getByRole('button', { name: '保存' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
+    await screen.findByRole('button', { name: '选择婚礼礼服' });
+    fireEvent.click(screen.getByRole('button', { name: '编辑主要形态提示词' }));
+    fireEvent.change(screen.getByLabelText('斌斌主要形态提示词'), { target: { value: '新窗口草稿' } });
+    await act(async () => { finishSave({ data: {} }); });
+    expect(screen.getByLabelText('斌斌主要形态提示词')).toHaveValue('新窗口草稿');
+    expect(screen.getByLabelText('斌斌主要形态提示词')).not.toHaveAttribute('readonly');
+  });
+
   it('shows generation statuses in the gallery without covering an existing asset image', async () => {
     workspace.characters[0].visual.variants[1].generationStatus = 'GENERATING';
     workspace.characters[0].visual.generationSummary.GENERATING = 1;
@@ -1047,7 +1147,7 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => expect(screen.getByAltText('斌斌当前视觉形象')).toHaveAttribute('src', '/daily-thumb.png'));
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
 
     expect(
       screen.queryByLabelText('日常形象主预览生成状态'),
@@ -1081,7 +1181,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findByText('斌斌');
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
     fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
     expect(screen.getByLabelText('婚礼礼服引用图')).toHaveAttribute(
@@ -1127,7 +1227,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findByText('斌斌');
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
     fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
 
@@ -1159,7 +1259,7 @@ describe('ProductionWorkbenchSettings', () => {
 
   const submitPrimaryImage = async () => {
     render(<ProductionWorkbenchSettings />);
-    fireEvent.click(await screen.findByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(await screen.findByRole('button', { name: '生成图片日常形象' }));
     vi.useFakeTimers();
     await act(async () => {
@@ -1226,7 +1326,7 @@ describe('ProductionWorkbenchSettings', () => {
     vi.useFakeTimers();
     await act(async () => { render(<ProductionWorkbenchSettings />); });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+      fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     });
     expect(screen.getByLabelText('日常形象主预览生成状态')).toHaveTextContent('生成中');
     snapshot = imageGenerationSnapshot('COMPLETED');
@@ -1263,7 +1363,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findByText('斌斌');
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
     expect(screen.getByLabelText('日常形象生成提示词')).toHaveValue(
       '6岁男孩，写实都市风格',
@@ -1297,7 +1397,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findByText('斌斌');
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '选择婚礼礼服' }));
     fireEvent.click(screen.getByRole('button', { name: '重新生成婚礼礼服' }));
     fireEvent.click(screen.getByRole('button', { name: '提交婚礼礼服生成' }));
@@ -1317,7 +1417,7 @@ describe('ProductionWorkbenchSettings', () => {
     await screen.findByText('斌斌');
     fireEvent.mouseEnter(screen.getByTestId('asset-image-CHARACTER-1'));
     fireEvent.click(screen.getByRole('button', { name: '斌斌资产操作' }));
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     fireEvent.click(screen.getByRole('button', { name: '生成图片日常形象' }));
     fireEvent.click(screen.getByRole('button', { name: '提交日常形象生成' }));
 
@@ -1332,9 +1432,10 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
 
     expect(
-      await screen.findByText(/请确保角色、场景及道具已全部生成。/),
+      await screen.findByText(/请确保需要独立制作的角色、场景及道具已生成。/),
     ).toBeInTheDocument();
     expect(screen.queryByText('正式资产库')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提示词相似度检查' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /角色/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /角色/ })).toHaveAttribute(
       'style',
@@ -1531,12 +1632,13 @@ describe('ProductionWorkbenchSettings', () => {
   ])('keeps gallery navigation available during %s and preserves selection on recovery', async (trigger, reason) => {
     render(<ProductionWorkbenchSettings />);
     await screen.findByText('斌斌');
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: '新增变装' }));
     fireEvent.click(screen.getByRole('button', { name: trigger }));
     const gallery = within(screen.getByRole('region', { name: '视觉形象画廊' }));
     expect(gallery.getByRole('status', { name: '视觉形象操作提示' })).toHaveTextContent(reason);
+    expect(gallery.getByRole('button', { name: '编辑主要形态提示词' })).toBeDisabled();
     expect(gallery.getByLabelText('新视觉形象名称')).toBeDisabled();
     expect(gallery.getByRole('button', { name: '确认新增视觉形象' })).toBeDisabled();
     expect(gallery.getByRole('button', { name: '选择婚礼礼服' })).toBeEnabled();
@@ -1565,7 +1667,7 @@ describe('ProductionWorkbenchSettings', () => {
     workspace.characters[0].visual.variants[1].generationStatus = 'GENERATING';
     render(<ProductionWorkbenchSettings />);
     await screen.findByText('斌斌');
-    fireEvent.click(screen.getByRole('button', { name: '管理斌斌视觉形象' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalled());
     const viewport = screen.getByLabelText('视觉形象缩略图列表');
     const daily = screen.getByRole('button', { name: '选择日常形象' });
@@ -1577,6 +1679,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(wedding).toHaveAttribute('aria-pressed', 'true');
     expect(viewport.scrollLeft).toBe(148);
     expect(screen.getByRole('button', { name: '生成图片婚礼礼服' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '编辑主要形态提示词' })).toBeEnabled();
     expect(screen.getByRole('button', { name: /本地上传/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '删除婚礼礼服' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '删除日常形象' })).toBeEnabled();

@@ -36,7 +36,7 @@ class AssetRecognitionSkillContractTest {
             .contains("四宫格", "正视图", "俯视图", "背视图", "侧视图")
             .contains("不出现人物", "静态事物", "无动态", "不输出文字信息")
             .contains("只输出相对主体形象的视觉增量", "性别:女；衣着描述:白色连衣裙，裙摆湿透，赤脚")
-            .contains("只描述道具本体", "双环交叠徽章")
+            .contains("使用连续文本描述道具本体", "双环交叠徽章")
             .contains("完整输出示例", "\"prompt\"")
             .contains("已有非空提示词不得覆盖")
             .contains("hasPrompt=true", "hasPrompt=false", "不得复述或提交替换提示词")

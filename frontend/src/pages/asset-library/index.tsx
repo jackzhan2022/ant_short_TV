@@ -1,7 +1,7 @@
-import { FolderFilled, PlayCircleFilled } from '@ant-design/icons';
+import { AudioOutlined, FolderFilled, PlayCircleFilled } from '@ant-design/icons';
 import { history, useLocation, useModel, useParams } from '@umijs/max';
 import { Button, Empty, Input, Modal, Pagination, Tabs } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import LazyMediaImage from '@/components/LazyMediaImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryProjectMetadata, queryProjects } from '@/services/account-team/project';
@@ -15,6 +15,7 @@ const categories = [
 ];
 const dateText = (value?: string) => value ? value.replace('T', ' ').slice(0, 16) : '暂无更新时间';
 const durationText = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const mediaLabels = { IMAGE: '图片', VIDEO: '视频', AUDIO: '音频' };
 
 export default function AssetLibrary() {
   const { initialState } = useModel('@@initialState');
@@ -27,7 +28,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const projectId = routeProjectId ? Number(routeProjectId) : undefined;
   const location = useLocation();
   const search = new URLSearchParams(location.search);
-  const mediaType = search.get('type') === 'VIDEO' ? 'VIDEO' : 'IMAGE';
+  const mediaType = search.get('type') === 'VIDEO' ? 'VIDEO' : search.get('type') === 'AUDIO' ? 'AUDIO' : 'IMAGE';
   const category = categories.some((item) => item.key === search.get('category')) ? search.get('category') || 'CHARACTER' : 'CHARACTER';
   const keyword = search.get('keyword') || '';
   const pageValue = Number(search.get('page'));
@@ -46,6 +47,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState<AssetLibraryItem>();
+  const playingAudio = useRef<HTMLAudioElement | null>(null);
   const canViewImages = Boolean(project?.effectivePermissions.includes('MENU:ASSET_LIBRARY'));
   const canViewVideos = canViewImages;
   const denied = Boolean(project && !(mediaType === 'IMAGE' ? canViewImages : canViewVideos));
@@ -121,12 +123,12 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   return (
     <main className={styles.page} aria-label="项目资产库">
       <header className={styles.heading}>
-        <div><h1>资产库</h1><p>按项目查找和预览图片、视频资产</p></div>
-        {project ? <Button onClick={() => history.push(`/projects/${project.id}/production-workbench/${mediaType === 'IMAGE' ? 'settings' : 'video'}`)}>进入项目</Button> : null}
+        <div><h1>资产库</h1><p>按项目查找和预览图片、视频、音频资产</p></div>
+        {project ? <Button onClick={() => history.push(`/projects/${project.id}/production-workbench/${mediaType === 'VIDEO' ? 'video' : 'settings'}`)}>进入项目</Button> : null}
       </header>
       <Tabs
         activeKey={mediaType}
-        items={[{ key: 'IMAGE', label: '图片', disabled: Boolean(project && !canViewImages) }, { key: 'VIDEO', label: '视频', disabled: Boolean(project && !canViewVideos) }]}
+        items={[{ key: 'IMAGE', label: '图片', disabled: Boolean(project && !canViewImages) }, { key: 'VIDEO', label: '视频', disabled: Boolean(project && !canViewVideos) }, { key: 'AUDIO', label: '音频', disabled: Boolean(project && !canViewImages) }]}
         onChange={(type) => navigate({ type, keyword: undefined, episode: undefined, page: undefined })}
       />
       {projectId ? (
@@ -134,7 +136,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
           <button type="button" onClick={() => {
             const params = new URLSearchParams({ type: mediaType });
             history.push(`/asset-library?${params}`);
-          }}>{mediaType === 'IMAGE' ? '图片资产库' : '视频资产库'}</button>
+          }}>{mediaLabels[mediaType]}资产库</button>
           <span aria-hidden="true">›</span><span>{project?.name || '项目资产'}</span>
         </nav>
       ) : null}
@@ -168,7 +170,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
         ) : null}
       </div>
       <div className={styles.sectionHeading}>
-        <span>{projectId ? (mediaType === 'IMAGE' ? '图片素材' : '视频素材') : '项目文件夹'}</span>
+        <span>{projectId ? `${mediaLabels[mediaType]}素材` : '项目文件夹'}</span>
         <span className={styles.total}>共 {total} {projectId ? '项资产' : '个项目'}</span>
       </div>
       {!tenantId ? <Empty description="请先选择当前团队" />
@@ -176,7 +178,17 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
         : denied ? <Empty description="暂无查看此类资产的权限" />
         : loading ? <div role="status" className={styles.loading}>正在加载资产库…</div>
         : !total ? <Empty description={keyword ? '没有找到匹配的内容' : projectId ? '项目暂无此类资产' : '暂无可访问的项目'} />
-        : projectId ? (
+        : projectId && mediaType === 'AUDIO' ? <div className={styles.audioList}>
+          {items.map((item) => <article className={styles.audioRow} key={`${item.resourceType}-${item.id}`}>
+            <div className={styles.audioIcon}><AudioOutlined /></div>
+            <div className={styles.audioInfo}><strong>{item.name}</strong><div>{item.sourceType} · {dateText(item.updatedAt)} 更新{item.durationSeconds ? ` · ${durationText(item.durationSeconds)}` : ''}</div></div>
+            {/* biome-ignore lint/a11y/useMediaCaption: Source audio assets do not have transcript files. */}
+            <audio src={item.previewUrl} controls preload="none" aria-label={`${item.name}音频预览`} onPlay={(event) => {
+              if (playingAudio.current && playingAudio.current !== event.currentTarget) playingAudio.current.pause();
+              playingAudio.current = event.currentTarget;
+            }} />
+          </article>)}
+        </div> : projectId ? (
           <div className={`${styles.mediaGrid} ${mediaType === 'VIDEO' ? styles.videoGrid : ''}`}>
             {items.map((item) => (
               <article key={`${item.resourceType}-${item.id}`} className={styles.card}>

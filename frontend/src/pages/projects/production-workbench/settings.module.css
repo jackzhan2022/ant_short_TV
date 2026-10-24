@@ -25,6 +25,7 @@
 }
 
 .workspace {
+  position: relative;
   display: grid;
   flex: 1;
   min-height: 0;
@@ -38,11 +39,31 @@
   grid-template-columns: minmax(320px, 2fr) minmax(0, 3fr);
 }
 
+.assetColumn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workbenchActionSlot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  height: 44px;
+  pointer-events: none;
+}
+
 .assetList {
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
+  padding-bottom: 64px;
 }
 
 .workspaceOpen .assetList {
@@ -50,13 +71,45 @@
 }
 
 .toolbarRow {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-wrap: wrap;
+  background: var(--app-color-bg-layout);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 32px;
+  gap: 12px 24px;
   min-height: 60px;
   margin: 20px 0 16px;
-  padding: 0 2px;
+  padding: 8px 2px 10px;
+}
+
+.toolbarRow > [role="tablist"] {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
+.toolbarRow [role="tab"] {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.toolbarRow > [role="toolbar"] {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .toolbarRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .toolbarRow > [role="toolbar"] {
+    flex-basis: auto;
+  }
 }
 
 .workspaceOpen .toolbarRow {
@@ -64,6 +117,10 @@
   align-items: stretch;
   gap: 16px;
   margin-top: 0;
+}
+
+.workspaceOpen .toolbarRow > [role="toolbar"] {
+  flex: 0 0 auto;
 }
 
 .assetGrid {
@@ -97,30 +154,36 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  padding: clamp(20px, 2.5vw, 36px);
+  padding: clamp(16px, 1.7vw, 24px);
   border-radius: 20px;
   background: var(--app-color-bg-container);
 }
 
 .visualHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .visualHeading {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.visualMeta {
+  max-width: 45%;
+  text-align: right;
 }
 
 .episodeInfo {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 8px;
-  font-size: 13px;
+  justify-content: flex-end;
+  gap: 2px 8px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--app-color-text);
 }
@@ -150,7 +213,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -166,7 +229,7 @@
   flex-shrink: 0;
   position: relative;
   place-items: center;
-  height: clamp(160px, calc(100dvh - 650px), 320px);
+  height: clamp(260px, 36dvh, 520px);
   color: var(--app-color-text-tertiary);
 }
 
@@ -201,33 +264,33 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 20px;
+  gap: 8px;
 }
 
 .variantThumbnails {
   display: flex;
   flex: 0 1 auto;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
   overflow-x: auto;
-  padding: 6px 4px;
+  padding: 4px;
 }
 
 .variantThumbnail {
-  flex: 0 0 128px;
+  flex: 0 0 80px;
   position: relative;
-  width: 128px;
+  width: 80px;
 }
 
 .primaryThumbnail {
-  margin-right: 16px;
+  margin-right: 10px;
 }
 
 .primaryThumbnail::after {
   position: absolute;
-  top: 12px;
-  right: -17px;
-  height: 40px;
+  top: 8px;
+  right: -11px;
+  height: 28px;
   border-right: 1px solid var(--app-color-border-secondary);
   content: "";
 }
@@ -271,9 +334,9 @@
 .variantName {
   display: block;
   overflow: hidden;
-  margin-top: 10px;
-  font-size: 13px;
-  line-height: 20px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -292,8 +355,8 @@
 }
 
 .addVariantEntry {
-  flex: 0 0 72px;
-  padding-top: 6px;
+  flex: 0 0 60px;
+  padding-top: 4px;
   color: var(--app-color-text-secondary);
 }
 
@@ -304,8 +367,8 @@
 .addVariantIcon {
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   margin-inline: auto;
   border: 1px solid var(--app-color-border);
   border-radius: 8px;
@@ -368,12 +431,8 @@
     gap: 16px;
   }
 
-  .visualPreview {
-    height: 140px;
-  }
-
   .variantName {
-    margin-top: 6px;
+    margin-top: 4px;
   }
 
   .visualActions {
@@ -394,7 +453,15 @@
 
   .workspaceOpen {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(120px, 0.75fr) minmax(0, 1.25fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .workspaceOpen .assetList {
+    display: none;
+  }
+
+  .workspaceOpen .assetColumn {
+    display: contents;
   }
 
   .workspaceOpen .assetGrid {
@@ -403,5 +470,28 @@
 
   .visualPanel {
     padding: 16px;
+  }
+
+  .workspaceOpen .visualPanel {
+    padding-bottom: 64px;
+  }
+}
+
+.characterPanelContent .visualContent {
+  flex: 1 1 0;
+  gap: 6px;
+  padding-bottom: 0;
+}
+
+.characterPanelContent .visualPreview {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 100px;
+  max-height: 360px;
+}
+
+@media (max-width: 900px) {
+  .characterPanelContent .visualContent {
+    min-height: 80px;
   }
 }

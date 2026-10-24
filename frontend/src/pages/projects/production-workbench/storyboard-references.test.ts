@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { hydratePromptDocument, withFirstFrameReference } from './storyboard-references';
 
 describe('storyboard prompt references', () => {
+  it('updates an existing prop mention to its approved production variant', () => {
+    const document = hydratePromptDocument({ version: 2, nodes: [{ type: 'mention', mediaType: 'IMAGE', sourceType: 'ASSET_VISUAL_VARIANT', sourceId: 11, variantId: 11, assetId: 2, assetType: 'PROP', displayName: '李明的炒勺' }] }, '', [
+      { assetName: '李明的炒勺', type: 'mention', mediaType: 'IMAGE', sourceType: 'ASSET_VISUAL_VARIANT', sourceId: 25, variantId: 25, assetId: 2, assetType: 'PROP', displayName: '普通炒勺' },
+    ]);
+    expect(document.nodes[0]).toMatchObject({ sourceId: 25, variantId: 25, assetId: 2, displayName: '李明的炒勺' });
+  });
   it('binds exact legacy asset markers and leaves unresolved names as text', () => {
     const document = hydratePromptDocument(
       { version: 2, nodes: [{ type: 'text', text: '【场景】\n<走廊>参考走廊。\n【道具】\n<手机>对应手机。' }] },

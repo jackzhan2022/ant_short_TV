@@ -255,6 +255,8 @@ public class AiPointEstimateService {
         }
         return switch (path) {
             case "asset-normalization" -> List.of(assetNormalization(tenant,project,model,content,reservation));
+            case "prop-simplification" -> List.of(propSimplification(tenant,project,model,content,reservation));
+            case "character-prompt-similarity" -> List.of(characterSimilarity(tenant,project,model,reservation));
             case "asset-reextraction" -> assetExtraction(tenant, project, model);
             case "scripts/ai-generate" -> List.of(textPlan(tenant, "AI 生成剧本", model, data.toString(), null, 1, reservation));
             case "scripts/ai-rewrite" -> List.of(textPlan(tenant, "AI 改写剧本", model, content + data, null, 1, reservation));
@@ -302,6 +304,28 @@ public class AiPointEstimateService {
         return plans;
     }
 
+    private AiPointEstimatePlan characterSimilarity(Long tenant, Long project, Long model, AiPointReservationEntity reservation) {
+        permissions.require(tenant, project, "ELEMENT:AI_EXTRACT");
+        var input = jdbc.queryForList("""
+            select c.id,c.name,c.prompt from character_asset c
+            where c.tenant_id=? and c.project_id=? and c.deleted_at is null and c.merge_target_id is null
+              and c.script_id=(select s.id from script s where s.tenant_id=? and s.project_id=?
+                and s.deleted_at is null order by s.id desc limit 1) order by c.id
+            """, tenant, project, tenant, project);
+        return textPlan(tenant, "角色提示词相似度检查", model,
+            com.antshorttv.script.CharacterPromptSimilarityAnalysis.INSTRUCTIONS + json.valueToTree(input)
+                + com.antshorttv.script.CharacterPromptSimilarityAnalysis.schema(json), null, 1, reservation,
+            com.antshorttv.script.CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS);
+    }
+
+    private AiPointEstimatePlan propSimplification(Long tenant,Long project,Long model,String content,AiPointReservationEntity reservation) {
+        StringBuilder corpus=new StringBuilder(content);
+        for(String table:List.of("prop_asset","scene_asset")) corpus.append(jdbc.queryForList(
+            "select id,name,prompt,content_json from "+table+" where tenant_id=? and project_id=? and deleted_at is null order by id",tenant,project));
+        corpus.append(jdbc.queryForList("select id,name,prompt from asset_visual_variant where tenant_id=? and project_id=? and asset_type='PROP' and deleted_at is null order by id",tenant,project));
+        return textPlan(tenant,"道具精简方案分析",model,corpus.toString(),"short-drama-prop-simplification",1,reservation);
+    }
+
     private AiPointEstimatePlan assetNormalization(Long tenant,Long project,Long model,String content,AiPointReservationEntity reservation) {
         StringBuilder corpus=new StringBuilder(content);
         if(project!=null) for(String table:List.of("character_asset","scene_asset","prop_asset"))
@@ -319,8 +343,13 @@ public class AiPointEstimateService {
 
     private AiPointEstimatePlan textPlan(Long tenant, String label, Long model, String content, String agentCode, int calls,
                                          AiPointReservationEntity reservation) {
+        return textPlan(tenant, label, model, content, agentCode, calls, reservation, 8192);
+    }
+
+    private AiPointEstimatePlan textPlan(Long tenant, String label, Long model, String content, String agentCode, int calls,
+                                         AiPointReservationEntity reservation, int outputLimit) {
         routes.computeIfAbsent(model+":TEXT", ignored -> router.route(model, "TEXT"));
-        int output = 8192;
+        int output = outputLimit;
         String context = content;
         if (agentCode != null) {
             var plan = agentPlans.computeIfAbsent(tenant+":"+agentCode, ignored -> agents.freezeFormal(agentCode, tenant));
@@ -434,12 +463,21 @@ public class AiPointEstimateService {
             JsonNode input;
             try { input = json.readTree(text(op, "redacted_input_json")); }
             catch (Exception exception) { throw invalid("原任务参数不可用。"); }
+            if ("CHARACTER_PROMPT_SIMILARITY".equals(text(op, "operation_type"))) {
+                var snapshot = row("select input_json from character_prompt_similarity_check where tenant_id=? and project_id=? and execution_id=?",
+                    tenant, task.projectId, task.id);
+                String corpus = com.antshorttv.script.CharacterPromptSimilarityAnalysis.INSTRUCTIONS
+                    + text(snapshot, "input_json") + com.antshorttv.script.CharacterPromptSimilarityAnalysis.schema(json);
+                return List.of(textPlan(tenant, "角色提示词相似度检查", task.requestedModelId, corpus, null, 1, reservation,
+                    com.antshorttv.script.CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS).inProject(task.projectId));
+            }
             String path = switch (text(op,"operation_type")) {
                 case "STORYBOARD_BREAKDOWN" -> "storyboards/ai-breakdown";
                 case "SCRIPT_GENERATE" -> "scripts/ai-generate";
                 case "SCRIPT_REWRITE" -> "scripts/ai-rewrite";
                 case "SCOPED_ASSET_REEXTRACTION" -> "asset-reextraction";
                 case "ASSET_NORMALIZATION" -> "asset-normalization";
+                case "PROP_SIMPLIFICATION" -> "prop-simplification";
                 case "PROMPT_GENERATE" -> "prompts/ai-generate";
                 case "SCRIPT_EPISODE_SPLIT" -> "script-analysis/current/regenerate-episodes";
                 case "SCRIPT_EPISODE_SUMMARY" -> "episodes/" + requiredLong(input,"episodeId") + "/summary/regenerate";

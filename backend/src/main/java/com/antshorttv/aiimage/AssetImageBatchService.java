@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetImageBatchService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.PropProductionService propProduction;
     @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
     private static final Set<String> ASSET_TYPES = Set.of("CHARACTER", "SCENE", "PROP");
     private static final Set<String> MODES = Set.of("PRIMARY", "ALL");
@@ -208,6 +209,14 @@ public class AssetImageBatchService {
         validate(request);
         imageTaskService.validateBatchModel(tenantId, projectId, request.modelId());
         List<Long> requestedIds = request.assetIds();
+        if ("PROP".equals(request.assetType()) && propProduction != null) {
+            // Validate original IDs before translating, including scene items which are skipped.
+            Long valid = jdbc.queryForObject("select count(*) from prop_asset where tenant_id=? and project_id=? and deleted_at is null and id in ("
+                + placeholders(requestedIds.size()) + ")",Long.class,queryArguments(tenantId,projectId,requestedIds));
+            if (valid == null || valid != requestedIds.size()) throw invalid("只能选择当前项目中的有效资产。");
+            requestedIds = propProduction.productionIds(tenantId,projectId,requestedIds);
+            if (requestedIds.isEmpty()) return new BatchPlan(0,List.of());
+        }
         String table = assetTable(request.assetType());
         List<AssetRef> assets = jdbc.query("""
             select id, name, prompt from %s

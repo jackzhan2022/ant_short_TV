@@ -35,8 +35,9 @@ public class ProjectAssetLibraryService {
     @Transactional(readOnly = true)
     public LibraryResponse list(Long tenantId, Long projectId, String mediaType, String category,
         Integer episodeNo, String keyword, Integer current, Integer pageSize) {
-        if (!Set.of("IMAGE", "VIDEO").contains(mediaType)
-            || category != null && !Set.of("ALL", "CHARACTER", "SCENE", "PROP", "OTHER").contains(category))
+        if (!Set.of("IMAGE", "VIDEO", "AUDIO").contains(mediaType)
+            || category != null && !("AUDIO".equals(mediaType) ? Set.of("ALL", "REFERENCE", "GENERATED")
+                : Set.of("ALL", "CHARACTER", "SCENE", "PROP", "OTHER")).contains(category))
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产类型不正确。");
         var context = access.requireView(tenantId, projectId);
         Set<String> codes = context.effectivePermissions();
@@ -47,6 +48,10 @@ public class ProjectAssetLibraryService {
             base = imageQuery();
             args.add(tenantId);
             args.add(projectId);
+        } else if ("AUDIO".equals(mediaType)) {
+            permissions.require(context, "AI_VOICE_TASK:VIEW");
+            base = audioQuery();
+            args.add(tenantId); args.add(projectId); args.add(tenantId); args.add(projectId);
         } else {
             List<String> queries = new ArrayList<>();
             if (MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW")) {
@@ -81,7 +86,7 @@ public class ProjectAssetLibraryService {
             ? jdbc.query("select distinct episode_no from (" + base + ") library where episode_no is not null order by episode_no",
                 (rs, row) -> rs.getInt(1), args.toArray()) : List.of();
         String filter = " where 1=1";
-        if ("IMAGE".equals(mediaType) && category != null && !"ALL".equals(category)) {
+        if (!"VIDEO".equals(mediaType) && category != null && !"ALL".equals(category)) {
             filter += " and category=?"; args.add(category);
         }
         if (episodeNo != null) { filter += " and episode_no=?"; args.add(episodeNo); }
@@ -99,6 +104,24 @@ public class ProjectAssetLibraryService {
                 (rs, row) -> item(projectId, rs, codes), args.toArray());
         }
         return new LibraryResponse(new MediaPage<>(items, bounds.current(), bounds.pageSize(), total == null ? 0 : total), episodes, counts);
+    }
+
+    private String audioQuery() {
+        return """
+            select r.id,'PROJECT_AUDIO_ASSET' as resource_type,'REFERENCE' as category,r.name as asset_name,
+                   '' as variant_name,'本地上传' as source_type,false as current_image,null as episode_no,
+                   null as shot_no,r.duration_seconds,r.updated_at
+              from project_audio_asset r where r.tenant_id=? and r.project_id=? and r.status='ACTIVE'
+            union all
+            select r.id,'AI_VOICE_RESULT' as resource_type,'GENERATED' as category,
+                   concat(coalesce(t.speaker_name,'语音'),' · EP',s.episode_no,' 镜头 ',s.shot_no) as asset_name,
+                   '' as variant_name,'项目生成' as source_type,r.is_selected as current_image,
+                   s.episode_no,s.shot_no,r.duration_seconds,r.updated_at
+              from ai_voice_result r
+              join ai_voice_task t on t.id=r.task_id and t.tenant_id=r.tenant_id and t.project_id=r.project_id and t.deleted_at is null
+              join storyboard s on s.id=r.storyboard_id and s.tenant_id=r.tenant_id and s.project_id=r.project_id and s.deleted_at is null
+             where r.tenant_id=? and r.project_id=? and r.status='ACTIVE' and r.storage_path is not null and r.storage_path<>''
+            """;
     }
 
     private String imageQuery() {
@@ -153,11 +176,14 @@ public class ProjectAssetLibraryService {
         long id = row.getLong("id");
         String kind = row.getString("resource_type");
         boolean image = "AI_IMAGE_RESULT".equals(kind);
+        boolean audio = Set.of("PROJECT_AUDIO_ASSET", "AI_VOICE_RESULT").contains(kind);
         String resource = switch (kind) {
             case "AI_IMAGE_RESULT" -> "ai-image-results";
             case "AI_VIDEO_RESULT" -> "ai-video-results";
             case "SHOT_COMPOSE_RESULT" -> "shot-compose-results";
             case "EPISODE_VIDEO_VERSION" -> "episode-video-versions";
+            case "PROJECT_AUDIO_ASSET" -> "audio-assets";
+            case "AI_VOICE_RESULT" -> "ai-voice-results";
             default -> throw new IllegalStateException("Unknown media kind");
         };
         String base = "/api/projects/" + projectId + "/" + resource + "/" + id;
@@ -167,7 +193,7 @@ public class ProjectAssetLibraryService {
         String download = image ? base + "/download"
             : "AI_VIDEO_RESULT".equals(kind) && MenuAuthorization.allows(permissions, "AI_VIDEO_RESULT:DOWNLOAD") ? base + "/download-file" : null;
         return new LibraryItem(id, kind, name, row.getString("category"), row.getString("source_type"),
-            base + (image ? "/thumbnail" : "/cover"), base + (image ? "/display" : "/playback"), download,
+            audio ? "" : base + (image ? "/thumbnail" : "/cover"), base + (image ? "/display" : "/playback"), download,
             row.getObject("episode_no", Integer.class), row.getObject("shot_no", Integer.class),
             row.getObject("duration_seconds", Double.class), row.getBoolean("current_image"),
             row.getTimestamp("updated_at").toLocalDateTime());

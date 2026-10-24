@@ -131,6 +131,64 @@ class AiPointEstimateServiceTest {
     }
 
     @Test
+    void characterSimilarityQuotesCanonicalPromptsWithoutStartingAnExecution() {
+        var configs = (ProjectAiConfigService) org.springframework.test.util.ReflectionTestUtils.getField(service,"configs");
+        when(configs.resolveModelId(7L,3L,"TEXT")).thenReturn(9L);
+        var router = (AiModelRouter) org.springframework.test.util.ReflectionTestUtils.getField(service,"router");
+        when(router.route(9L,"TEXT")).thenReturn(mock(AiModelRoute.class));
+        var versions = (AiModelPointPriceVersionMapper) org.springframework.test.util.ReflectionTestUtils.getField(service,"pointVersions");
+        var version = new AiModelPointPriceVersionEntity(); version.id=20L;
+        when(versions.selectEffective(eq(9L),any())).thenReturn(version);
+        var input = new AiModelPointPriceComponentEntity(); input.metric="INPUT_TOKEN"; input.pointRate=BigDecimal.ONE; input.unitSize=BigDecimal.ONE;
+        var output = new AiModelPointPriceComponentEntity(); output.metric="OUTPUT_TOKEN"; output.pointRate=BigDecimal.ONE; output.unitSize=BigDecimal.ONE;
+        var components = (AiModelPointPriceComponentMapper) org.springframework.test.util.ReflectionTestUtils.getField(service,"components");
+        when(components.selectByVersion(20L)).thenReturn(List.of(input,output));
+        when(jdbc.queryForList(contains("select c.id,c.name,c.prompt"),eq(7L),eq(3L),eq(7L),eq(3L)))
+            .thenReturn(List.of(Map.of("id",11L,"name","甲","prompt","长窄脸"),Map.of("id",12L,"name","乙","prompt","方脸")));
+
+        var result=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects/3/character-prompt-similarity",null)));
+
+        assertThat(result.lines()).hasSize(1);
+        assertThat(result.lines().get(0).label()).isEqualTo("角色提示词相似度检查");
+        var captured=org.mockito.ArgumentCaptor.forClass(AiPointEstimatePlan.class);
+        verify(calculator).calculate(eq(7L),captured.capture(),any(AiPointEstimateCalculator.Context.class));
+        assertThat(captured.getValue().usage().get(AiUsageMetric.OUTPUT_TOKEN)).isEqualByComparingTo("16384");
+        verify(permissions).require(7L,3L,"ELEMENT:AI_EXTRACT");
+        verifyNoInteractions(executions);
+
+        var task=new AiExecutionTaskEntity();
+        task.id=51L; task.tenantId=7L; task.projectId=3L; task.requestedModelId=9L;
+        task.businessId=41L; task.businessType="SCRIPT_AI_OPERATION";
+        when(executions.requireTask(51L)).thenReturn(task);
+        when(jdbc.queryForList(contains("select operation_type"),eq(7L),eq(41L)))
+            .thenReturn(List.of(Map.of("operation_type","CHARACTER_PROMPT_SIMILARITY","redacted_input_json","{}")));
+        when(jdbc.queryForList(contains("select input_json from character_prompt_similarity_check"),eq(7L),eq(3L),eq(51L)))
+            .thenReturn(List.of(Map.of("input_json","[{\"id\":11,\"prompt\":\"frozen face\"}]")));
+        service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/tenants/7/ai-executions/51/retry",null)));
+        verify(jdbc).queryForList(contains("select input_json from character_prompt_similarity_check"),eq(7L),eq(3L),eq(51L));
+        verify(jdbc,times(1)).queryForList(contains("select c.id,c.name,c.prompt"),eq(7L),eq(3L),eq(7L),eq(3L));
+    }
+
+    @Test
+    void propSimplificationQuotesOneAnalysisCallWithoutCreatingATask() {
+        var configs=(ProjectAiConfigService)org.springframework.test.util.ReflectionTestUtils.getField(service,"configs");
+        when(configs.resolveModelId(7L,3L,"TEXT")).thenReturn(9L);
+        var router=(AiModelRouter)org.springframework.test.util.ReflectionTestUtils.getField(service,"router");
+        when(router.route(9L,"TEXT")).thenReturn(mock(AiModelRoute.class));
+        var versions=(AiModelPointPriceVersionMapper)org.springframework.test.util.ReflectionTestUtils.getField(service,"pointVersions");
+        var version=new AiModelPointPriceVersionEntity();version.id=20L;when(versions.selectEffective(eq(9L),any())).thenReturn(version);
+        var components=(AiModelPointPriceComponentMapper)org.springframework.test.util.ReflectionTestUtils.getField(service,"components");
+        var component=new AiModelPointPriceComponentEntity();component.metric="CALL";component.unitSize=BigDecimal.ONE;component.pointRate=BigDecimal.ONE;
+        when(components.selectByVersion(20L)).thenReturn(List.of(component));
+        var agent=mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);when(agent.maxTokens()).thenReturn(32768);when(agent.systemPrompt()).thenReturn("保留关键版本");
+        var agents=(WorkflowAgentRunner)org.springframework.test.util.ReflectionTestUtils.getField(service,"agents");
+        when(agents.freezeFormal("short-drama-prop-simplification",7L)).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
+        var result=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects/3/prop-simplification",null)));
+        assertThat(result.lines()).hasSize(1);assertThat(result.lines().get(0).label()).isEqualTo("道具精简方案分析");
+        verify(agents).freezeFormal("short-drama-prop-simplification",7L);verifyNoInteractions(executions);
+    }
+
+    @Test
     void aggregatesEveryBatchItemWithoutCreatingTasksOrReservingPoints() {
         when(images.pointEstimateRequest(eq(7L),eq(3L),any())).thenReturn(plan("图片", "2.25"));
         var result=service.estimate(7L,List.of(
