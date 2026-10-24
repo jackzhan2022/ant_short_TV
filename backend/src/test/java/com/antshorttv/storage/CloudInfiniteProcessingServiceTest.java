@@ -92,6 +92,31 @@ class CloudInfiniteProcessingServiceTest {
     }
 
     @Test
+    void createsPersistentWebpThumbnailAndAcceptsVerifiedCallbackOnlyOnce() {
+        String output = "materials/11/22/images/202609/42/v1/derived/thumbnail-480-v1.webp";
+        service.submitImageThumbnail(command("image/png"));
+        service.submitImageThumbnail(command("image/png"));
+        ArgumentCaptor<MediaJobsRequest> request = ArgumentCaptor.forClass(MediaJobsRequest.class);
+        verify(cos, times(1)).createPicProcessJob(request.capture());
+        assertThat(request.getValue().getOperation().getPicProcess().getProcessRule())
+            .isEqualTo("imageMogr2/thumbnail/480x480>/format/webp/quality/80");
+        assertThat(request.getValue().getOperation().getOutput().getObject()).isEqualTo(output);
+        assertThat(jobs.current.operation).isEqualTo("LIST_THUMBNAIL");
+        ObjectMetadata metadata = outputMetadata("INTELLIGENT_TIERING");
+        metadata.setContentType("image/webp");
+        when(cos.getObjectMetadata("antv-1418200553", output)).thenReturn(metadata);
+        var callback = TencentCiTaskCallback.success("job-1", command("image/png").inputKey(), output,
+            "asset-42-display", 321L, 480, 320, "etag-derived", "WEBP");
+        service.handleCallback(callbackToken(), callback);
+        service.handleCallback(callbackToken(), callback);
+        assertThat(media.current.renditionType).isEqualTo("LIST_THUMBNAIL");
+        assertThat(media.current.status).isEqualTo("READY");
+        assertThat(media.mimeType).isEqualTo("image/webp");
+        assertThat(media.width).isEqualTo(480);
+        assertThat(media.readyCalls).isEqualTo(1);
+    }
+
+    @Test
     void authenticatesCorrelatesAndIdempotentlyCompletesCallback() {
         service.submitImageDisplay(command("image/png"));
         ArgumentCaptor<MediaJobsRequest> request = ArgumentCaptor.forClass(MediaJobsRequest.class);

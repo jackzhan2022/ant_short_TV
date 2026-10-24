@@ -306,17 +306,17 @@ describe('剧库接口契约', () => {
 });
 
 describe('剧集权限', () => {
-  it('分别控制查看、管理、发布与绑定', () => {
+  it('剧集菜单统一授权功能并保留平台管理员限制', () => {
     const permissions = access({
       currentUser: { userid: '1' },
       selectedTenant: { membership: { status: 'ACTIVE' } },
       bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } },
-      tenantPermissions: ['DRAMA:VIEW', 'DRAMA:PUBLISH'],
+      tenantPermissions: ['MENU:DRAMA_LIBRARY'],
     });
     expect(permissions.canViewDramas).toBe(true);
     expect(permissions.canPublishDramas).toBe(true);
-    expect(permissions.canManageDramas).toBe(false);
-    expect(permissions.canManageMiniapps).toBe(false);
+    expect(permissions.canManageDramas).toBe(true);
+    expect(permissions.canManageMiniapps).toBe(true);
   });
   it('无活跃团队时禁止全部剧集操作', () => {
     const permissions = access({

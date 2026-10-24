@@ -2346,7 +2346,7 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByText('分镜表')).toBeInTheDocument();
     expect(screen.getByText('批量生成视频')).toBeInTheDocument();
     expect(screen.getByText('第1集 致命捉迷藏')).toBeInTheDocument();
-    expect(screen.getByText('第一集概要')).toBeInTheDocument();
+    expect(await screen.findByText('第一集概要')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getByText('分镜2')).toBeInTheDocument();
     expect(screen.getAllByText('全能参考生视频').length).toBeGreaterThan(0);
@@ -2378,7 +2378,7 @@ describe('ProductionWorkbench script page', () => {
       });
     });
     expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
-    expect(screen.getByText('第二集概要')).toBeInTheDocument();
+    expect(await screen.findByText('第二集概要')).toBeInTheDocument();
     expect(screen.queryByText('第一集概要')).not.toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(/别出声/).length).toBeGreaterThan(0);
@@ -2470,7 +2470,7 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(within(details).getByRole('button', { name: '取消' }));
     expect(screen.queryByRole('dialog', { name: '本集详情' })).not.toBeInTheDocument();
     expect(screen.queryByText('后备箱成为关键线索')).not.toBeInTheDocument();
-    expect(screen.getByText('第一集概要')).toBeInTheDocument();
+    expect(await screen.findByText('第一集概要')).toBeInTheDocument();
   });
 
   it('switches the main preview from video to the selected reference image', async () => {

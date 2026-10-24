@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 /** Only accepts verified uploads or media already owned by a visible free creation. */
 @Service
 public class FreeCreationMediaService {
+    private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(FreeCreationMediaService.class);
     private final FreeCreationMediaMapper media;
     private final FreeCreationMapper creations;
     private final MediaUploadSessionService uploads;
@@ -241,12 +242,25 @@ public class FreeCreationMediaService {
             item.thumbnailKey=covers.create(coverIdentity(item),item.objectKey,coverKey).originalKey();
         }
         owned(context,()->media.updateById(item));
+        try {
+            images.submitThumbnail("VIDEO".equals(item.kind)?coverIdentity(item):identity(item));
+        } catch (RuntimeException failure) {
+            LOG.warn("Thumbnail submission deferred for creation {}: {}", creation.id,
+                SensitiveValueRedactor.redact(failure.getMessage()));
+        }
     }
 
     public Map<String,Object> present(TenantContext context,FreeCreationMediaEntity item) {
         Map<String,Object> result=new LinkedHashMap<>(); result.put("id",item.id); result.put("referenceId",item.id);
         result.put("kind",item.kind); result.put("fileName",item.fileName); result.put("durationSeconds",item.durationSeconds);
-        result.put("previewUrl",grant(context,item,"IMAGE".equals(item.kind))); result.put("thumbnailUrl",!"AUDIO".equals(item.kind) && ("IMAGE".equals(item.kind) || item.thumbnailKey!=null)?grant(context,item,true):null);
+        result.put("previewUrl",grant(context,item,"IMAGE".equals(item.kind)));
+        if ("OUTPUT".equals(item.role) && !"AUDIO".equals(item.kind)) {
+            var thumbnail=images.thumbnail("VIDEO".equals(item.kind)?coverIdentity(item):identity(item));
+            result.put("thumbnailStatus",thumbnail==null?"PENDING":thumbnail.status());
+            result.put("thumbnailUrl",thumbnail!=null && "READY".equals(thumbnail.status())
+                ?grants.issue(new DeliveryGrantRequest(context.tenantId(),null,context.userId(),"FREE_CREATION_MEDIA",item.id,
+                    "v1","THUMBNAIL",thumbnail.objectKey(),false)).url():null);
+        } else result.put("thumbnailUrl",!"AUDIO".equals(item.kind) && ("IMAGE".equals(item.kind) || item.thumbnailKey!=null)?grant(context,item,true):null);
         result.put("downloadUrl","/api/free-creations/"+item.creationId+"/outputs/"+item.id+"/download"); return result;
     }
 

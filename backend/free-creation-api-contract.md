@@ -2,6 +2,10 @@
 
 所有端点对已登录的有效团队成员开放，要求 X-Tenant-Id。响应沿用 ApiResponse。
 
+作品卡片使用独立的 `LIST_THUMBNAIL` 派生图：最长边 480px、WebP、质量 80，固定保存在 `derived/thumbnail-480-v1.webp`。`thumbnailStatus` 返回 `PENDING|READY|FAILED|RETIRED`；仅 READY 时提供 `thumbnailUrl`，不会回退加载原图或高清展示图。`previewUrl` 继续用于详情，下载端点继续提供原图。
+
+新增作品保存后立即提交缩略图任务；后台每 30 秒分批补齐已有作品和失败任务，每批最多 10 个，后台重试最多累计 3 次，间隔至少 10 分钟。图片作品和视频封面沿用现有原图登记、万象异步任务与验签回调；列表读取不触发处理任务。前端对缩略图尚未就绪的作品继续定向轮询，READY 后替换占位。缩略图沿用现有 CDN 鉴权、稳定授权链接及缓存规则，无需修改 CDN 配置。
+
 - GET /api/free-creations/models：返回 {models,providers}，仅包含可用的图片／视频模型、生成参数和供应商标识，不返回供应商凭据或管理配置。
 
 - GET /api/free-creations?scope=mine|team&mediaType=IMAGE|VIDEO&status=QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED&keyword=&current=1&pageSize=20：返回 {records,total,current,pageSize}。keyword 同时匹配提示词和作者名。

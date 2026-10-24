@@ -178,6 +178,12 @@ public class ReviewWorkbenchService {
         String content
     ) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        return detailProject(tenantId, importProjectRecord(context, mainProjectId, name, file, content).getId());
+    }
+
+    private ReviewProjectEntity importProjectRecord(
+        TenantContext context, Long mainProjectId, String name, MultipartFile file, String content
+    ) {
         LocalDateTime now = LocalDateTime.now();
         String resolvedContent = resolveImportedContent(file, content);
         if (resolvedContent.isBlank()) {
@@ -204,7 +210,7 @@ public class ReviewWorkbenchService {
         ReviewScriptVersionEntity version = createVersion(context, project.getId(), 1, "IMPORT", project.getSourceFileName(), resolvedContent, now);
         project.setCurrentVersionId(version.getId());
         projectMapper.updateById(project);
-        return detailProject(tenantId, project.getId());
+        return project;
     }
 
     public ReviewProjectDetailResponse detailProject(Long tenantId, Long projectId) {
@@ -265,6 +271,31 @@ public class ReviewWorkbenchService {
 
     @Transactional
     public AiExecutionResponse createTask(Long tenantId, Long projectId, CreateReviewTaskRequest request) {
+        return createTask(tenantId, projectId, request, null);
+    }
+
+    @Transactional
+    public AiExecutionResponse submitReview(Long tenantId, ReviewSubmissionRequest request) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        String content = request.content().trim();
+        List<String> dimensions = normalizeDimensions(request.selectedDimensions());
+        if (content.isBlank() || content.length() > 200000 || dimensions.isEmpty())
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请输入有效剧本并选择审核维度。");
+        String key = "direct:" + context.userId() + ":" + request.requestId();
+        ReviewTaskEntity existing = taskMapper.selectByIdempotencyKey(tenantId, key);
+        if (existing != null) {
+            ReviewContentService.FrozenReview frozen = reviewContentService.freeze(content, "ALL", Map.of(), dimensions);
+            if (!Objects.equals(existing.getVersionHash(), frozen.versionHash())
+                || !Objects.equals(existing.getDimensionsHash(), frozen.dimensionsHash()))
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "提交内容已变化，请重新发起审核。");
+            return executionResponseMapper.toResponse(executionService.requireTask(existing.getExecutionId()));
+        }
+        ReviewProjectEntity imported = importProjectRecord(context, null, null, null, content);
+        return createTask(tenantId, imported.getId(), new CreateReviewTaskRequest(
+            imported.getCurrentVersionId(), "DEEP", dimensions, "ALL", Map.of(), null), key);
+    }
+
+    private AiExecutionResponse createTask(Long tenantId, Long projectId, CreateReviewTaskRequest request, String submissionKey) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         ReviewProjectEntity project = requireAccessibleProject(context, projectId, "AI_SERVICE:USE");
         List<String> dimensions = normalizeDimensions(request.selectedDimensions());
@@ -277,7 +308,8 @@ public class ReviewWorkbenchService {
             ? requireCurrentVersion(project)
             : requireVersion(context.tenantId(), projectId, request.versionId());
         String scopeJson = serialize(request.reviewScope() == null ? Map.of() : request.reviewScope());
-        String idempotencyKey = buildIdempotencyKey(projectId, version.getId(), reviewMode, scopeType, dimensions, scopeJson);
+        String idempotencyKey = submissionKey == null
+            ? buildIdempotencyKey(projectId, version.getId(), reviewMode, scopeType, dimensions, scopeJson) : submissionKey;
         ReviewTaskEntity existing = taskMapper.selectByIdempotencyKey(context.tenantId(), idempotencyKey);
         if (existing != null) {
             return executionResponseMapper.toResponse(executionService.requireTask(existing.getExecutionId()));
@@ -1090,7 +1122,11 @@ public class ReviewWorkbenchService {
             .filter(item -> !item.isBlank())
             .distinct()
             .toList();
-        return ReviewDimension.parseAll(normalized).stream().map(ReviewDimension::label).toList();
+        try {
+            return ReviewDimension.parseAll(normalized).stream().map(ReviewDimension::label).toList();
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "包含未知审核维度。");
+        }
     }
 
     private String resolveImportedContent(MultipartFile file, String content) {

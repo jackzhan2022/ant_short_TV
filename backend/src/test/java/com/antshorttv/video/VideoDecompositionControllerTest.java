@@ -574,6 +574,16 @@ class VideoDecompositionControllerTest extends com.antshorttv.support.Registrati
              where id = ?
             """, firstEpisodeId);
         insertImmutableResult(tenantId, batchId, firstEpisodeId, "# 第1集：真相\n\n## 1-1 夜 内 客厅\n\n出场人物：林晚\n\n林晚抬头。\n\n——本集完");
+        mockMvc.perform(get("/api/video-script-decomposition/episodes/%d/screenplay".formatted(firstEpisodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.episode.id").value(firstEpisodeId))
+            .andExpect(jsonPath("$.data.screenplayContent").value(org.hamcrest.Matchers.startsWith("# 第1集：真相")))
+            .andExpect(jsonPath("$.data.rawResponse").doesNotExist())
+            .andExpect(jsonPath("$.data.normalizedJson").doesNotExist())
+            .andExpect(jsonPath("$.data.attempts").doesNotExist())
+            .andExpect(jsonPath("$.data.draftContent").doesNotExist());
         jdbc.update("""
             insert into video_decomposition_episode
               (batch_id, tenant_id, episode_no, source_file_name, storage_path, mime_type, file_size,
@@ -602,6 +612,10 @@ class VideoDecompositionControllerTest extends com.antshorttv.support.Registrati
 
         String otherToken = registerUser(uniqueMobile(), "Other Tenant Reader");
         Long otherTenantId = createTenant(otherToken, "其他剧本团队");
+        mockMvc.perform(get("/api/video-script-decomposition/episodes/%d/screenplay".formatted(firstEpisodeId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
+                .header("X-Tenant-Id", otherTenantId))
+            .andExpect(status().isNotFound());
         mockMvc.perform(get("/api/video-script-decomposition/batches/%d/screenplays".formatted(batchId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(otherToken))
                 .header("X-Tenant-Id", otherTenantId))

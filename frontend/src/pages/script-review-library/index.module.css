@@ -1,0 +1,197 @@
+.page {
+  min-height: calc(100dvh - 80px);
+  color: var(--app-color-text);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.breadcrumb {
+  color: var(--app-color-text-secondary);
+  font-size: 13px;
+}
+.composer {
+  max-width: 1120px;
+  margin: 36px auto 0;
+}
+.hero {
+  text-align: center;
+  font-size: 32px;
+  margin: 0 0 12px;
+}
+.intro {
+  text-align: center;
+  color: var(--app-color-text-secondary);
+  margin-bottom: 30px;
+}
+.inputPanel {
+  border: 1px solid var(--app-color-border);
+  border-radius: 12px;
+  background: var(--app-color-bg-container);
+  box-shadow: 0 10px 30px rgb(33 36 50 / 6%);
+  overflow: hidden;
+}
+.inputPanel:focus-within {
+  border-color: var(--app-color-primary);
+}
+.inputHeading {
+  display: block;
+  padding: 20px 24px 0;
+}
+.inputPanel .textarea {
+  min-height: 226px;
+  padding: 20px 24px;
+  border: 0;
+  border-radius: 0;
+  resize: vertical;
+  box-shadow: none;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.dimensions {
+  padding: 18px 24px;
+  border-top: 1px solid var(--app-color-border-secondary);
+}
+.dimensionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.dimensionHeader span {
+  margin-left: 8px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.dimensionOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--app-color-border);
+  border-radius: 6px;
+}
+.chip:has(input:checked) {
+  border-color: var(--app-color-primary);
+  background: var(--app-color-primary-bg);
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 0 20px 18px;
+}
+.footer .upload {
+  width: 42px;
+  height: 42px;
+  background: var(--app-color-fill-secondary);
+}
+.footer .submit {
+  min-height: 42px;
+  border-radius: 22px;
+  padding-inline: 22px;
+}
+.hint {
+  text-align: center;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  margin: 18px 0;
+}
+.report {
+  max-width: 1120px;
+  margin: auto;
+}
+.reportHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.reportHeader h1 {
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+.meta {
+  color: var(--app-color-text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.body,
+.progress,
+.original {
+  padding: 24px;
+  background: var(--app-color-bg-container);
+  border: 1px solid var(--app-color-border);
+  border-radius: 10px;
+  margin-bottom: 18px;
+}
+.original summary {
+  cursor: pointer;
+}
+.original pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.9;
+}
+.historyItem {
+  border-bottom: 1px solid var(--app-color-border-secondary);
+  padding: 18px 0;
+}
+.historyItem h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.historyItem p {
+  margin: 6px 0;
+}
+.historyActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pagination {
+  margin-top: 20px;
+}
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--app-color-text-secondary);
+}
+@media (max-width: 600px) {
+  .composer {
+    margin-top: 20px;
+  }
+  .hero {
+    font-size: 26px;
+  }
+  .inputHeading,
+  .dimensions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .inputPanel .textarea {
+    padding: 16px;
+  }
+  .body,
+  .progress,
+  .original {
+    padding: 16px;
+  }
+}

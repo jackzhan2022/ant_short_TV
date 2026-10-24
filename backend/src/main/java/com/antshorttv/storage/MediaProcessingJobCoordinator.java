@@ -32,17 +32,27 @@ public class MediaProcessingJobCoordinator {
         ImageDisplayRenditionPlan plan,
         String callbackTokenHash
     ) {
+        return prepareImageDisplay(command, plan, callbackTokenHash, "DISPLAY_IMAGE_SLIM");
+    }
+
+    @Transactional
+    public PreparedMediaProcessingJob prepareImageDisplay(
+        SubmitImageDisplayJob command, ImageDisplayRenditionPlan plan,
+        String callbackTokenHash, String renditionType
+    ) {
+        if (!Set.of("DISPLAY_IMAGE_SLIM", "LIST_THUMBNAIL").contains(renditionType))
+            throw new IllegalArgumentException("不支持的图片派生类型。");
         RegisteredMediaObject rendition = mediaObjectRegistry.registerPendingRendition(
-            command.identity(), "DISPLAY_IMAGE_SLIM", plan.objectKey(), plan.mimeType(),
+            command.identity(), renditionType, plan.objectKey(), plan.mimeType(),
             command.storageClass()
         );
         SubmitMediaProcessingJob submission = new SubmitMediaProcessingJob(
             command.identity().tenantId(), command.identity().projectId(), rendition.id(),
-            "DISPLAY_IMAGE_SLIM", command.inputKey(), plan.objectKey(), plan.processRule(),
+            renditionType, command.inputKey(), plan.objectKey(), plan.processRule(),
             command.correlationData()
         );
         LocalDateTime now = LocalDateTime.now();
-        MediaProcessingJobEntity existing = jobs.find(plan.objectKey(), "DISPLAY_IMAGE_SLIM");
+        MediaProcessingJobEntity existing = jobs.find(plan.objectKey(), renditionType);
         if (existing != null && !"FAILED".equals(existing.status)
             && !staleSubmission(existing, now)) {
             return new PreparedMediaProcessingJob(submission, existing.callbackTokenHash, false,
@@ -117,7 +127,7 @@ public class MediaProcessingJobCoordinator {
         TencentCiProcessResult result = detail.operation().picProcessResult() == null
             ? null : detail.operation().picProcessResult().processResult();
         return "Success".equalsIgnoreCase(detail.state()) && "Success".equalsIgnoreCase(detail.code())
-            && validImageMetadata(result);
+            && validImageMetadata(entity, result);
     }
 
     @Transactional
@@ -133,7 +143,7 @@ public class MediaProcessingJobCoordinator {
         if ("Success".equalsIgnoreCase(detail.state()) && "Success".equalsIgnoreCase(detail.code())) {
             TencentCiProcessResult result = detail.operation().picProcessResult() == null
                 ? null : detail.operation().picProcessResult().processResult();
-            if (!valid(result)) {
+            if (!valid(entity, result)) {
                 failed(entity, "INVALID_RESULT_METADATA",
                     "万象成功回调图片元数据不完整或格式无效。", now);
             } else {
@@ -164,10 +174,15 @@ public class MediaProcessingJobCoordinator {
 
     @Transactional
     public void retireImage(MediaObjectIdentity identity) {
-        RegisteredMediaObject display = mediaObjectRegistry.find(identity, "DISPLAY_IMAGE_SLIM");
-        MediaProcessingJobEntity job = display == null
-            ? null : jobs.find(display.objectKey(), "DISPLAY_IMAGE_SLIM");
+        retireRendition(identity, "DISPLAY_IMAGE_SLIM");
+        retireRendition(identity, "LIST_THUMBNAIL");
         mediaObjectRegistry.retire(identity);
+    }
+
+    private void retireRendition(MediaObjectIdentity identity, String renditionType) {
+        RegisteredMediaObject display = mediaObjectRegistry.find(identity, renditionType);
+        MediaProcessingJobEntity job = display == null
+            ? null : jobs.find(display.objectKey(), renditionType);
         if (job == null || "CANCELED".equals(job.status)) return;
         LocalDateTime now = LocalDateTime.now();
         job.status = "CANCELED";
@@ -203,14 +218,16 @@ public class MediaProcessingJobCoordinator {
         return callback.jobsDetail().get(0);
     }
 
-    private boolean valid(TencentCiProcessResult result) {
-        return validImageMetadata(result) && !blank(result.eTag());
+    private boolean valid(MediaProcessingJobEntity entity, TencentCiProcessResult result) {
+        return validImageMetadata(entity, result) && !blank(result.eTag());
     }
 
-    private boolean validImageMetadata(TencentCiProcessResult result) {
+    private boolean validImageMetadata(MediaProcessingJobEntity entity, TencentCiProcessResult result) {
         return result != null && result.size() > 0 && result.width() > 0 && result.height() > 0
             && !blank(result.format())
-            && IMAGE_FORMATS.contains(result.format().toLowerCase(Locale.ROOT));
+            && ("LIST_THUMBNAIL".equals(entity.operation)
+                ? "webp".equalsIgnoreCase(result.format()) && result.width() <= 480 && result.height() <= 480
+                : IMAGE_FORMATS.contains(result.format().toLowerCase(Locale.ROOT)));
     }
 
     private String mimeType(String format) {
@@ -218,6 +235,7 @@ public class MediaProcessingJobCoordinator {
             case "jpg", "jpeg" -> "image/jpeg";
             case "png" -> "image/png";
             case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
             default -> throw new IllegalArgumentException("万象成功回调图片格式无效。");
         };
     }

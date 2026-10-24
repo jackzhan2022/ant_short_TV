@@ -19,10 +19,29 @@ class FreeCreationMediaServiceTest {
     final MediaUploadSessionService uploads=mock(MediaUploadSessionService.class);
     final ObjectStorageService storage=mock(ObjectStorageService.class);
     final JdbcTemplate jdbc=mock(JdbcTemplate.class);
+    final ImageDisplayRenditionService images=mock(ImageDisplayRenditionService.class);
+    final MediaDeliveryGrantService grants=mock(MediaDeliveryGrantService.class);
     final FreeCreationMediaService service=new FreeCreationMediaService(media,creations,uploads,storage,
-        mock(ObjectStorageKeyFactory.class),mock(ImageDisplayRenditionService.class),mock(MediaDeliveryGrantService.class),
+        mock(ObjectStorageKeyFactory.class),images,grants,
         mock(COS.class),mock(ObjectStorageProperties.class),jdbc,mock(CloudInfiniteVideoCoverService.class),
         mock(com.antshorttv.execution.AiExecutionService.class),mock(org.springframework.transaction.PlatformTransactionManager.class));
+
+    @Test void listThumbnailNeverFallsBackToOriginalAndUsesItsOwnStableRendition() {
+        var item=new FreeCreationMediaEntity();item.id=2L;item.tenantId=1L;item.creationId=3L;item.position=0;
+        item.role="OUTPUT";item.kind="IMAGE";item.objectKey="original.png";item.thumbnailKey="display.png";
+        var identity=new MediaObjectIdentity(1L,null,"FREE_CREATION_OUTPUT",3L,"output-0");
+        when(images.display(identity)).thenReturn(new RegisteredMediaObject(1L,identity,"DISPLAY_IMAGE_SLIM","display.png","READY"));
+        when(grants.issue(any())).thenAnswer(call->new DeliveryGrant("https://cdn.example/"+((DeliveryGrantRequest)call.getArgument(0)).objectKey(),java.time.Instant.now()));
+        var context=new TenantContext(4L,1L,5L,"MEMBER");
+        var waiting=service.present(context,item);
+        assertThat(waiting.get("thumbnailUrl")).isNull();
+        assertThat(waiting.get("thumbnailStatus")).isEqualTo("PENDING");
+        assertThat(waiting.get("previewUrl")).isEqualTo("https://cdn.example/display.png");
+        when(images.thumbnail(identity)).thenReturn(new RegisteredMediaObject(2L,identity,"LIST_THUMBNAIL","thumbnail-480-v1.webp","READY"));
+        var ready=service.present(context,item);
+        assertThat(ready.get("thumbnailUrl")).isEqualTo("https://cdn.example/thumbnail-480-v1.webp");
+        assertThat(ready.get("previewUrl")).isEqualTo("https://cdn.example/display.png");
+    }
 
     @Test void rejectsDeclaredMimeThatDoesNotMatchTheVerifiedImageBytes() throws Exception {
         var bytes=new ByteArrayOutputStream();ImageIO.write(new BufferedImage(320,320,BufferedImage.TYPE_INT_RGB),"png",bytes);

@@ -43,20 +43,30 @@ public class CloudInfiniteProcessingService {
     }
 
     public SubmittedMediaProcessingJob submitImageDisplay(SubmitImageDisplayJob command) {
+        return submitImage(command, false);
+    }
+
+    public SubmittedMediaProcessingJob submitImageThumbnail(SubmitImageDisplayJob command) {
+        return submitImage(command, true);
+    }
+
+    private SubmittedMediaProcessingJob submitImage(SubmitImageDisplayJob command, boolean thumbnail) {
         if (command == null || command.identity() == null || blank(command.inputKey())
             || blank(command.sourceMimeType()) || blank(command.storageClass())
             || blank(command.correlationData())) {
             throw new IllegalArgumentException("万象图片展示任务参数不完整。");
         }
         String inputKey = keys.objectKey(command.inputKey());
-        ImageDisplayRenditionPlan plan = imageRenditions.plan(inputKey, command.sourceMimeType());
+        ImageDisplayRenditionPlan plan = thumbnail ? imageRenditions.thumbnail(inputKey)
+            : imageRenditions.plan(inputKey, command.sourceMimeType());
+        String renditionType = thumbnail ? "LIST_THUMBNAIL" : "DISPLAY_IMAGE_SLIM";
         SubmitImageDisplayJob normalized = new SubmitImageDisplayJob(
             command.identity(), inputKey, command.sourceMimeType(), command.storageClass(),
             command.correlationData()
         );
-        String token = token(plan.objectKey(), "DISPLAY_IMAGE_SLIM");
+        String token = token(plan.objectKey(), renditionType);
         PreparedMediaProcessingJob prepared = coordinator.prepareImageDisplay(
-            normalized, plan, hash(token)
+            normalized, plan, hash(token), renditionType
         );
         if (!prepared.shouldSubmit()) return prepared.current();
 

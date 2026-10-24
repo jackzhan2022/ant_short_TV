@@ -1,4 +1,5 @@
 import '@root/tests/mockPointEstimate';
+import { focusManager } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -6,7 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VideoScriptDecompositionPage, {
   buildCopyAllScreenplays,
   buildDefaultVideoDecompositionBatchName,
@@ -20,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   queryBatches: vi.fn(),
   queryModels: vi.fn(),
   queryScreenplays: vi.fn(),
+  queryBatch: vi.fn(),
+  queryEpisode: vi.fn(),
+  create: vi.fn(),
   retry: vi.fn(),
   writeText: vi.fn(),
   upload: vi.fn(),
@@ -72,11 +76,15 @@ vi.mock('antd', () => ({
       ))}
     </div>
   ),
-  Drawer: ({ children, extra, open, title }: any) =>
+  Skeleton: () => <div>加载中</div>,
+  Drawer: ({ children, extra, open, title, onClose }: any) =>
     open ? (
       <aside>
         <h2>{title}</h2>
         {extra}
+        <button type="button" onClick={onClose}>
+          关闭
+        </button>
         {children}
       </aside>
     ) : null,
@@ -161,11 +169,22 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 
 vi.mock('./service', () => ({
-  createVideoDecompositionBatch: vi.fn(),
+  createVideoDecompositionBatch: mocks.create,
+  queryVideoDecompositionBatch: mocks.queryBatch,
+  queryVideoDecompositionScreenplay: mocks.queryEpisode,
   queryVideoDecompositionBatches: async (...args: unknown[]) => {
     const response = await mocks.queryBatches(...args);
-    return { ...response, data: Array.isArray(response.data)
-      ? { data: response.data, current: 1, pageSize: 20, total: response.data.length } : response.data };
+    return {
+      ...response,
+      data: Array.isArray(response.data)
+        ? {
+            data: response.data,
+            current: 1,
+            pageSize: 20,
+            total: response.data.length,
+          }
+        : response.data,
+    };
   },
   queryVideoDecompositionBatchScreenplays: mocks.queryScreenplays,
   queryVideoUnderstandingModels: mocks.queryModels,
@@ -217,7 +236,8 @@ const screenplayBatch = {
 
 describe('VideoScriptDecompositionPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    focusManager.setFocused(true);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: mocks.writeText },
@@ -252,8 +272,22 @@ describe('VideoScriptDecompositionPage', () => {
       ],
     });
     mocks.queryScreenplays.mockResolvedValue({ data: screenplayBatch });
+    mocks.queryBatch.mockResolvedValue({
+      data: {
+        ...screenplayBatch,
+        id: 9,
+        name: screenplayBatch.batchName,
+        episodes: screenplayBatch.episodes.map((item) => item.episode),
+      },
+    });
+    mocks.queryEpisode.mockResolvedValue({ data: screenplayBatch.episodes[0] });
     mocks.retry.mockResolvedValue({ data: {} });
     mocks.writeText.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    focusManager.setFocused(undefined);
   });
 
   it('retries a failed file with its retained upload handle', async () => {
@@ -309,7 +343,10 @@ describe('VideoScriptDecompositionPage', () => {
       await screen.findByRole('button', { name: '查看全部剧本' }),
     );
     expect(await screen.findByText('# 第1集：真相')).toBeInTheDocument();
+    expect(screen.queryByText('模型输出截断')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
     expect(screen.getByText('模型输出截断')).toBeInTheDocument();
+    expect(mocks.queryScreenplays).not.toHaveBeenCalled();
     expect(screen.getByText(/总进度 100%/)).toBeInTheDocument();
   });
 
@@ -318,14 +355,18 @@ describe('VideoScriptDecompositionPage', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: '查看全部剧本' }),
     );
-    fireEvent.click(
-      await screen.findByRole('button', { name: '复制全部剧本' }),
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: '复制全部剧本' }),
+      ).toBeEnabled(),
     );
+    fireEvent.click(screen.getByRole('button', { name: '复制全部剧本' }));
     await waitFor(() =>
       expect(mocks.writeText).toHaveBeenCalledWith('# 第1集：真相'),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试本集' }));
     await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith(89));
   });
 
@@ -335,12 +376,15 @@ describe('VideoScriptDecompositionPage', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: '查看全部剧本' }),
     );
-    fireEvent.click(
-      await screen.findByRole('button', { name: '复制全部剧本' }),
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: '复制全部剧本' }),
+      ).toBeEnabled(),
     );
+    fireEvent.click(screen.getByRole('button', { name: '复制全部剧本' }));
     await waitFor(() =>
       expect(mocks.messageError).toHaveBeenCalledWith(
-        '复制失败，请检查浏览器剪贴板权限',
+        '复制失败，请检查网络或浏览器剪贴板权限',
       ),
     );
   });
@@ -371,113 +415,201 @@ describe('VideoScriptDecompositionPage', () => {
     ).toBe(true);
   });
 
-  it('keeps a running drawer snapshot while the batch list continues polling', async () => {
-    vi.useFakeTimers();
-    const runningBatch = {
-      ...screenplayBatch,
-      status: 'RUNNING',
-      percentage: 20,
-      failedEpisodes: 0,
-      processingEpisodes: 1,
-    };
-    mocks.queryBatches
-      .mockResolvedValueOnce({
-        data: [{ ...runningBatch, id: 9, episodes: [] }],
-      })
-      .mockResolvedValue({
-        data: [
-          { ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] },
-        ],
-      });
-    mocks.queryScreenplays
-      .mockResolvedValueOnce({ data: runningBatch })
-      .mockResolvedValue({ data: { ...screenplayBatch, status: 'SUCCEEDED' } });
-
-    const view = render(<VideoScriptDecompositionPage />);
-    await act(async () => Promise.resolve());
-    fireEvent.click(screen.getByRole('button', { name: '查看全部剧本' }));
-    await act(async () => Promise.resolve());
-    expect(mocks.queryBatches).toHaveBeenCalledTimes(1);
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(1);
-
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(1);
-
-    await act(async () => vi.advanceTimersByTimeAsync(6000));
-    expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(1);
-    view.unmount();
-    vi.useRealTimers();
-  });
-
-  it('manually refreshes both the batch list and the open drawer', async () => {
-    const refreshedBatch = {
-      ...screenplayBatch,
-      status: 'RUNNING',
-      percentage: 80,
-      failedEpisodes: 0,
-      processingEpisodes: 1,
-    };
-    mocks.queryBatches
-      .mockResolvedValueOnce({
-        data: [{ ...screenplayBatch, id: 9, episodes: [] }],
-      })
-      .mockResolvedValueOnce({
-        data: [{ ...refreshedBatch, id: 9, episodes: [] }],
-      });
-    mocks.queryScreenplays
-      .mockResolvedValueOnce({ data: screenplayBatch })
-      .mockResolvedValueOnce({ data: refreshedBatch });
-
+  it('loads only the selected successful episode and reuses its cache', async () => {
     render(<VideoScriptDecompositionPage />);
     fireEvent.click(
       await screen.findByRole('button', { name: '查看全部剧本' }),
     );
     await screen.findByText('# 第1集：真相');
-
-    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
-    await waitFor(() => {
-      expect(mocks.queryBatches).toHaveBeenCalledTimes(2);
-      expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
-    });
+    expect(mocks.queryEpisode).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
+    expect(screen.getByText('模型输出截断')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '第 1 集' }));
+    expect(screen.getByText('# 第1集：真相')).toBeInTheDocument();
+    expect(mocks.queryEpisode).toHaveBeenCalledTimes(1);
+    expect(mocks.queryScreenplays).not.toHaveBeenCalled();
   });
 
-  it('refreshes the open drawer once after an accepted retry without polling', async () => {
+  it('cancels a closed batch and ignores its late response in another batch', async () => {
+    mocks.queryBatches.mockResolvedValue({
+      data: [
+        { id: 9, name: '旧批次', status: 'SUCCEEDED' },
+        { id: 10, name: '新批次', status: 'SUCCEEDED' },
+      ],
+    });
+    let resolveOld: (value: unknown) => void = () => {};
+    mocks.queryBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    mocks.queryBatch.mockResolvedValue({
+      data: { ...screenplayBatch, id: 10, name: '新批次', episodes: [] },
+    });
+    render(<VideoScriptDecompositionPage />);
+    const buttons = await screen.findAllByRole('button', {
+      name: '查看全部剧本',
+    });
+    fireEvent.click(buttons[0]);
+    const signal = mocks.queryBatch.mock.calls[0][1] as AbortSignal;
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    expect(signal.aborted).toBe(true);
+    fireEvent.click(buttons[1]);
+    await waitFor(() =>
+      expect(screen.getByText('暂无剧集')).toBeInTheDocument(),
+    );
+    await act(async () =>
+      resolveOld({
+        data: { ...screenplayBatch, id: 9, name: '旧批次结果', episodes: [] },
+      }),
+    );
+    expect(screen.queryByText('旧批次结果')).not.toBeInTheDocument();
+  });
+
+  it('refreshes metadata without overlapping slow calls, downloading text again, or polling hidden tabs', async () => {
     vi.useFakeTimers();
     const running = {
       ...screenplayBatch,
+      id: 9,
+      name: '第一季拆剧',
       status: 'RUNNING',
-      percentage: 55,
-      failedEpisodes: 0,
-      processingEpisodes: 1,
+      episodes: [
+        screenplayBatch.episodes[0].episode,
+        { ...screenplayBatch.episodes[1].episode, status: 'ANALYZING' },
+      ],
     };
-    mocks.queryScreenplays
-      .mockResolvedValueOnce({ data: screenplayBatch })
+    let finishSlow: (value: unknown) => void = () => {};
+    mocks.queryBatch
       .mockResolvedValueOnce({ data: running })
-      .mockResolvedValue({ data: { ...screenplayBatch, status: 'SUCCEEDED' } });
-    mocks.queryBatches
-      .mockResolvedValueOnce({
-        data: [{ ...screenplayBatch, id: 9, episodes: [] }],
-      })
-      .mockResolvedValueOnce({ data: [{ ...running, id: 9, episodes: [] }] })
-      .mockResolvedValue({
-        data: [
-          { ...screenplayBatch, id: 9, status: 'SUCCEEDED', episodes: [] },
-        ],
-      });
-
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSlow = resolve;
+          }),
+      )
+      .mockResolvedValue({ data: { ...running, status: 'SUCCEEDED' } });
     const view = render(<VideoScriptDecompositionPage />);
-    await act(async () => Promise.resolve());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
     fireEvent.click(screen.getByRole('button', { name: '查看全部剧本' }));
-    await act(async () => Promise.resolve());
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
-    await act(async () => Promise.resolve());
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
-
-    await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(mocks.queryScreenplays).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(screen.getByText('# 第1集：真相')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(mocks.queryBatch).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(mocks.queryBatch).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      finishSlow({ data: running });
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    focusManager.setFocused(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(mocks.queryBatch).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      focusManager.setFocused(true);
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(mocks.queryBatch).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(mocks.queryBatch).toHaveBeenCalledTimes(3);
+    expect(mocks.queryEpisode).toHaveBeenCalledTimes(1);
+    expect(mocks.queryScreenplays).not.toHaveBeenCalled();
+    expect(mocks.queryBatches).toHaveBeenCalledTimes(1);
     view.unmount();
-    vi.useRealTimers();
+  });
+
+  it('loads a retried episode automatically when its metadata becomes successful', async () => {
+    vi.useFakeTimers();
+    const episodes = screenplayBatch.episodes.map((item) => item.episode);
+    mocks.queryBatch
+      .mockResolvedValueOnce({ data: { ...screenplayBatch, id: 9, episodes } })
+      .mockResolvedValueOnce({
+        data: {
+          ...screenplayBatch,
+          id: 9,
+          status: 'RUNNING',
+          episodes: [episodes[0], { ...episodes[1], status: 'ANALYZING' }],
+        },
+      })
+      .mockResolvedValue({
+        data: {
+          ...screenplayBatch,
+          id: 9,
+          status: 'SUCCEEDED',
+          episodes: [episodes[0], { ...episodes[1], status: 'SUCCEEDED' }],
+        },
+      });
+    mocks.queryEpisode.mockImplementation(async (id: number) => ({
+      data: {
+        episode: episodes[id === 88 ? 0 : 1],
+        screenplayContent: id === 88 ? '# 第1集：真相' : '# 第2集：重试成功',
+      },
+    }));
+    const view = render(<VideoScriptDecompositionPage />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '查看全部剧本' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试本集' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(screen.queryByText('模型输出截断')).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(screen.getByText('# 第2集：重试成功')).toBeInTheDocument();
+    expect(mocks.queryScreenplays).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('opens a newly created batch directly with the submitted file order', async () => {
+    mocks.create.mockResolvedValue({
+      data: { ...screenplayBatch, id: 9, name: '新批次', episodes: [] },
+    });
+    render(<VideoScriptDecompositionPage />);
+    await screen.findByRole('button', { name: '查看全部剧本' });
+    await act(async () =>
+      mocks.uploadProps.onChange({
+        fileList: [
+          {
+            uid: 'b',
+            name: 'b.mp4',
+            size: 1,
+            status: 'done',
+            response: { storagePath: '/b', uploadSessionToken: 'b' },
+          },
+          {
+            uid: 'a',
+            name: 'a.mp4',
+            size: 1,
+            status: 'done',
+            response: { storagePath: '/a', uploadSessionToken: 'a' },
+          },
+        ],
+      }),
+    );
+    expect(mocks.uploadProps.showUploadList).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '开始生成剧本' }));
+    await screen.findByRole('button', { name: '关闭' });
+    expect(
+      mocks.create.mock.calls[0][0].videos.map((v: any) => v.fileName),
+    ).toEqual(['b.mp4', 'a.mp4']);
   });
 });

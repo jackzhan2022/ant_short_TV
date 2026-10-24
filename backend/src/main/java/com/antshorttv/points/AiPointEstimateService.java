@@ -141,6 +141,25 @@ public class AiPointEstimateService {
             String content = data.path("initialScriptContent").asText("").trim();
             return content.isEmpty() ? List.of() : analysis(tenant, null, content);
         }
+        if ("/api/script-review/submissions".equals(path)) {
+            String content = data.path("content").asText("").trim();
+            List<String> requestedDimensions = new ArrayList<>();
+            data.path("selectedDimensions").forEach(value -> requestedDimensions.add(value.asText()));
+            List<String> dimensions;
+            try {
+                dimensions = com.antshorttv.review.ReviewDimension.parseAll(requestedDimensions).stream()
+                    .map(com.antshorttv.review.ReviewDimension::label).toList();
+            } catch (IllegalArgumentException exception) {
+                throw invalid("包含未知审核维度。");
+            }
+            if (content.isBlank() || content.length() > 200000 || dimensions.isEmpty())
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请输入有效剧本并选择审核维度。");
+            var config = json.createObjectNode();
+            config.put("reviewMode", "DEEP");
+            config.put("reviewScopeType", "ALL");
+            config.set("selectedDimensions", json.valueToTree(dimensions));
+            return review(tenant, content, config, reviews.pointEstimateModelId(tenant), null);
+        }
         var review = Pattern.compile("^/api/script-review/(projects|tasks)/(\\d+)/(tasks|retry)$").matcher(path);
         if (review.matches()) {
             long id = Long.parseLong(review.group(2));

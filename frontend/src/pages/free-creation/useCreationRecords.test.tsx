@@ -41,6 +41,20 @@ afterEach(() => {
 });
 
 describe('creation record scrolling', () => {
+  it('keeps polling a completed creation until its small thumbnail is ready', async () => {
+    vi.useFakeTimers();
+    const item: CreationRecord = { ...record(1), outputs: [{ id: 10, previewUrl: '/large.png', thumbnailStatus: 'PENDING' }] };
+    vi.mocked(listCreations).mockResolvedValueOnce({ ...page([1], 1, 1), records: [item] });
+    vi.mocked(getCreation).mockResolvedValueOnce({ ...item, outputs: [{ id: 10, previewUrl: '/large.png', thumbnailStatus: 'READY', thumbnailUrl: '/small.webp' }] });
+    const { result } = renderHook(() => useCreationRecords(query, '1:0'));
+    await act(async () => {});
+    expect(result.current.page.records[0].outputs[0].thumbnailUrl).toBeUndefined();
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(result.current.page.records[0].outputs[0].thumbnailUrl).toBe('/small.webp');
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(getCreation).toHaveBeenCalledTimes(1);
+    expect(listCreations).toHaveBeenCalledTimes(1);
+  });
   it('appends pages once, preserves visible records while loading, and deduplicates overlapping pages', async () => {
     let resolveNext!: (value: CreationPage) => void;
     vi.mocked(listCreations)

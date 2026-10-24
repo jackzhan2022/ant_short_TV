@@ -42,6 +42,7 @@ export type VideoDecompositionEpisode = {
   retryable?: boolean | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  updatedAt?: string;
 };
 
 export type VideoDecompositionAttempt = {
@@ -162,11 +163,16 @@ export const createVideoDecompositionBatch = async (
     },
   );
 
-export const queryVideoDecompositionBatches = async (projectId?: number, params: MediaPageParams = {}, signal?: AbortSignal) =>
+export const queryVideoDecompositionBatches = async (
+  projectId?: number,
+  params: MediaPageParams = {},
+  signal?: AbortSignal,
+) =>
   request<ApiResponse<MediaPage<VideoDecompositionBatch>>>(
     '/api/video-script-decomposition/batches',
     {
-      params: { projectId, ...params }, signal,
+      params: { projectId, ...params },
+      signal,
     },
   );
 
@@ -177,9 +183,29 @@ export const queryVideoDecompositionEpisode = async (episodeId: number) =>
 
 export const queryVideoDecompositionBatchScreenplays = async (
   batchId: number,
+  signal?: AbortSignal,
 ) =>
   request<ApiResponse<VideoDecompositionBatchScreenplays>>(
     `/api/video-script-decomposition/batches/${batchId}/screenplays`,
+    { signal },
+  );
+
+export const queryVideoDecompositionBatch = async (
+  batchId: number,
+  signal?: AbortSignal,
+) =>
+  request<ApiResponse<VideoDecompositionBatch>>(
+    `/api/video-script-decomposition/batches/${batchId}`,
+    { signal },
+  );
+
+export const queryVideoDecompositionScreenplay = async (
+  episodeId: number,
+  signal?: AbortSignal,
+) =>
+  request<ApiResponse<VideoDecompositionScreenplayEpisode>>(
+    `/api/video-script-decomposition/episodes/${episodeId}/screenplay`,
+    { signal },
   );
 
 export const retryVideoDecompositionEpisode = async (episodeId: number) =>

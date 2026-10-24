@@ -29,7 +29,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.*;
 
-@SpringBootTest(properties={"ai.execution.dispatcher.fixed-delay-ms=3600000","ai.execution.free-creation-reconcile-ms=3600000"})
+@SpringBootTest(properties={"ai.execution.dispatcher.fixed-delay-ms=3600000","ai.execution.free-creation-reconcile-ms=3600000","media.free-creation-thumbnail.initial-delay-ms=3600000"})
 @AutoConfigureMockMvc
 class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired MockMvc mvc;
@@ -124,6 +124,7 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         jdbc.update("update ai_execution_task set status='SUCCEEDED' where id=?",execution);
         completePendingImageJobs(mvc);
         assertThat(getJson(author,tenant,"/api/free-creations/"+id).path("data").path("outputs").get(0).path("previewUrl").asText()).contains("/derived/");
+        assertThat(getJson(author,tenant,"/api/free-creations/"+id).path("data").path("outputs").get(0).path("thumbnailUrl").asText()).contains("/derived/thumbnail-480-v1.webp");
         jdbc.update("update tenant_member set status='REMOVED' where tenant_id=? and user_id=?",tenant,member.id);
         for(String path:List.of("/api/free-creations","/api/free-creations/models","/api/free-creations/"+id,
             "/api/tenants/"+tenant+"/ai-executions/"+execution,"/api/tenants/"+tenant+"/production-tasks/FREE_CREATION:"+id)) {
@@ -171,7 +172,8 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         dispatcher.dispatchOnce();awaitState(execution,"SUCCEEDED","STORE");
         assertThat(videoSubmits.get()).isEqualTo(submitted+1);assertThat(videoPolls.get()).isEqualTo(polled+1);
         JsonNode output=getJson(user,tenant,"/api/free-creations/"+id).path("data").path("outputs").get(0);
-        assertThat(output.path("thumbnailUrl").asText()).contains("free-creation-covers");
+        assertThat(output.path("thumbnailUrl").isNull()).isTrue();
+        assertThat(output.path("thumbnailStatus").asText()).isEqualTo("PENDING");
         assertThat(output.path("previewUrl").asText()).contains("free-creations").doesNotContain("127.0.0.1");
         assertThat(jdbc.queryForObject("select settled_points from ai_point_reservation where execution_id=?",BigDecimal.class,execution)).isEqualByComparingTo("1");
         assertThat(jdbc.queryForObject("select count(*) from ai_usage_line where execution_id=? and metric='OUTPUT_TOKEN'",Integer.class,execution)).isEqualTo(1);

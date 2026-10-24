@@ -59,6 +59,8 @@ const formatTime = (value: string) => {
 };
 const pending = (record: CreationRecord) =>
   record.status === 'QUEUED' || record.status === 'RUNNING';
+const preparingThumbnail = (record: CreationRecord) =>
+  record.outputs.some((output) => output.thumbnailStatus === 'PENDING');
 export default function Records({
   tenantId,
   createdRecord,
@@ -162,7 +164,7 @@ export default function Records({
         const next = await getCreation(detailId, abort.signal);
         if (!abort.signal.aborted) {
           setDetail(next);
-          if (pending(next)) timer = setTimeout(() => void load(), 5000);
+          if (pending(next) || preparingThumbnail(next)) timer = setTimeout(() => void load(), 5000);
         }
       } catch (failure) {
         if (!abort.signal.aborted)
@@ -354,6 +356,11 @@ export default function Records({
                     >
                       <Spin />
                       <span>{record.status === 'QUEUED' ? '排队等待中' : `${record.mediaType === 'IMAGE' ? '图片' : '视频'}生成中`}</span>
+                    </span>
+                  ) : preparingThumbnail(record) && !record.outputs[0]?.thumbnailUrl ? (
+                    <span className={styles.generatingPreview} role="status" aria-label={`缩略图准备中：${record.prompt}`}>
+                      <Spin />
+                      <span>缩略图准备中</span>
                     </span>
                   ) : record.outputs[0]?.thumbnailUrl ? (
                     <img

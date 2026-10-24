@@ -37,6 +37,18 @@ public class ImageDisplayRenditionService {
         return registry.find(identity, "DISPLAY_IMAGE_SLIM");
     }
 
+    public RegisteredMediaObject thumbnail(MediaObjectIdentity identity) {
+        return registry.find(identity, "LIST_THUMBNAIL");
+    }
+
+    public void submitThumbnail(MediaObjectIdentity identity) {
+        RegisteredImageOriginal original = registry.original(identity);
+        if (original == null || !"READY".equals(original.status()))
+            throw new IllegalStateException("缩略图对应的原始媒体尚未就绪。");
+        processing.submitImageThumbnail(new SubmitImageDisplayJob(identity, original.objectKey(),
+            original.mimeType(), original.storageClass(), "thumbnail:" + identity.assetType() + ":" + identity.assetId()));
+    }
+
     public RegisteredMediaDetails displayDetails(MediaObjectIdentity identity) {
         return registry.details(identity, "DISPLAY_IMAGE_SLIM");
     }

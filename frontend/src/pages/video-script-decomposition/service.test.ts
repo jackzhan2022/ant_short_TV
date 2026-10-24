@@ -1,17 +1,19 @@
 import { request } from '@umijs/max';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  queryVideoUnderstandingModels,
-  queryVideoDecompositionBatchScreenplays,
+  type MediaUploadHandle,
+  startMediaUpload,
+  type VerifiedMediaUpload,
+} from '@/services/mediaUpload';
+import {
+  queryVideoDecompositionBatch,
   queryVideoDecompositionBatches,
+  queryVideoDecompositionBatchScreenplays,
+  queryVideoDecompositionScreenplay,
+  queryVideoUnderstandingModels,
   retryVideoDecompositionEpisode,
   uploadEpisodeVideo,
 } from './service';
-import {
-  startMediaUpload,
-  type MediaUploadHandle,
-  type VerifiedMediaUpload,
-} from '@/services/mediaUpload';
 
 vi.mock('@umijs/max', () => ({ request: vi.fn() }));
 vi.mock('@/services/point-estimate', async () => {
@@ -28,21 +30,46 @@ describe('video decomposition service', () => {
 
   it('loads models from the team-scoped decomposition endpoint, not platform management', async () => {
     await queryVideoUnderstandingModels();
-    expect(request).toHaveBeenCalledWith('/api/video-script-decomposition/models');
+    expect(request).toHaveBeenCalledWith(
+      '/api/video-script-decomposition/models',
+    );
   });
 
   it('passes server paging and cancellation for batch browsing', async () => {
     const controller = new AbortController();
-    await queryVideoDecompositionBatches(undefined, { current: 2, pageSize: 20 }, controller.signal);
-    expect(request).toHaveBeenCalledWith('/api/video-script-decomposition/batches', {
-      params: { projectId: undefined, current: 2, pageSize: 20 }, signal: controller.signal,
-    });
+    await queryVideoDecompositionBatches(
+      undefined,
+      { current: 2, pageSize: 20 },
+      controller.signal,
+    );
+    expect(request).toHaveBeenCalledWith(
+      '/api/video-script-decomposition/batches',
+      {
+        params: { projectId: undefined, current: 2, pageSize: 20 },
+        signal: controller.signal,
+      },
+    );
   });
 
   it('loads the ordered per-episode screenplay view without a merge mutation', async () => {
     await queryVideoDecompositionBatchScreenplays(19);
     expect(request).toHaveBeenCalledWith(
       '/api/video-script-decomposition/batches/19/screenplays',
+      { signal: undefined },
+    );
+  });
+
+  it('separates cancellable progress and single-episode text requests', async () => {
+    const controller = new AbortController();
+    await queryVideoDecompositionBatch(19, controller.signal);
+    await queryVideoDecompositionScreenplay(88, controller.signal);
+    expect(request).toHaveBeenCalledWith(
+      '/api/video-script-decomposition/batches/19',
+      { signal: controller.signal },
+    );
+    expect(request).toHaveBeenCalledWith(
+      '/api/video-script-decomposition/episodes/88/screenplay',
+      { signal: controller.signal },
     );
   });
 

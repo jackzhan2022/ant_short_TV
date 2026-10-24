@@ -51,6 +51,22 @@ describe('ScriptContentImport', () => {
     expect(document.querySelector('input[type="file"]')).toHaveAttribute('accept', '.txt,.md,.docx');
   });
 
+  it('opens the local file picker directly for review without fetching legacy scripts', async () => {
+    const onImport = vi.fn();
+    const picker = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    render(<App><ScriptContentImport localOnly currentContent="" onImport={onImport} /></App>);
+    fireEvent.click(screen.getByRole('button', { name: '导入剧本内容' }));
+    expect(picker).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('从审核剧本引用')).not.toBeInTheDocument();
+    const input = screen.getByLabelText('选择剧本文件');
+    const file = new File(['剧本正文'], 'review.txt', { type: 'text/plain' });
+    Object.defineProperty(file, 'text', { value: vi.fn().mockResolvedValue('剧本正文') });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith('剧本正文', '已导入：review.txt'));
+    expect(mocks.queryReviewProjectSummaries).not.toHaveBeenCalled();
+    picker.mockRestore();
+  });
+
   it('sends docx to the parse-only API', async () => {
     mocks.parseScriptFile.mockResolvedValue({
       data: { fileName: 'story.docx', content: '解析后的正文' },

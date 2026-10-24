@@ -86,6 +86,18 @@ class FailedDisplayOutputCleanupPersistenceTest {
     }
 
     @Test
+    void cleansFailedThumbnailWithoutDeletingOriginalOrDisplay() {
+        long jobId = failedDisplay(CUTOFF);
+        String thumbnail = "materials/11/22/images/202609/42/v1/derived/thumbnail-480-v1.webp";
+        jdbc.update("update media_object set rendition_type='LIST_THUMBNAIL',object_key=?,mime_type='image/webp' where object_key=?", thumbnail, DISPLAY);
+        jdbc.update("update media_processing_job set operation='LIST_THUMBNAIL',output_key=? where id=?", thumbnail, jobId);
+        assertThat(clean(jobId)).isTrue();
+        verify(storage).delete(thumbnail);
+        verifyNoMoreInteractions(storage);
+        assertThat(jdbc.queryForObject("select status from media_object where object_key=?",String.class,ORIGINAL)).isEqualTo("READY");
+    }
+
+    @Test
     void acceptsTheAiImageProducerPhysicalVersionWithItsRegisteredLogicalVersion() {
         long jobId = failedDisplay(CUTOFF);
         ObjectStorageKeyFactory keys = new ObjectStorageKeyFactory();

@@ -260,6 +260,16 @@ public class VideoDecompositionService {
         );
     }
 
+    public VideoDecompositionScreenplayEpisodeResponse screenplay(Long tenantId, Long episodeId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        VideoDecompositionEpisodeEntity episode = requireEpisode(tenantId, episodeId);
+        requireProjectAccessIfBound(context, episode.getProjectId(), "PROJECT:VIEW");
+        VideoDecompositionScriptResult result = resultRepository.findByEpisode(tenantId, episodeId).orElse(null);
+        return new VideoDecompositionScreenplayEpisodeResponse(
+            episodeResponse(episode), result == null ? null : result.content(),
+            result == null ? null : result.formatVersion());
+    }
+
     public VideoDecompositionBatchScreenplaysResponse allScreenplays(Long tenantId, Long batchId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         VideoDecompositionBatchEntity batch = requireBatch(tenantId, batchId);
@@ -267,15 +277,17 @@ public class VideoDecompositionService {
         List<VideoDecompositionEpisodeEntity> episodes = episodeMapper.selectByBatch(tenantId, batchId);
         Map<Long, VideoDecompositionScriptResult> results = resultRepository.listByBatch(tenantId, batchId)
             .stream().collect(java.util.stream.Collectors.toMap(VideoDecompositionScriptResult::episodeId, value -> value));
+        Map<Long, Integer> executionProgress = executionProgress(tenantId, episodes);
         VideoDecompositionBatchProgress progress = VideoDecompositionBatchProgress.fromEpisodes(
-            episodes, this::persistedExecutionProgress);
+            episodes, episode -> executionProgress.get(episode.getExecutionId()));
         return new VideoDecompositionBatchScreenplaysResponse(
             batch.getId(), batch.getName(), progress.status(), progress.percentage(), progress.total(),
             progress.succeeded(), progress.failed(), progress.processing(), progress.pending(),
             episodes.stream().map(episode -> {
                 VideoDecompositionScriptResult result = results.get(episode.getId());
                 return new VideoDecompositionScreenplayEpisodeResponse(
-                    episodeResponse(episode), result == null ? null : result.content(),
+                    VideoDecompositionEpisodeResponse.from(episode, executionProgress.get(episode.getExecutionId())),
+                    result == null ? null : result.content(),
                     result == null ? null : result.formatVersion()
                 );
             }).toList()
@@ -570,8 +582,25 @@ public class VideoDecompositionService {
         VideoDecompositionBatchEntity batch,
         List<VideoDecompositionEpisodeEntity> episodes
     ) {
+        Map<Long, Integer> progress = executionProgress(batch.getTenantId(), episodes);
         return VideoDecompositionBatchResponse.from(
-            batch, episodes, this::episodeResponse, this::persistedExecutionProgress);
+            batch, episodes,
+            episode -> VideoDecompositionEpisodeResponse.from(episode, progress.get(episode.getExecutionId())),
+            episode -> progress.get(episode.getExecutionId()));
+    }
+
+    private Map<Long, Integer> executionProgress(Long tenantId, List<VideoDecompositionEpisodeEntity> episodes) {
+        List<Long> ids = episodes.stream().map(VideoDecompositionEpisodeEntity::getExecutionId)
+            .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<Long, Integer> progress = new java.util.HashMap<>();
+        if (!ids.isEmpty()) {
+            executionTaskMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionTaskEntity>()
+                .select("id", "progress")
+                .eq("tenant_id", tenantId)
+                .in("id", ids))
+                .forEach(task -> progress.put(task.id, task.progress));
+        }
+        return progress;
     }
 
     private VideoDecompositionEpisodeResponse episodeResponse(VideoDecompositionEpisodeEntity episode) {

@@ -83,6 +83,17 @@ describe('point estimates before submission', () => {
     expect(mocks.request).toHaveBeenCalledTimes(2);
   });
 
+  it('requires an approved quote before submitting a direct script review', async () => {
+    const data = { content: '第一集\n林晚走进门。', selectedDimensions: ['台词合理性'], requestId: 'review-submission-0001' };
+    const pending = pointEstimatedRequest('/api/script-review/submissions', { method: 'POST', data });
+    await flush();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    expect(mocks.request.mock.calls[0][0]).toBe('/api/tenants/7/points/estimate');
+    mocks.confirm.mock.calls[0][0].onOk();
+    await pending;
+    expect(mocks.request).toHaveBeenLastCalledWith('/api/script-review/submissions', expect.objectContaining({ method: 'POST', data }));
+  });
+
   it('cancels without a paid request, even while the estimate is loading', async () => {
     let resolve: (value: unknown) => void = () => undefined;
     mocks.request.mockReset().mockReturnValue(

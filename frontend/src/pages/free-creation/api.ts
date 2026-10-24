@@ -25,6 +25,7 @@ export type CreationReference = {
 export type CreationOutput = {
   id: number;
   thumbnailUrl?: string;
+  thumbnailStatus?: 'PENDING' | 'READY' | 'FAILED' | 'RETIRED';
   previewUrl?: string;
   downloadUrl?: string;
   durationSeconds?: number;

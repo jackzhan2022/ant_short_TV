@@ -33,14 +33,14 @@ public class FailedDisplayOutputCleanupService {
         // Keep the callback/retry job lock through deletion; extra media locks invert retry's lock order.
         MediaProcessingJobEntity job = store.jobForUpdate(jobId);
         if (job == null || !"FAILED".equals(job.status)
-            || !"DISPLAY_IMAGE_SLIM".equals(job.operation) || job.completedAt == null
+            || !java.util.Set.of("DISPLAY_IMAGE_SLIM", "LIST_THUMBNAIL").contains(job.operation) || job.completedAt == null
             || job.completedAt.isAfter(cutoff) || job.attemptNo == null || job.attemptNo < 1
             || store.cleaned(job.id, job.attemptNo)) {
             return false;
         }
         MediaObjectEntity display = store.media(job.mediaObjectId);
         if (display == null || !"FAILED".equals(display.status)
-            || !"DISPLAY_IMAGE_SLIM".equals(display.renditionType)
+            || !Objects.equals(job.operation, display.renditionType)
             || !Objects.equals(job.mediaObjectId, display.id)
             || !Objects.equals(job.outputKey, display.objectKey)
             || !Objects.equals(job.tenantId, display.tenantId)
@@ -52,7 +52,8 @@ public class FailedDisplayOutputCleanupService {
             return false;
         }
         try {
-            ImageDisplayRenditionPlan plan = planner.plan(original.objectKey, original.mimeType);
+            ImageDisplayRenditionPlan plan = "LIST_THUMBNAIL".equals(job.operation)
+                ? planner.thumbnail(original.objectKey) : planner.plan(original.objectKey, original.mimeType);
             if (!plan.objectKey().equals(display.objectKey) || !plan.mimeType().equals(display.mimeType)) {
                 return false;
             }

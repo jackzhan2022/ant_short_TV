@@ -11,6 +11,13 @@ public class ImageDisplayRenditionPlanner {
         this.keys = keys;
     }
 
+    public ImageDisplayRenditionPlan thumbnail(String originalKey) {
+        return new ImageDisplayRenditionPlan(
+            keys.rendition(originalKey, "thumbnail-480-v1", "webp"),
+            "image/webp", "imageMogr2/thumbnail/480x480>/format/webp/quality/80"
+        );
+    }
+
     public ImageDisplayRenditionPlan plan(String originalKey, String sourceMimeType) {
         String mimeType = sourceMimeType == null
             ? "" : sourceMimeType.toLowerCase(Locale.ROOT).trim();

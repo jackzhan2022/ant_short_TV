@@ -54,6 +54,9 @@ class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationT
     @Autowired
     private com.antshorttv.workflowagent.agent.ScriptReviewAgentBootstrap reviewAgentBootstrap;
 
+    @Autowired
+    private com.antshorttv.ai.AiSecretCodec reviewTestSecretCodec;
+
     @MockBean
     private com.antshorttv.workflowagent.run.WorkflowAgentRunner workflowAgentRunner;
 
@@ -903,6 +906,128 @@ class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationT
         });
     }
 
+    @Test
+    void submitsDirectReviewAtomicallyAndReusesTheRequestIdentity() throws Exception {
+        String token = registerUser("13800017281", "Direct Review");
+        Long tenantId = createTenant(token, "直接审核团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 1000);
+        jdbcTemplate.update("""
+            update ai_provider_config set api_key_cipher=?, base_url='http://127.0.0.1:1/v1', status='ENABLED'
+             where provider_id=(select provider_id from ai_model where code='review-test-text-model')
+            """, reviewTestSecretCodec.encrypt("review-test-only-key"));
+        jdbcTemplate.update("""
+            insert into ai_model_capability (model_id, capability, status, created_at, updated_at)
+            select m.id, 'TEXT_GENERATION', 'ENABLED', now(), now() from ai_model m
+             where m.code='review-test-text-model' and not exists (
+               select 1 from ai_model_capability c where c.model_id=m.id and c.capability='TEXT_GENERATION')
+            """);
+        var agent = org.mockito.Mockito.mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
+        when(agent.maxTokens()).thenReturn(4096);
+        when(agent.systemPrompt()).thenReturn("Review the script");
+        when(workflowAgentRunner.freezeFormal("script-review", tenantId)).thenReturn(
+            new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent, java.util.List.of()));
+        String body = """
+            {"content":"第一集\\n林晚拿起钥匙。","selectedDimensions":["台词合理性"],
+             "requestId":"direct-review-request-0001"}
+            """;
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"operations\":[{\"url\":\"/api/script-review/submissions\",\"data\":" + body + "}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.estimatedPoints").exists());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_project where tenant_id=?", Integer.class, tenantId)).isZero();
+
+        MvcResult first = mockMvc.perform(post("/api/script-review/submissions")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted()).andReturn();
+        Long taskId = readLong(first, "$.data.businessId");
+        Long executionId = readLong(first, "$.data.id");
+        mockMvc.perform(post("/api/script-review/submissions")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.id", is(executionId.intValue())));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_project where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_task where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("select review_mode from review_task where id=?", String.class, taskId)).isEqualTo("DEEP");
+        mockMvc.perform(post("/api/script-review/submissions")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body.replace("拿起钥匙", "放下钥匙")))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/script-review/submissions")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content(body.replace("[\"台词合理性\"]", "[]")))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_project where tenant_id=?", Integer.class, tenantId)).isEqualTo(1);
+    }
+
+    @Test
+    void pagesOnlyNewHistoryAndLoadsReportAndFrozenContentSeparately() throws Exception {
+        String token = registerUser("13800017282", "Direct History");
+        Long tenantId = createTenant(token, "新审核历史团队");
+        Long projectId = importReviewProject(token, tenantId, "新版剧本");
+        Long versionId = jdbcTemplate.queryForObject("select current_version_id from review_project where id=?", Long.class, projectId);
+        Long userId = userIdByMobile("13800017282");
+        insertCompletedReviewTask(tenantId, projectId, versionId, userId, "legacy-history-hidden");
+        Long latest = null;
+        for (int index = 0; index < 21; index++) latest = insertCompletedReviewTask(tenantId, projectId, versionId, userId, "direct:history-" + index);
+        mockMvc.perform(get("/api/script-review/history").param("page", "1").param("pageSize", "20")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.total", is(21)))
+            .andExpect(jsonPath("$.data.items", hasSize(20)))
+            .andExpect(jsonPath("$.data.items[0].id", is(latest.intValue())))
+            .andExpect(jsonPath("$.data.items[0].reportMarkdown").doesNotExist())
+            .andExpect(jsonPath("$.data.items[0].content").doesNotExist());
+        mockMvc.perform(get("/api/script-review/history").param("page", "2").param("pageSize", "20")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.items", hasSize(1)));
+        mockMvc.perform(get("/api/script-review/tasks/%d/progress".formatted(latest))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.status", is("COMPLETED")))
+            .andExpect(jsonPath("$.data.reportMarkdown").doesNotExist()).andExpect(jsonPath("$.data.boundVersion").doesNotExist());
+        mockMvc.perform(get("/api/script-review/tasks/%d/report".formatted(latest))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.reportMarkdown", is("# 审核报告")))
+            .andExpect(jsonPath("$.data.task.scriptVersionId", is(versionId.intValue())));
+        mockMvc.perform(put("/api/script-review/projects/%d/versions".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"后来修改的正文\"}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/script-review/tasks/%d/content".formatted(latest))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.id", is(versionId.intValue())))
+            .andExpect(jsonPath("$.data.content", is("第一集\\n新版剧本")));
+
+        String outsider = registerUser("13800017283", "Other Team");
+        Long otherTenant = createTenant(outsider, "另一个审核团队");
+        mockMvc.perform(get("/api/script-review/history")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(outsider)).header("X-Tenant-Id", otherTenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.items", hasSize(0)));
+        mockMvc.perform(get("/api/script-review/tasks/%d/report".formatted(latest))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(outsider)).header("X-Tenant-Id", otherTenant))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rollsBackTheImportedScriptWhenDirectReviewCannotReservePoints() throws Exception {
+        String token = registerUser("13800017284", "Review No Points");
+        Long tenantId = createTenant(token, "审核回滚团队");
+        seedTextModel();
+        grantTeamPoints(tenantId, 0);
+        mockMvc.perform(post("/api/script-review/submissions")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                    {"content":"第一集\\n林晚走进门。","selectedDimensions":["台词合理性"],
+                     "requestId":"direct-review-rollback-0001"}
+                    """))
+            .andExpect(status().is4xxClientError());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_project where tenant_id=?", Integer.class, tenantId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_script_version where tenant_id=?", Integer.class, tenantId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from review_task where tenant_id=?", Integer.class, tenantId)).isZero();
+    }
+
     private void seedTextModel() {
         Long providerId = jdbcTemplate.queryForObject("select id from ai_provider where code = 'OpenAI' limit 1", Long.class);
         jdbcTemplate.update("update ai_model set is_default = false where service_type = 'TEXT'");
@@ -981,7 +1106,7 @@ class ReviewWorkbenchControllerTest extends com.antshorttv.support.RegistrationT
     private Long importReviewProject(String token, Long tenantId, String name) throws Exception {
         MvcResult imported = mockMvc.perform(multipart("/api/script-review/projects")
                 .file(new MockMultipartFile("content", "", MediaType.TEXT_PLAIN_VALUE,
-                    ("第一集\\n" + name).getBytes()))
+                    ("第一集\\n" + name).getBytes(java.nio.charset.StandardCharsets.UTF_8)))
                 .param("name", name)
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId))

@@ -272,13 +272,13 @@ export default [
     path: '/script-review/projects/:projectId/reviews',
     hideInMenu: true,
     access: 'canViewScriptReview',
-    component: './script-review-history',
+    redirect: '/script-review-library',
   },
   {
     path: '/script-review/tasks/:taskId',
     hideInMenu: true,
     access: 'canViewScriptReview',
-    component: './script-review',
+    component: './script-review-library',
   },
   {
     path: '/projects/:id/production-workbench',

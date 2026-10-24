@@ -8,7 +8,8 @@ import {
 } from './api';
 
 const pending = (record: CreationRecord) =>
-  record.status === 'QUEUED' || record.status === 'RUNNING';
+  record.status === 'QUEUED' || record.status === 'RUNNING' ||
+  record.outputs.some((output) => output.thumbnailStatus === 'PENDING');
 const matches = (query: CreationQuery, record: CreationRecord) =>
   (!query.mediaType || query.mediaType === record.mediaType) &&
   (!query.status || query.status === record.status) &&

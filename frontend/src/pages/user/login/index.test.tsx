@@ -169,7 +169,7 @@ const multipleTenantBootstrap = (selected = false) => ({
         tenant: secondTenant,
         membership: { id: 101, memberType: 'MEMBER', status: 'ACTIVE' },
         roles: ['MEMBER'],
-        permissions: ['PROJECT:VIEW'],
+        permissions: ['MENU:PROJECTS'],
       }
     : null,
   nextAction: selected ? 'ENTER_WORKSPACE' : 'SELECT_TENANT',
@@ -182,7 +182,7 @@ describe('Login Page', () => {
     mocks.switchTenant.mockResolvedValue({ success: true });
     mocks.fetchUserInfo.mockResolvedValue({ name: '测试用户' });
     mocks.queryCurrentPermissions.mockResolvedValue({
-      data: { menus: ['PROJECT'], permissions: ['PROJECT:VIEW'] },
+      data: { menus: ['PROJECT'], permissions: ['MENU:PROJECTS'] },
     });
     mocks.queryAuthBootstrap.mockResolvedValue({
       data: {
@@ -194,7 +194,7 @@ describe('Login Page', () => {
           tenant: session.tenants[0],
           membership: { id: 100, memberType: 'OWNER', status: 'ACTIVE' },
           roles: ['OWNER'],
-          permissions: ['PROJECT:VIEW'],
+          permissions: ['MENU:PROJECTS'],
         },
         nextAction: 'ENTER_WORKSPACE',
       },
@@ -247,10 +247,10 @@ describe('Login Page', () => {
         name: '测试用户',
         phone: '13800000000',
       },
-      tenantPermissions: ['PROJECT:VIEW'],
+      tenantPermissions: ['MENU:PROJECTS'],
     });
     expect(mocks.success).toHaveBeenCalledWith('登录成功');
-    expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+    expect(mocks.replace).toHaveBeenCalledWith('/');
   });
 
   it('asks users with multiple teams to choose a team before entering', async () => {
@@ -310,9 +310,9 @@ describe('Login Page', () => {
         name: '测试用户',
         phone: '13800000000',
       },
-      tenantPermissions: ['PROJECT:VIEW'],
+      tenantPermissions: ['MENU:PROJECTS'],
     });
-    expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+    expect(mocks.replace).toHaveBeenCalledWith('/');
   });
 
   it('waits for initial state to apply before navigating after team selection', async () => {
@@ -369,7 +369,7 @@ describe('Login Page', () => {
     resolveInitialState?.();
 
     await waitFor(() => {
-      expect(mocks.replace).toHaveBeenCalledWith('/team/my');
+      expect(mocks.replace).toHaveBeenCalledWith('/');
     });
   });
 

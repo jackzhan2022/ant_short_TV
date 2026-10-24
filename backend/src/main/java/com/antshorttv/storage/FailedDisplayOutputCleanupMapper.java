@@ -12,9 +12,9 @@ interface FailedDisplayOutputCleanupMapper {
     String CANDIDATE_ROWS = """
         from media_processing_job j
         join media_object m on m.id = j.media_object_id
-         where j.status = 'FAILED' and j.operation = 'DISPLAY_IMAGE_SLIM'
+         where j.status = 'FAILED' and j.operation in ('DISPLAY_IMAGE_SLIM','LIST_THUMBNAIL')
            and j.completed_at <= #{cutoff} and j.attempt_no > 0
-           and m.status = 'FAILED' and m.rendition_type = 'DISPLAY_IMAGE_SLIM'
+           and m.status = 'FAILED' and m.rendition_type = j.operation
            and m.object_key = j.output_key
            and not exists (
                select 1 from media_processing_output_cleanup c

@@ -25,6 +25,8 @@ import {
 
 type ScriptContentImportProps = {
   className?: string;
+  disabled?: boolean;
+  localOnly?: boolean;
   currentContent: string;
   onImport: (content: string, sourceLabel: string) => void;
 };
@@ -38,7 +40,7 @@ const supportedExtensions = new Set(['txt', 'md', 'docx']);
 
 const extensionOf = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || '';
 
-const ScriptContentImport = ({ className, currentContent, onImport }: ScriptContentImportProps) => {
+const ScriptContentImport = ({ className, disabled = false, localOnly = false, currentContent, onImport }: ScriptContentImportProps) => {
   const { message, modal } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -145,6 +147,7 @@ const ScriptContentImport = ({ className, currentContent, onImport }: ScriptCont
   return (
     <>
       <Dropdown
+        disabled={disabled || localOnly}
         menu={{
           items: menuItems,
           onClick: ({ key }) => {
@@ -155,6 +158,8 @@ const ScriptContentImport = ({ className, currentContent, onImport }: ScriptCont
         trigger={['click']}
       >
         <Button
+          disabled={disabled}
+          onClick={localOnly ? () => fileInputRef.current?.click() : undefined}
           aria-label="导入剧本内容"
           className={className}
           icon={<PlusOutlined />}

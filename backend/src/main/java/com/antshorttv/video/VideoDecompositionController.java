@@ -72,6 +72,14 @@ public class VideoDecompositionController {
         return ApiResponse.success(service.episodeDetail(tenantId(request), episodeId));
     }
 
+    @GetMapping("/episodes/{episodeId}/screenplay")
+    public ApiResponse<VideoDecompositionScreenplayEpisodeResponse> screenplay(
+        @PathVariable Long episodeId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(service.screenplay(tenantId(request), episodeId));
+    }
+
     @PostMapping("/episodes/{episodeId}/retry")
     public ApiResponse<VideoDecompositionEpisodeResponse> retry(
         @PathVariable Long episodeId,

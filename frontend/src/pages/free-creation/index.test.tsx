@@ -119,6 +119,18 @@ beforeEach(() => {
 });
 
 describe('自由创作页面', () => {
+  it('缩略图未就绪时显示占位，不把高清预览当作列表图片加载', async () => {
+    mocks.list.mockResolvedValue({ records: [{
+      id: 9, mediaType: 'IMAGE', status: 'SUCCEEDED', prompt: '等待缩略图', creatorId: 1, creatorName: '作者',
+      createdAt: '2026-10-24T10:00:00', modelId: 1, modelName: '模型', parameters: {}, references: [],
+      outputs: [{ id: 90, previewUrl: '/large-original.png', thumbnailStatus: 'PENDING' }],
+    }], total: 1, current: 1, pageSize: 10 });
+    render(<FreeCreationPage />);
+    expect(await screen.findByRole('status', { name: '缩略图准备中：等待缩略图' })).toBeInTheDocument();
+    expect(screen.queryByAltText('生成结果缩略图')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/large-original.png"]')).toBeNull();
+  });
+
   it('提交后直接插入记录并显示生成占位，保留旧卡片且不重新请求列表', async () => {
     const record = (id: number, status: string) => ({
       id, status, mediaType: 'IMAGE', prompt: `创作 ${id}`, creatorId: 1, creatorName: '作者',

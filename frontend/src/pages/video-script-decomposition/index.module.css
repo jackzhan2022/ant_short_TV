@@ -1,0 +1,327 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.flow {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: var(--app-color-text-secondary);
+  font-size: 13px;
+}
+.flow span {
+  color: var(--app-color-text-tertiary);
+}
+.uploadPanel {
+  padding: 22px;
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 12px;
+  background: var(--app-color-bg-container);
+}
+.uploadHint {
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  padding-top: 12px;
+}
+.succeeded {
+  color: var(--app-color-success, #278366);
+}
+.failed {
+  color: var(--app-color-error, #bb534f);
+}
+.muted {
+  color: var(--app-color-text-tertiary);
+}
+.drawerTitle {
+  font-size: 17px;
+}
+.drawerTitle small {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.drawerBody {
+  display: flex;
+  flex-direction: column;
+}
+.loading {
+  padding: 30px;
+}
+.batchStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 12px;
+  color: var(--app-color-text-secondary);
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.resultGrid {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.episodeRail {
+  padding: 22px 12px;
+  border-right: 1px solid var(--app-color-border-secondary);
+  background: var(--app-color-bg-container);
+  overflow-y: auto;
+}
+.railLabel {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px 18px;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+}
+.episodeButton {
+  display: block;
+  width: 100%;
+  padding: 13px 12px;
+  margin-bottom: 8px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--app-color-text);
+  background: transparent;
+  cursor: pointer;
+}
+.episodeButton:hover {
+  background: var(--app-color-bg-layout);
+}
+.episodeButton[aria-pressed="true"] {
+  background: var(--app-color-primary-bg);
+  color: var(--app-color-primary);
+}
+.episodeButton strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 5px 0;
+}
+.episodeButton > span {
+  display: block;
+  font-size: 11px;
+}
+.episodeNumber {
+  color: var(--app-color-text-tertiary);
+}
+.reader {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 28px 32px;
+  background: var(--app-color-bg-layout);
+  scrollbar-gutter: stable;
+}
+.paper {
+  max-width: 730px;
+  margin-inline: auto;
+  padding: 36px 46px 26px;
+  background: var(--app-color-bg-container);
+  color: var(--app-color-text);
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 3px;
+}
+.paperMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--app-color-text-tertiary);
+  font-size: 11px;
+  letter-spacing: 2px;
+}
+.paperMeta > :last-child {
+  letter-spacing: 0;
+}
+.source {
+  color: var(--app-color-text-tertiary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  margin-top: 13px;
+}
+.screenplay {
+  margin-top: 22px;
+  color: var(--app-color-text-secondary);
+  font-size: 15px;
+  line-height: 2.05;
+  overflow-wrap: anywhere;
+}
+.screenplay .markdown {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.screenplay h1 {
+  color: var(--app-color-text);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 1px;
+  margin: 0 0 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.screenplay h2 {
+  color: var(--app-color-text);
+  font-size: 16px;
+  line-height: 1.8;
+  font-weight: 600;
+  border-bottom: 0;
+  margin: 28px 0 14px;
+  padding: 0;
+}
+.screenplay h3 {
+  color: var(--app-color-text);
+  font-size: 15px;
+  margin: 22px 0 12px;
+}
+.screenplay p {
+  margin: 16px 0;
+  white-space: pre-wrap;
+}
+.screenplay pre {
+  max-width: 100%;
+  overflow: auto;
+}
+.screenplay img {
+  max-width: 100%;
+  height: auto;
+}
+.screenplay table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+}
+.cast {
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+  margin: -4px 0 22px;
+  white-space: pre-wrap;
+}
+.dialogue {
+  margin: 24px 0 24px 26px;
+  padding-left: 18px;
+  border-left: 2px solid var(--app-color-primary-border, #d5dcf4);
+}
+.speaker {
+  color: var(--app-color-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.spoken {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  color: var(--app-color-text);
+  font:
+    18px / 1.95 "Noto Serif SC",
+    "Songti SC",
+    SimSun,
+    serif;
+  letter-spacing: 0.5px;
+}
+.endMark {
+  border-top: 1px solid var(--app-color-border-secondary);
+  text-align: center;
+  padding-top: 20px;
+  margin-top: 30px;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--app-color-text-tertiary);
+}
+.failure {
+  color: var(--app-color-error, #bb534f);
+  padding: 20px 0;
+}
+.pending {
+  padding-top: 28px;
+  color: var(--app-color-text-secondary);
+}
+.readingNav {
+  max-width: 730px;
+  margin: 18px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--app-color-text-tertiary);
+}
+.resultFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--app-color-border-secondary);
+  color: var(--app-color-text-tertiary);
+  font-size: 11px;
+}
+@media (max-width: 800px) {
+  .resultGrid {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+  .reader {
+    padding: 20px;
+  }
+  .paper {
+    padding: 28px 26px;
+  }
+  .screenplay h1 {
+    font-size: 26px;
+  }
+}
+@media (max-width: 550px) {
+  .uploadPanel {
+    padding: 14px;
+  }
+  .resultGrid {
+    display: flex;
+    flex-direction: column;
+  }
+  .episodeRail {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--app-color-border-secondary);
+    padding: 10px;
+  }
+  .railLabel {
+    display: none;
+  }
+  .episodeButton {
+    flex: 0 0 125px;
+    margin: 0;
+    padding: 9px 10px;
+  }
+  .episodeButton strong {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+  .reader {
+    flex: 1;
+    min-height: 0;
+    padding: 14px;
+  }
+  .paper {
+    padding: 24px 20px;
+  }
+  .dialogue {
+    margin-left: 10px;
+  }
+  .batchStatus,
+  .resultFooter {
+    padding: 10px 16px;
+  }
+}
