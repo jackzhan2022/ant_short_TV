@@ -8,6 +8,7 @@ import com.qcloud.cos.http.HttpMethodName;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.CopyObjectRequest;
 import com.qcloud.cos.model.GeneratePresignedUrlRequest;
+import com.qcloud.cos.model.GetObjectRequest;
 import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
@@ -225,6 +226,18 @@ public class ObjectStorageService {
         }
     }
 
+    public Resource rangeResource(String storagePath, long start, long end) {
+        if (start < 0 || end < start) throw new IllegalArgumentException("对象字节范围不合法。");
+        try {
+            GetObjectRequest request = new GetObjectRequest(properties.getBucket(), keys.objectKey(storagePath));
+            request.setRange(start, end);
+            COSObject object = metrics.record("GET_OBJECT", "download_range", end - start + 1,
+                () -> cos.getObject(request));
+            return new InputStreamResource(object.getObjectContent());
+        } catch (Exception exception) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "对象文件不存在。");
+        }
+    }
     public void delete(String storagePath) {
         if (storagePath == null || storagePath.isBlank()) {
             return;

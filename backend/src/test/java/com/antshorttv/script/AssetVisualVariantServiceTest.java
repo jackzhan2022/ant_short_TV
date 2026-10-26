@@ -64,6 +64,60 @@ class AssetVisualVariantServiceTest {
             });
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,false", "false,false", "true,true", "false,true"})
+    void deletingCharacterLookReplacesActiveBindingsAndPromptMentionsWithPrimary(boolean primaryReady, boolean historical) throws Exception {
+        var primary = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand("默认形象", null, null, "MANUAL",
+                primaryReady ? "COMPLETED" : "NOT_STARTED", null, primaryReady ? "/default.png" : null, true));
+        var costume = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand("晚宴礼服", null, null, "MANUAL", "COMPLETED", null, "/dress.png", false));
+        service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand("其他可用服装", null, null, "MANUAL", "COMPLETED", null, "/other.png", false));
+        String document = """
+            {"version":2,"nodes":[{"type":"text","text":"保留原台词"},
+            {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT",
+             "sourceId":%d,"variantId":%d,"assetType":"CHARACTER","assetId":9910,"displayName":"林夏·晚宴礼服"}]}
+            """.formatted(costume.id(), costume.id());
+        jdbc.update("insert into storyboard (id,tenant_id,project_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at,prompt_document_json) values (99901,9901,9902,1,1,'shot','DRAFT',9999,now(),now(),?)", document);
+        jdbc.update("insert into storyboard (id,tenant_id,project_id,episode_no,shot_no,visual_description,status,created_by,created_at,updated_at,prompt_document_json) values (99902,9903,9904,1,1,'other project','DRAFT',9999,now(),now(),?)", document);
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,sort_order,
+               resolution_status,source_type,source_name,locked_by_user,created_by,created_at,updated_at)
+            values (9901,9902,99901,'CHARACTER',9910,?,'VISIBLE',0,'RESOLVED','MANUAL','林夏',true,9999,now(),now())
+            """, costume.id());
+        if (!historical) jdbc.update("update character_asset set main_image_url='/dress.png',main_image_result_id=null where id=9910");
+        if (historical) {
+            jdbc.update("update asset_visual_variant set deleted_at=now() where id=?", costume.id());
+            CharacterVariantReferenceFallback.repairHistorical(jdbc);
+            CharacterVariantReferenceFallback.repairHistorical(jdbc);
+        } else service.delete(9901L, 9902L, costume.id());
+        assertThat(service.selectedVariant(9901L,9902L,"CHARACTER",9910L,costume.id(),
+            new EpisodeAwareVisualResolver.ResolvedVisual(primary.id(),null,null,"PRIMARY"))).extracting(AssetVisualVariantService.VariantResponse::id).isEqualTo(primary.id());
+        assertThat(jdbc.queryForObject("select variant_id from storyboard_asset_reference where storyboard_id=99901", Long.class)).isEqualTo(primary.id());
+        assertThat(jdbc.queryForObject("select resolution_status from storyboard_asset_reference where storyboard_id=99901", String.class))
+            .isEqualTo(primaryReady ? "RESOLVED" : "ASSET_PENDING");
+        var updated = new com.fasterxml.jackson.databind.ObjectMapper().readTree(jdbc.queryForObject("select prompt_document_json from storyboard where id=99901", String.class));
+        assertThat(updated.path("nodes").get(0).path("text").asText()).isEqualTo("保留原台词");
+        assertThat(updated.path("nodes").get(1).path("sourceId").asLong()).isEqualTo(primary.id());
+        assertThat(updated.path("nodes").get(1).path("variantId").asLong()).isEqualTo(primary.id());
+        assertThat(updated.path("nodes").get(1).path("displayName").asText()).contains("默认形象").doesNotContain("晚宴礼服");
+        assertThat(jdbc.queryForObject("select prompt_document_json from storyboard where id=99902", String.class)).isEqualTo(document);
+        if (!historical) assertThat(jdbc.queryForObject("select main_image_url from character_asset where id=9910", String.class))
+            .isEqualTo(primaryReady ? "/default.png" : null);
+    }
+
+    @Test
+    void rejectsCharacterCostumeDeletionWhenNoPrimaryExists() {
+        var costume=service.create(9901L,9902L,"CHARACTER",9910L,9999L,
+            new AssetVisualVariantService.VariantCommand("服装",null,null,"MANUAL","NOT_STARTED",null,null,true));
+        jdbc.update("update asset_visual_variant set is_primary=false where id=?",costume.id());
+        assertThatThrownBy(()->service.delete(9901L,9902L,costume.id())).isInstanceOf(BusinessException.class)
+            .hasMessageContaining("暂无默认形象");
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant where id=? and deleted_at is null",Long.class,costume.id())).isEqualTo(1);
+    }
+
     @Test
     void recordsGenerationSuccessAndFailureIndependentlyFromAssetStatus() {
         var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,

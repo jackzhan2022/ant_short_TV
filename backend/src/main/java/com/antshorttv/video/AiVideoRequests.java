@@ -21,6 +21,7 @@ record CreateAiVideoTaskRequest(
     @Size(max = 64) String cameraMovement,
     @Size(max = 32) String motionStrength,
     Long randomSeed,
-    Boolean textOnly
+    Boolean textOnly,
+    Boolean skipUnavailableImages
 ) {
 }

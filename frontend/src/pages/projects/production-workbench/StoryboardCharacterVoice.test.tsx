@@ -3,6 +3,10 @@ import { expect, it, vi } from 'vitest';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
 import type { StoryboardAssetReference } from './service';
 
+vi.mock('@/pages/asset-library/audio-service', () => ({
+  queryStoryboardCharacterVoice: vi.fn().mockResolvedValue({ success: true, data: { configured: false, source: 'NONE' } }),
+}));
+
 const mocks = vi.hoisted(() => ({ props: vi.fn() }));
 vi.mock('./CharacterVoiceModal', () => ({ default: (props: any) => {
   mocks.props(props);

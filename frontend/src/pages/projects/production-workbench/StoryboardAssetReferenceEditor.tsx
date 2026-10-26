@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Cascader, Empty, Flex, Input, Spin, Tag, Tooltip, Typography } from 'antd';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import { type EffectiveStoryboardVoice, queryStoryboardCharacterVoice } from '@/pages/asset-library/audio-service';
 import { type CSSProperties, lazy, Suspense, useEffect, useState } from 'react';
 import type {
   CharacterAsset,
@@ -86,6 +87,24 @@ export const imageFor = (reference: StoryboardAssetReference, assets: Asset[]) =
     : defaultVariant(asset);
   return variant?.currentImageThumbnailUrl
     || reference.imageThumbnailUrl || asset?.mainImageThumbnailUrl || undefined;
+};
+
+export const originalImageFor = (reference: StoryboardAssetReference, assets: Asset[]) => {
+  const thumbnail = imageFor(reference, assets);
+  if (!thumbnail) return undefined;
+  const originalEndpoint = (url: string) => url.replace(
+    /^(\/api\/projects\/\d+\/ai-image-results\/\d+)\/(?:thumbnail|display|image|file)(?:\?.*)?$/,
+    '$1/download',
+  );
+  const original = originalEndpoint(thumbnail);
+  if (original !== thumbnail) return original;
+  const asset = assets.find((candidate) => candidate.id === reference.assetId);
+  const variant = reference.variantId != null
+    ? variantsFor(assets, reference.assetId).find((candidate) => candidate.id === reference.variantId)
+    : defaultVariant(asset);
+  const source = variant?.currentImageThumbnailUrl === thumbnail ? variant.currentImageUrl
+    : reference.imageThumbnailUrl === thumbnail ? reference.imageUrl : undefined;
+  return originalEndpoint(source || thumbnail);
 };
 
 export const referenceReady = (
@@ -165,6 +184,9 @@ export const sortableIdFor = (
 function SortableAssetCard({
   id,
   storyboardNo,
+  projectId,
+  storyboardId,
+  voiceRevision,
   assetType,
   rowIndex,
   reference,
@@ -179,6 +201,9 @@ function SortableAssetCard({
 }: {
   id: string;
   storyboardNo: number;
+  projectId?: number;
+  storyboardId: number;
+  voiceRevision: number;
   assetType: AssetType;
   rowIndex: number;
   reference: StoryboardAssetReference;
@@ -195,6 +220,23 @@ function SortableAssetCard({
   ) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const voiceKey = `${projectId}:${storyboardId}:${reference.assetId}:${reference.variantId ?? 'default'}:${reference.id ?? 'draft'}:${voiceRevision}`;
+  const [voice, setVoice] = useState<{ key: string; data?: EffectiveStoryboardVoice; failed?: boolean }>();
+  useEffect(() => {
+    if (assetType !== 'CHARACTER' || !projectId || !reference.assetId) return;
+    const controller = new AbortController();
+    void queryStoryboardCharacterVoice(
+      projectId, reference.assetId, { id: storyboardId, variantId: reference.variantId }, controller.signal,
+    ).then((response) => {
+      if (controller.signal.aborted) return;
+      if (!response.success) throw new Error(response.errorMessage);
+      setVoice({ key: voiceKey, data: response.data });
+    }).catch(() => {
+      if (!controller.signal.aborted) setVoice({ key: voiceKey, failed: true });
+    });
+    return () => controller.abort();
+  }, [assetType, projectId, storyboardId, reference.assetId, reference.variantId, voiceKey]);
+  const effectiveVoice = voice?.key === voiceKey ? voice : undefined;
   const [search, setSearch] = useState('');
   const [loadingAssetId, setLoadingAssetId] = useState<number>();
   const loadVariants = async (assetId: number, variantId?: number | null, current = 1) => {
@@ -263,7 +305,7 @@ function SortableAssetCard({
             alt={`${reference.assetName || reference.sourceName || labels[assetType]}参考图`}
             width="100%"
             height="100%"
-            preview={false}
+            preview={{ src: originalImageFor(reference, assets) }}
           />
         ) : <PictureOutlined />}
         {!isResolved ? (
@@ -397,7 +439,8 @@ function SortableAssetCard({
             sourceName: reference.sourceName || asset?.name,
             variantId: variant?.id || null,
             variantName: variant?.name,
-            imageUrl: variant?.currentImageThumbnailUrl,
+            imageUrl: variant?.currentImageUrl,
+            imageThumbnailUrl: variant?.currentImageThumbnailUrl,
             resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
             sourceType: 'MANUAL',
             lockedByUser: true,
@@ -420,6 +463,19 @@ function SortableAssetCard({
             加载更多{labels[assetType]}形态
           </Button>
         ) : null}
+      {assetType === 'CHARACTER' && projectId && reference.assetId ? (
+        <div aria-live="polite" style={{ marginTop: 6, minWidth: 0 }}>
+          <Typography.Text style={{ display: 'block', fontSize: 12 }} ellipsis={{ tooltip: effectiveVoice?.data?.audio?.name }}>
+            {effectiveVoice?.failed ? '音色加载失败'
+              : !effectiveVoice?.data ? '音色加载中…'
+              : effectiveVoice.data.audio?.name || '未配置音色'}
+          </Typography.Text>
+          {effectiveVoice?.data?.audio ? <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}
+            ellipsis={{ tooltip: effectiveVoice.data.audio.sourceProjectName }}>
+            {effectiveVoice.data.overridden ? '当前分镜形态覆盖' : '角色默认音色'} · {effectiveVoice.data.audio.sourceProjectName}
+          </Typography.Text> : null}
+        </div>
+      ) : null}
       {assetType === 'CHARACTER' && onConfigureVoice ? <Button size="small" icon={<AudioOutlined />}
         disabled={!reference.assetId} aria-label={`分镜${storyboardNo}${reference.assetName || reference.sourceName || '角色'}${reference.variantName ? ` ${reference.variantName}` : ''}配置音色`}
         onClick={() => onConfigureVoice(reference)}>配置音色</Button> : null}
@@ -458,6 +514,7 @@ export default function StoryboardAssetReferenceEditor({
   ) => Promise<void>;
 }) {
   const [voiceTarget, setVoiceTarget] = useState<StoryboardAssetReference>();
+  const [voiceRevision, setVoiceRevision] = useState(0);
   useEffect(() => { setVoiceTarget(undefined); }, [projectId, storyboardId]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -490,7 +547,8 @@ export default function StoryboardAssetReferenceEditor({
       assetName: asset.name,
       variantId: variant?.id,
       variantName: variant?.name,
-      imageUrl: variant?.currentImageThumbnailUrl,
+      imageUrl: variant?.currentImageUrl,
+      imageThumbnailUrl: variant?.currentImageThumbnailUrl,
       referenceRole: assetType === 'SCENE' ? 'MAIN' : 'VISIBLE',
       sortOrder: 0,
       resolutionStatus: variant?.usable ? 'RESOLVED' : 'ASSET_PENDING',
@@ -544,6 +602,9 @@ export default function StoryboardAssetReferenceEditor({
                         key={sortableIds[rowIndex]}
                         id={sortableIds[rowIndex]}
                         storyboardNo={storyboardNo}
+                        projectId={projectId}
+                        storyboardId={storyboardId}
+                        voiceRevision={voiceRevision}
                         assetType={assetType}
                         rowIndex={rowIndex}
                         reference={reference}
@@ -573,7 +634,8 @@ export default function StoryboardAssetReferenceEditor({
         <CharacterVoiceModal projectId={projectId} characterId={voiceTarget.assetId}
           characterName={voiceTarget.assetName || voiceTarget.sourceName || '角色'}
           storyboard={{ id: storyboardId, variantId: voiceTarget.variantId, variantName: voiceTarget.variantName }}
-          onClose={() => setVoiceTarget(undefined)} onSaved={() => setVoiceTarget(undefined)} />
+          onClose={() => setVoiceTarget(undefined)} onSaved={() => setVoiceTarget(undefined)}
+          onChanged={() => setVoiceRevision((revision) => revision + 1)} />
       </Suspense> : null}
     </div>
   );

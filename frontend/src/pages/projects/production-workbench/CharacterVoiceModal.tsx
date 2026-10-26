@@ -36,6 +36,7 @@ type Props = {
   disabled?: boolean;
   onClose: () => void;
   onSaved: (audio: AudioReference) => void;
+  onChanged?: () => void;
 };
 const folders = [
   { key: 'REFERENCE', label: '参考音频' },
@@ -64,6 +65,7 @@ function VoicePicker({
   disabled,
   onClose,
   onSaved,
+  onChanged,
 }: Props) {
   const { message } = App.useApp();
   const [source, setSource] = useState<'library' | 'upload'>('library');
@@ -263,6 +265,7 @@ function VoicePicker({
         throw new Error(response.errorMessage || '音色配置失败');
       if (active.current && response.data) {
         message.success('角色音色已配置');
+        onChanged?.();
         onSaved(response.data);
       }
     } catch (error) {
@@ -298,6 +301,7 @@ function VoicePicker({
         setSelected(undefined);
         setFile(undefined);
         message.success('已恢复角色默认音色');
+        onChanged?.();
       }
     } catch (error) {
       if (active.current)

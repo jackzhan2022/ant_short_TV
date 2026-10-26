@@ -1,0 +1,91 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+const require=createRequire(import.meta.url);
+const root=resolve(import.meta.dirname,'..');
+const runtime=join(homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules');
+const {chromium}=require(join(runtime,'playwright'));
+const cache=join(homedir(),'AppData/Local/ms-playwright');
+const version=(await readdir(cache)).filter(x=>/^chromium-\d+$/.test(x)).sort().at(-1);
+const output=join(root,'outputs/asset-variant-rename');await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:join(cache,version,'chrome-win64/chrome.exe')});
+const context=await browser.newContext({viewport:{width:1440,height:1000}});
+await context.addInitScript(()=>localStorage.setItem('currentTenantId','1'));
+const page=await context.newPage();page.setDefaultTimeout(20000);
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const permissions=['PROJECT:CREATE','PROJECT:VIEW','ELEMENT:VIEW','ELEMENT:EDIT','STORYBOARD:VIEW','STORYBOARD:EDIT','AI_SERVICE:USE','AI_IMAGE_TASK:VIEW'];
+const tenant={id:1,code:'QA',name:'验收团队',type:'STUDIO',status:'ACTIVE',memberType:'OWNER',memberId:1};
+const bootstrap={user:{id:1,nickname:'验收',status:'ACTIVE'},session:{sessionId:'qa',expiresAt:'2099-01-01T00:00:00Z'},platform:{roles:[],permissions:[]},tenants:[tenant],selectedTenant:{tenant,membership:{id:1,memberType:'OWNER',status:'ACTIVE'},roles:[],permissions},nextAction:'ENTER_WORKSPACE'};
+const project={id:1,tenantId:1,name:'名称编辑验收',status:'IN_PROGRESS',aspectRatio:'9:16',effectivePermissions:permissions,capabilities:{canView:true,canEdit:true}};
+const calls=[];
+const primary={id:11,assetType:'CHARACTER',assetId:1,name:'默认形象',primary:true,usable:true,generationStatus:'COMPLETED',prompt:'保留的默认提示词',currentImageUrl:'/qa/primary.png',currentImageThumbnailUrl:'/qa/primary.png'};
+const costume={...primary,id:12,name:'晚宴礼服',primary:false,prompt:'保留的形态提示词',currentImageUrl:'/qa/costume.png',currentImageThumbnailUrl:'/qa/costume.png'};
+const visual=(selected=11)=>({variantCount:2,total:2,current:1,pageSize:20,primaryVariant:primary,selectedVariant:selected===12?costume:primary,variants:[primary,costume],generationSummary:{COMPLETED:2},episodeBindings:[],resolvedImageUrl:primary.currentImageUrl,resolvedImageSource:'PRIMARY_VARIANT'});
+const character={id:1,name:'林夏',roleType:'LEAD',status:'CONFIRMED',appearance:'人物默认形象',prompt:'人物设定',mainImageThumbnailUrl:primary.currentImageUrl};
+const scene={id:2,name:'客厅',status:'CONFIRMED',prompt:'保留场景提示词',mainImageThumbnailUrl:primary.currentImageUrl};
+const prop={id:3,name:'项链',status:'CONFIRMED',prompt:'保留道具提示词',mainImageThumbnailUrl:costume.currentImageUrl};
+const reply=(route,data)=>route.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
+await context.route('**/qa/**',async route=>route.fulfill({contentType:'image/png',body:await readFile(join(root,'.temp/video-frame-browser',route.request().url().includes('primary')?'capture-1.png':'capture-2.png'))}));
+await context.route('**/api/**',async route=>{
+ const url=new URL(route.request().url());const path=url.pathname;
+ if(path==='/api/auth/bootstrap')return reply(route,bootstrap);
+ if(path.endsWith('/metadata')||path==='/api/projects/1')return reply(route,project);
+ if(path.endsWith('/asset-settings-summary'))return reply(route,{projectId:1,characters:[{...character,visual:visual()}],scenes:[scene],props:[prop]});
+ if(path.endsWith('/asset-normalization'))return reply(route,{status:'READY',blocked:false});
+ if(path.endsWith('/visual-workspace'))return reply(route,visual(Number(url.searchParams.get('selectedVariantId'))||11));
+ if(path.endsWith('/name')&&route.request().method()==='PUT'){
+   const data=route.request().postDataJSON();assert.deepEqual(Object.keys(data),['name']);calls.push({path,data});
+   const target=path.includes('/visual-variants/12/')?costume:path.includes('/visual-variants/11/')?primary:path.includes('/CHARACTER/')?character:path.includes('/SCENE/')?scene:prop;
+   target.name=data.name;return reply(route,null);
+ }
+ if(path.endsWith('/ai/models'))return reply(route,{imageModels:[],videoModels:[],audioModels:[],textModels:[]});
+ if(path.endsWith('/ai/config'))return reply(route,{});
+ if(path.endsWith('/points/account'))return reply(route,{balance:1000});
+ return reply(route,[]);
+});
+const openRename=async(scope,label,oldName)=>{
+ const button=scope.getByRole('button',{name:`修改${label}名称：${oldName}`,exact:true});
+ await button.locator('..').hover();await button.click();
+ const modal=page.getByRole('dialog',{name:`修改${label}名称`,exact:true});await modal.waitFor();
+ await page.waitForFunction(el=>document.activeElement===el,await modal.getByRole('textbox').elementHandle());
+ return modal;
+};
+const save=async(modal,name)=>{await modal.getByRole('textbox').fill(name);await modal.getByRole('button',{name:/^保\s*存$/}).click();await modal.waitFor({state:'hidden'});};
+try {
+ await page.goto('http://localhost:8000/projects/1/production-workbench/settings',{waitUntil:'domcontentloaded',timeout:90000});
+ const left=page.getByRole('button',{name:'修改角色名称：林夏',exact:true});await left.waitFor();
+ assert.equal(await left.evaluate(el=>getComputedStyle(el).opacity),'0');
+ await left.focus();await page.waitForFunction(el=>getComputedStyle(el).opacity==='1',await left.elementHandle());
+ await left.evaluate(el=>el.blur());await left.locator('..').hover();await page.waitForFunction(el=>getComputedStyle(el).opacity==='1',await left.elementHandle());
+ await page.screenshot({path:join(output,'hover-card.png')});
+ let modal=await openRename(page,'角色','林夏');await modal.getByRole('textbox').fill('取消名');
+ await modal.getByRole('button',{name:/^取\s*消$/}).click();await modal.waitFor({state:'hidden'});assert.equal(calls.length,0);
+ modal=await openRename(page,'角色','林夏');await modal.getByRole('textbox').fill('  ');await modal.getByRole('button',{name:/^保\s*存$/}).click();
+ await modal.getByRole('alert').waitFor();assert.equal(calls.length,0);await save(modal,'林夏新');
+ await page.getByRole('button',{name:'查看林夏新视觉形象',exact:true}).click();
+ await page.getByRole('button',{name:'选择晚宴礼服',exact:true}).click();
+ const gallery=page.getByRole('region',{name:'视觉形象画廊'});
+ modal=await openRename(gallery,'形态','晚宴礼服');await modal.screenshot({path:join(output,'rename-dialog.png'),animations:'disabled'});await save(modal,'冬日礼服');
+ assert.equal(await page.getByRole('button',{name:'选择冬日礼服',exact:true}).getAttribute('aria-pressed'),'true');
+ modal=await openRename(gallery,'角色','林夏新');await save(modal,'林夏定名');
+ await page.getByRole('button',{name:'查看林夏定名视觉形象',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'选择冬日礼服',exact:true}).getAttribute('aria-pressed'),'true');
+ const variantEdit=gallery.getByRole('button',{name:'修改形态名称：冬日礼服',exact:true});
+ await variantEdit.locator('..').hover();
+ await page.waitForFunction(el=>getComputedStyle(el).opacity==='1',await variantEdit.elementHandle());
+ await page.waitForFunction(()=>document.querySelectorAll('.ant-message-notice').length===0);
+ await page.screenshot({path:join(output,'renamed-gallery.png')});
+ await page.getByRole('button',{name:'选择默认形象',exact:true}).click();modal=await openRename(gallery,'形态','默认形象');await save(modal,'初始造型');
+ for(const [label,oldName,newName] of [['场景','客厅','夜间客厅'],['道具','项链','珍珠项链']]){
+   await page.getByRole('tab',{name:new RegExp(label)}).click();modal=await openRename(page,label,oldName);await save(modal,newName);
+   await page.getByRole('button',{name:`查看${newName}视觉形象`,exact:true}).waitFor();
+ }
+ await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('tab',{name:/角色/}).click();
+ await page.getByRole('button',{name:'查看林夏定名视觉形象',exact:true}).click();
+ await page.getByRole('button',{name:'选择冬日礼服',exact:true}).waitFor();
+ assert.equal(costume.prompt,'保留的形态提示词');assert.equal(character.prompt,'人物设定');assert.equal(calls.length,6);assert.deepEqual(errors,[]);
+ await writeFile(join(output,'evidence.json'),JSON.stringify({calls,errors,checks:['hover and keyboard focus reveal edit button','cancel makes no request','empty name rejected','asset and variant independently renamed','default variant rename','scene and prop rename','selection retained','reload retains names','name-only payloads','no browser errors']},null,2));
+ console.log('PASS',output);
+} finally {await browser.close();}

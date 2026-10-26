@@ -12,6 +12,9 @@ import com.antshorttv.video.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class FreeCreationServiceTest {
@@ -40,6 +43,38 @@ class FreeCreationServiceTest {
             assertThat(estimate.usage()).isEqualTo(submission.usage());
             assertThat(estimate.dimensions()).isEqualTo(submission.dimensions());
         }
+    }
+    @ParameterizedTest
+    @CsvSource({
+        "1,10,true,true,FAILED",
+        "2,10,true,false,FAILED",
+        "1,11,true,false,FAILED",
+        "1,10,false,false,FAILED",
+        "1,10,true,false,SUCCEEDED"
+    })
+    void historicalErrorsUseOnlyRecognizedLogsFromTheSameTenantAndExecution(
+        long logTenant,long logExecution,boolean knownError,boolean expectedPrivacy,String status) {
+        var jdbc=new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:free-error-"+java.util.UUID.randomUUID()+";DB_CLOSE_DELAY=-1","sa",""));
+        jdbc.execute("create table app_user (id bigint primary key, nickname varchar(100))");
+        jdbc.execute("create table ai_call_log (id bigint primary key, tenant_id bigint, execution_id bigint, error_message varchar(1000))");
+        jdbc.update("insert into app_user values (2,'创作者')");
+        String raw=knownError?"VALIDATION_ERROR InputImageSensitiveContentDetected.PrivacyInformation: may contain real person. Request id: private":"Unknown error https://private.example Authorization: secret";
+        jdbc.update("insert into ai_call_log values (7,?,?,?)",logTenant,logExecution,raw);
+        var executions=mock(AiExecutionService.class);
+        var task=new com.antshorttv.execution.AiExecutionTaskEntity();task.id=10L;task.status=status;
+        task.errorMessage="生成服务暂时不可用，请稍后重试。";
+        when(executions.requireTask(10L)).thenReturn(task);
+        var item=new FreeCreationEntity();item.id=3L;item.tenantId=1L;item.creatorId=2L;item.executionId=10L;item.billingCallLogId=7L;
+        var service=new FreeCreationService(mock(FreeCreationMapper.class),mock(FreeCreationMediaMapper.class),mock(FreeCreationMediaService.class),
+            mock(TenantContextResolver.class),mock(AiModelRouter.class),executions,
+            mock(AiVideoTaskService.class),mock(SeedanceVideoRequestValidator.class),mock(ObjectStorageService.class),
+            new ObjectMapper(),jdbc,mock(jakarta.validation.Validator.class));
+        var result=service.present(new TenantContext(2L,1L,3L,"OWNER"),item);
+        if("SUCCEEDED".equals(status)) assertThat(result.get("errorMessage")).isNull();
+        else assertThat(result.get("errorMessage")).isEqualTo(expectedPrivacy
+            ?"参考图片未通过模型服务商审核，可能涉及真人形象，请更换符合该模型要求的参考图片后重试。"
+            :"生成服务暂时不可用，请稍后重试。");
+        jdbc.execute("shutdown");
     }
 
     @Test void pricingUsesTheSelectedModelsQualityAndRejectsUnsupportedHigherQuality() throws Exception {

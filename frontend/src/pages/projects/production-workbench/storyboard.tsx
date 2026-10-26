@@ -50,7 +50,9 @@ import {
 } from '@/services/point-estimate';
 import { readStoryboardTarget, STORYBOARD_PAGE_SIZE } from './video-workbench-state';
 import './storyboard.css';
-import ClickToPlayVideo from '@/components/ClickToPlayVideo';
+import ClickToPlayVideo, { stopActiveVideo } from '@/components/ClickToPlayVideo';
+import VideoFrameCaptureModal from './VideoFrameCaptureModal';
+import StoryboardVideoTools from './StoryboardVideoTools';
 import LazyMediaImage from '@/components/LazyMediaImage';
 import AssetVariantGenerationModal, {
   type AssetVariantGenerationValues,
@@ -61,6 +63,7 @@ import {
   queryProjectAiModels,
 } from './ai-config/service';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
+import { useStoryboardVideoSettings, type VideoGenerationSettings, type VideoSettingsSaveStatus } from './useStoryboardVideoSettings';
 import StoryboardPromptReferencePicker from './StoryboardPromptReferencePicker';
 import BatchVideoGenerationModal from './BatchVideoGenerationModal';
 import StoryboardVideoStrip from './StoryboardVideoStrip';
@@ -142,12 +145,6 @@ type VideoSubmission = {
   storyboard: StoryboardShot;
   promptDocument: StoryboardPromptDocument;
   values: CreateAiVideoTaskValues;
-};
-type VideoGenerationSettings = {
-  durationSeconds: number;
-  resolution: string;
-  generateAudio: boolean;
-  watermark: boolean;
 };
 type VoiceGenerationValues = {
   voiceType: string;
@@ -705,7 +702,7 @@ const getStoryboardVideo = (
     task?.results?.find((item) => item.id === storyboard.currentVideoResultId)
     || task?.results?.find((item) => item.isSelected) || task?.results?.[0];
   return {
-    resultId: result?.id,
+    resultId: result?.id || (storyboard.currentVideoUrl ? storyboard.currentVideoResultId || undefined : undefined),
     selected: Boolean(result?.isSelected || result?.id === storyboard.currentVideoResultId),
     coverUrl: result?.coverUrl || storyboard.firstFrameThumbnailUrl || undefined,
     videoUrl:
@@ -785,6 +782,8 @@ const PreviewPoster = ({ src, title }: { src?: string; title: string }) =>
   );
 
 const StoryboardCard = ({
+  canCaptureVideo,
+  onCaptureVideo,
   item,
   projectId,
   videoEstimateOperations,
@@ -802,6 +801,8 @@ const StoryboardCard = ({
   model,
   modelConstraints,
   generationSettings,
+  generationSettingsSaveStatus,
+  onRetryGenerationSettings,
   onDraftChange,
   onGenerationSettingsChange,
   onGenerate,
@@ -827,6 +828,8 @@ const StoryboardCard = ({
   onCopyStoryboard,
   onDelete,
 }: {
+  canCaptureVideo: boolean;
+  onCaptureVideo: (resultId: number, storyboardNo: number) => void;
   item: StoryboardShot;
   projectId: number;
   videoEstimateOperations?: PointEstimateOperation[];
@@ -844,6 +847,8 @@ const StoryboardCard = ({
   model: string;
   modelConstraints?: ProjectModelOption['constraints'];
   generationSettings: VideoGenerationSettings;
+  generationSettingsSaveStatus?: VideoSettingsSaveStatus;
+  onRetryGenerationSettings: () => void;
   onDraftChange: (
     storyboardId: number,
     values: Partial<StoryboardDraft[number]>,
@@ -1505,7 +1510,7 @@ const StoryboardCard = ({
               <Tag color="warning" key={`${omitted.sourceType}-${omitted.sourceId}-${omitted.variantId}-${omitted.reason}`}>
                 已省略 {' '}
                 {omitted.displayName || `${omitted.assetType || '素材'} ${omitted.assetId || ''}`}
-                {omitted.reason ? `：${omitted.reason}` : ''}
+                {omitted.reason ? `：${omitted.reason === 'IMAGE_UNAVAILABLE' ? '参考图片不可用' : omitted.reason}` : ''}
               </Tag>
             ))}
           </Flex>
@@ -1593,6 +1598,14 @@ const StoryboardCard = ({
                 <ThunderboltOutlined /> 生成视频
               </PointEstimateButton>
             </Flex>
+            {generationSettingsSaveStatus ? <Flex aria-label={`分镜${index + 1}参数保存状态`} style={{ marginTop: 4 }}>
+              {generationSettingsSaveStatus === 'error' ? <Button type="link" size="small" danger
+                aria-label={`重试保存分镜${index + 1}视频参数`} onClick={onRetryGenerationSettings}>
+                视频参数保存失败，重试
+              </Button> : <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {generationSettingsSaveStatus === 'saving' ? '正在保存视频参数' : '视频参数已保存'}
+              </Typography.Text>}
+            </Flex> : null}
           </div>
         </section>
 
@@ -1674,6 +1687,10 @@ const StoryboardCard = ({
                 />
               )}
             </div>
+            {previewKey === 'VIDEO' && video.videoUrl && !videoGenerating && !visibleVideoError ? (
+              <StoryboardVideoTools enabled={canCaptureVideo} resultId={video.resultId}
+                onCapture={() => { if (video.resultId) onCaptureVideo(video.resultId, item.storyboardNo || item.shotNo); }} />
+            ) : null}
           </div>
           <StoryboardVideoStrip
             storyboardNo={item.storyboardNo || item.shotNo}
@@ -1896,6 +1913,8 @@ const ProductionWorkbenchStoryboard = () => {
   const navigationTarget = readStoryboardTarget(location.search);
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
+  const [frameCapture, setFrameCapture] = useState<{ resultId: number; storyboardNo: number }>();
+  useEffect(() => setFrameCapture(undefined), [projectId]);
   const { message, modal } = App.useApp();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
@@ -1923,9 +1942,6 @@ const ProductionWorkbenchStoryboard = () => {
   const [configuredImageModelId, setConfiguredImageModelId] = useState<number>();
   const [selectedModelId, setSelectedModelId] = useState<number>();
   const explicitVideoModelSelection = useRef(false);
-  const [videoSettings, setVideoSettings] = useState<
-    Record<number, VideoGenerationSettings>
-  >({});
   const [assetVisuals, setAssetVisuals] = useState<Record<string, AssetVisualWorkspace>>({});
   const [referenceGenerationTarget, setReferenceGenerationTarget] =
     useState<ReferenceGenerationTarget>();
@@ -2010,6 +2026,10 @@ const ProductionWorkbenchStoryboard = () => {
     props: [],
     storyboards: [],
   });
+  const videoSettings = useStoryboardVideoSettings(projectId, (storyboardId, settings) => {
+    setWorkspace((previous) => ({ ...previous, storyboards: previous.storyboards.map((item) =>
+      item.id === storyboardId ? { ...item, videoGenerationSettings: settings } : item) }));
+  }, () => message.error('视频参数保存失败，请重试'));
   const mediaAbort = useRef<AbortController | undefined>(undefined);
   const mediaScopeKey = workspace.storyboards.map((item) => item.id).join(',');
   const currentMediaScope = useRef('');
@@ -2472,7 +2492,7 @@ const ProductionWorkbenchStoryboard = () => {
     (model) => model.id === selectedModelId,
   );
   const settingsFor = (storyboard: StoryboardShot): VideoGenerationSettings =>
-    videoSettings[storyboard.id] || {
+    videoSettings.latest(storyboard.id) || storyboard.videoGenerationSettings || {
       durationSeconds: normalizeVideoDuration(
         storyboard.durationSeconds,
         selectedVideoModel?.constraints,
@@ -2487,29 +2507,18 @@ const ProductionWorkbenchStoryboard = () => {
     const nextModel = videoModels.find((model) => model.id === nextId);
     const supported = nextModel?.constraints?.resolutions || ['720p'];
     let fellBack = false;
-    const nextSettings = Object.fromEntries(
-      workspace.storyboards.map((storyboard) => {
-        const current = videoSettings[storyboard.id] || settingsFor(storyboard);
-        const resolution = supported.includes(current.resolution)
-          ? current.resolution
-          : '720p';
-        if (resolution !== current.resolution) fellBack = true;
-        return [
-          storyboard.id,
-          {
-            ...current,
-            resolution,
-            durationSeconds: normalizeVideoDuration(
-              current.durationSeconds,
-              nextModel?.constraints,
-            ),
-          },
-        ];
-      }),
-    );
+    for (const storyboard of workspace.storyboards) {
+      const current = settingsFor(storyboard);
+      const resolution = supported.includes(current.resolution) ? current.resolution
+        : supported.includes('720p') ? '720p' : supported[0] || '720p';
+      const durationSeconds = normalizeVideoDuration(current.durationSeconds, nextModel?.constraints);
+      if (resolution !== current.resolution) fellBack = true;
+      if (resolution !== current.resolution || durationSeconds !== current.durationSeconds) {
+        videoSettings.save(storyboard.id, { ...current, resolution, durationSeconds });
+      }
+    }
     setSelectedModelId(nextId);
-    setVideoSettings(nextSettings);
-    if (fellBack) message.warning('所选模型不支持当前分辨率，已切换为 720p');
+    if (fellBack) message.warning('所选模型不支持当前分辨率，已切换为支持的分辨率');
   };
   const episodeNumbers = useMemo(() => {
     const fromEpisodes = (workspace.episodes || []).map(
@@ -3037,12 +3046,13 @@ const ProductionWorkbenchStoryboard = () => {
       const missingIds = new Set(missingVideoReferences(submissions).map(({ storyboard }) => storyboard.id));
       return submissions.map(({ storyboard, values, promptDocument }) => ({
         url: `/api/projects/${projectId}/ai-video-tasks`,
-        data: { ...values, promptDocument, ...(missingIds.has(storyboard.id) ? { firstFrameUrl: undefined, textOnly: true } : {}) },
+        data: { ...values, promptDocument, ...(missingIds.has(storyboard.id) ? { skipUnavailableImages: true } : {}) },
       }));
     } catch { return undefined; }
   };
 
   const prepareVideoSubmissions = async (storyboards: StoryboardShot[]): Promise<VideoSubmission[]> => {
+    await videoSettings.wait(storyboards.map((item) => item.id));
     const submissions = storyboards.map((storyboard) => {
       const promptDocument = promptFor(storyboard);
       return { storyboard, promptDocument, values: videoTaskValues(storyboard, promptDocument) };
@@ -3057,18 +3067,18 @@ const ProductionWorkbenchStoryboard = () => {
           <ul>{missing.map(({ storyboard, names }) => <li key={storyboard.id}>
             分镜{storyboard.storyboardNo || storyboard.shotNo}：{names.join('、')}
           </li>)}</ul>
-          <p>继续后，这些分镜将仅根据文字提示词生成视频，本次不使用参考素材。人物和场景的外观可能变化，原有素材绑定会保留。</p>
+          <p>继续后，仅跳过上述不可用图片，其余有效参考素材继续使用。缺图素材将按名称和文字描述参与生成，外观可能变化；原有素材绑定会保留。若没有可用参考素材，将按文字提示词生成。</p>
         </>,
-        okText: '继续纯文生视频',
+        okText: '跳过缺图继续生成',
         cancelText: '返回检查素材',
         onOk: () => resolve(true),
         onCancel: () => resolve(false),
       });
     });
     if (!confirmed) throw new PointEstimateCancelledError();
-    const textOnlyIds = new Set(missing.map(({ storyboard }) => storyboard.id));
-    return submissions.map((submission) => textOnlyIds.has(submission.storyboard.id)
-      ? { ...submission, values: { ...submission.values, firstFrameUrl: undefined, textOnly: true } }
+    const skipMissingIds = new Set(missing.map(({ storyboard }) => storyboard.id));
+    return submissions.map((submission) => skipMissingIds.has(submission.storyboard.id)
+      ? { ...submission, values: { ...submission.values, skipUnavailableImages: true } }
       : submission);
   };
 
@@ -3911,6 +3921,8 @@ const ProductionWorkbenchStoryboard = () => {
               ) : null}
           </Flex>
         ) : null}
+        {frameCapture ? <VideoFrameCaptureModal key={`${projectId}:${frameCapture.resultId}`} projectId={projectId}
+          resultId={frameCapture.resultId} storyboardNo={frameCapture.storyboardNo} onClose={() => setFrameCapture(undefined)} /> : null}
         <BatchVideoGenerationModal
           operations={previewVideoOperations(batchVideoOptions.filter((item) => !item.disabledReason && videoBatchSelectedIds.includes(item.storyboard.id)).map((item) => item.storyboard))}
           open={videoBatchOpen}
@@ -4036,6 +4048,8 @@ const ProductionWorkbenchStoryboard = () => {
                 eager={index < 2 || item.id === navigationTarget.storyboardId || item.id === activeStoryboardId}
               >
                 <StoryboardCard
+                  canCaptureVideo={project?.capabilities?.canEdit === true}
+                  onCaptureVideo={(resultId, storyboardNo) => { stopActiveVideo(); setFrameCapture({ resultId, storyboardNo }); }}
                   projectId={projectId}
                   videoEstimateOperations={previewVideoOperations([item])}
                   item={item}
@@ -4062,12 +4076,9 @@ const ProductionWorkbenchStoryboard = () => {
                   modelConstraints={selectedVideoModel?.constraints}
                   generationSettings={settingsFor(item)}
                   onDraftChange={updateDraft}
-                  onGenerationSettingsChange={(values) =>
-                    setVideoSettings((previous) => ({
-                      ...previous,
-                      [item.id]: { ...settingsFor(item), ...values },
-                    }))
-                  }
+                  onGenerationSettingsChange={(values) => videoSettings.save(item.id, { ...settingsFor(item), ...values })}
+                  generationSettingsSaveStatus={videoSettings.status[item.id]}
+                  onRetryGenerationSettings={() => videoSettings.retry(item.id)}
                   onGenerate={generateVideo}
                   onBindVideoResult={bindVideoResult}
                   bindingVideoId={bindingVideoId}

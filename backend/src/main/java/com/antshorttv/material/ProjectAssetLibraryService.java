@@ -37,7 +37,7 @@ public class ProjectAssetLibraryService {
         Integer episodeNo, String keyword, Integer current, Integer pageSize) {
         if (!Set.of("IMAGE", "VIDEO", "AUDIO").contains(mediaType)
             || category != null && !("AUDIO".equals(mediaType) ? Set.of("ALL", "REFERENCE", "GENERATED")
-                : Set.of("ALL", "CHARACTER", "SCENE", "PROP", "OTHER")).contains(category))
+                : Set.of("ALL", "CHARACTER", "SCENE", "PROP", "OTHER", "VIDEO_FRAME")).contains(category))
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "资产类型不正确。");
         var context = access.requireView(tenantId, projectId);
         Set<String> codes = context.effectivePermissions();
@@ -127,11 +127,16 @@ public class ProjectAssetLibraryService {
     private String imageQuery() {
         return """
             select r.id, 'AI_IMAGE_RESULT' as resource_type,
-                   case when r.target_type='VISUAL_VARIANT' then v.asset_type
+                   case when r.target_type='VIDEO_FRAME' then 'VIDEO_FRAME'
+                        when r.target_type='VISUAL_VARIANT' then v.asset_type
                         when r.target_type in ('CHARACTER','SCENE','PROP') then r.target_type else 'OTHER' end as category,
-                   coalesce(c.name,sc.name,p.name,concat('分镜 ',s.shot_no)) as asset_name,
+                   case when r.target_type='VIDEO_FRAME' then concat('EP',s.episode_no,' · 分镜 ',s.shot_no,
+                        ' · 视频版本 #',f.source_video_result_id,' · ',f.frame_time_seconds,'s')
+                        when r.target_type='VIDEO_COVER' then concat('EP',s.episode_no,' · 镜头 ',s.shot_no,' · 视频封面 ',r.target_id)
+                        else coalesce(c.name,sc.name,p.name,concat('分镜 ',s.shot_no)) end as asset_name,
                    coalesce(v.name,'') as variant_name,
-                   case when r.task_id is null then '本地上传' else '项目生成' end as source_type,
+                   case when r.target_type in ('VIDEO_FRAME','VIDEO_COVER') then '视频截帧'
+                        when r.task_id is null then '本地上传' else '项目生成' end as source_type,
                    case when v.current_image_result_id=r.id or c.main_image_result_id=r.id
                          or sc.main_image_result_id=r.id or p.main_image_result_id=r.id or s.first_frame_result_id=r.id
                         then true else false end as current_image,
@@ -149,7 +154,13 @@ public class ProjectAssetLibraryService {
               left join prop_asset p on p.id=case when r.target_type='PROP' then r.target_id
                     when v.asset_type='PROP' then v.asset_id else null end
                    and p.tenant_id=r.tenant_id and p.project_id=r.project_id and p.deleted_at is null
-              left join storyboard s on r.target_type='STORYBOARD' and s.id=r.target_id
+              left join video_frame_capture f on r.target_type='VIDEO_FRAME' and f.image_result_id=r.id
+                   and f.tenant_id=r.tenant_id and f.project_id=r.project_id
+              left join ai_video_task cover_task on r.target_type='VIDEO_COVER' and cover_task.id=r.target_id
+                   and cover_task.tenant_id=r.tenant_id and cover_task.project_id=r.project_id and cover_task.deleted_at is null
+              left join storyboard s on s.id=case when r.target_type='STORYBOARD' then r.target_id
+                   when r.target_type='VIDEO_FRAME' then f.storyboard_id
+                   when r.target_type='VIDEO_COVER' then cover_task.storyboard_id else null end
                    and s.tenant_id=r.tenant_id and s.project_id=r.project_id and s.deleted_at is null
              where r.tenant_id=? and r.project_id=? and r.status='ACTIVE'
                and r.display_path is not null and r.display_path<>''

@@ -19,7 +19,6 @@ import {
   Input,
   Modal,
   Pagination,
-  Popconfirm,
   Radio,
   Skeleton,
   Spin,
@@ -36,6 +35,8 @@ import {
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import AssetImagePlaceholder from './AssetImagePlaceholder';
+import AssetNameEditor from './AssetNameEditor';
+import ManualAssetCreate from './ManualAssetCreate';
 import AssetLocalImageUpload from './AssetLocalImageUpload';
 import AssetNormalizationPanel from './AssetNormalizationPanel';
 import AssetVisualPromptEditor from './AssetVisualPromptEditor';
@@ -76,6 +77,8 @@ import {
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
   retryAssetImageBatch,
+  renameScriptElement,
+  renameVisualVariant,
   type SceneAsset,
   type ScriptElementType,
   selectPrimaryVisualVariant,
@@ -221,22 +224,26 @@ const AssetCard = ({
   type,
   onDelete,
   onSave,
+  onRename,
   onManageVisual,
   onConfigureVoice,
   selected,
   visualActive,
   readOnly,
+  renameDisabled,
   onSelectedChange,
 }: {
   item: AssetRecord;
   type: ElementType;
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
+  onRename: (type: ElementType, assetId: number, name: string) => Promise<void>;
   onManageVisual: (type: ElementType, item: AssetRecord) => void;
   onConfigureVoice: (item: CharacterAsset) => void;
   selected: boolean;
   visualActive: boolean;
   readOnly: boolean;
+  renameDisabled: boolean;
   onSelectedChange: (selected: boolean) => void;
 }) => {
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -283,7 +290,7 @@ const AssetCard = ({
     <article
       style={{ minWidth: 0, cursor: 'pointer' }}
       onClick={(event) => {
-        if (event.target instanceof Element && event.target.closest('button, input, label, a')) return;
+        if (event.target instanceof Element && event.target.closest('button, input, label, a, [role="dialog"]')) return;
         onManageVisual(type, item);
       }}
     >
@@ -406,18 +413,10 @@ const AssetCard = ({
               checked={selected}
               onChange={(event) => onSelectedChange(event.target.checked)}
             />
-            <Typography.Text
-              strong
-              ellipsis={{ tooltip: item.name }}
-              style={{
-                display: 'block',
-                minWidth: 0,
-                fontSize: 14,
-                color: 'var(--app-color-text)',
-              }}
-            >
-              {assetDisplayName(item)}
-            </Typography.Text>
+            <span style={{ minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--app-color-text)' }}>
+              <AssetNameEditor name={item.name} label={elementLabels[type]} maxLength={100}
+                disabled={readOnly || renameDisabled} onSave={(name) => onRename(type, item.id, name)} />
+            </span>
           </Flex>
           <div
             style={{
@@ -487,7 +486,7 @@ const AssetCard = ({
 const ProductionWorkbenchSettings = () => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
-  const { footerActionHost, setSettingsActionHost } = useOutletContext<ProductionWorkbenchOutletContext>() ?? {};
+  const { footerActionHost, setSettingsActionHost, project } = useOutletContext<ProductionWorkbenchOutletContext>() ?? {};
   const [noticeVisible, setNoticeVisible] = useState(true);
   useEffect(() => { setNoticeVisible(true); }, [projectId]);
   const [voiceCharacter, setVoiceCharacter] = useState<CharacterAsset>();
@@ -495,6 +494,9 @@ const ProductionWorkbenchSettings = () => {
   const [showSceneProps, setShowSceneProps] = useState(false);
   useEffect(() => { setPropSimplification(undefined); setShowSceneProps(false); }, [projectId]);
   useEffect(() => { setVoiceCharacter(undefined); }, [projectId]);
+  const currentProjectId = useRef(projectId);
+  currentProjectId.current = projectId;
+  const canRename = project?.capabilities?.canEdit === true;
   const { message } = App.useApp();
   const messageRef = useRef(message);
   messageRef.current = message;
@@ -568,6 +570,14 @@ const ProductionWorkbenchSettings = () => {
   const visualRequestIdRef = useRef(0);
   const [selectedVisualVariantId, setSelectedVisualVariantId] =
     useState<number>();
+  const [variantDeletion, setVariantDeletion] = useState<{
+    variant: VisualVariant;
+    type: ElementType;
+    assetId: number;
+    requestId: number;
+  }>();
+  const [deletingVariant, setDeletingVariant] = useState(false);
+  const deletingVariantRef = useRef(false);
   const [newVariantName, setNewVariantName] = useState('');
   const [addingVariant, setAddingVariant] = useState(false);
   const [hoveredThumbnailId, setHoveredThumbnailId] = useState<number>();
@@ -693,6 +703,8 @@ const ProductionWorkbenchSettings = () => {
 
   useEffect(() => {
     batchRequestIdRef.current += 1;
+    visualRequestIdRef.current += 1;
+    setVariantDeletion(undefined);
     setImageGenerationVersion(0);
     setVisualAsset(undefined);
     setSelectedVisualVariantId(undefined);
@@ -728,9 +740,11 @@ const ProductionWorkbenchSettings = () => {
           'FAILED',
         ].includes(batch.status);
         setActiveImageBatch(batch);
+        const summaryRequestId = workspaceRequestId.current;
         void queryAssetSettingsSummary(projectId)
           .then((summary) => {
             if (
+              summaryRequestId === workspaceRequestId.current &&
               batchProjectIdRef.current === projectId &&
               (active || terminal)
             ) {
@@ -1048,6 +1062,105 @@ const ProductionWorkbenchSettings = () => {
       message.success(successText);
     } catch {
       message.error('视觉形象操作失败');
+    }
+  };
+
+  const renameAsset = async (type: ElementType, assetId: number, name: string) => {
+    if (!canRename || normalizationBlocked) throw new Error('当前不可修改名称');
+    await renameScriptElement(projectId, type, assetId, name);
+    if (batchProjectIdRef.current !== projectId) return;
+    workspaceRequestId.current += 1;
+    const key = type === 'CHARACTER' ? 'characters' : type === 'SCENE' ? 'scenes' : 'props';
+    setWorkspace((previous) => ({ ...previous,
+      [key]: previous[key].map((item) => item.id === assetId ? { ...item, name } : item),
+    }));
+    setVisualAsset((previous) => previous?.type === type && previous.item.id === assetId
+      ? { ...previous, item: { ...previous.item, name } } : previous);
+    message.success('名称已更新');
+  };
+
+  const renameVariant = async (type: ElementType, assetId: number, variantId: number, name: string) => {
+    if (!canRename || normalizationBlocked) throw new Error('当前不可修改名称');
+    await renameVisualVariant(projectId, variantId, name);
+    if (batchProjectIdRef.current !== projectId) return;
+    workspaceRequestId.current += 1;
+    const current = visualRefreshContext.current.visualAsset;
+    if (current?.type === type && current.item.id === assetId) {
+      visualRequestIdRef.current += 1;
+      setVisualLoading(false);
+    }
+    const updateVisual = (visual?: AssetVisualWorkspace): AssetVisualWorkspace | undefined => visual && ({
+      ...visual,
+      variants: visual.variants.map((variant) => variant.id === variantId ? { ...variant, name } : variant),
+      selectedVariant: visual.selectedVariant?.id === variantId ? { ...visual.selectedVariant, name } : visual.selectedVariant,
+      primaryVariant: visual.primaryVariant?.id === variantId ? { ...visual.primaryVariant, name } : visual.primaryVariant,
+    });
+    const key = type === 'CHARACTER' ? 'characters' : type === 'SCENE' ? 'scenes' : 'props';
+    setWorkspace((previous) => ({ ...previous,
+      [key]: previous[key].map((item) => item.id === assetId ? { ...item, visual: updateVisual(item.visual) } : item),
+    }));
+    setVisualAsset((previous) => previous?.type === type && previous.item.id === assetId
+      ? { ...previous, item: { ...previous.item, visual: updateVisual(previous.item.visual) } } : previous);
+    message.success('名称已更新');
+  };
+
+  const confirmVariantDeletion = async () => {
+    if (!variantDeletion || deletingVariantRef.current) return;
+    deletingVariantRef.current = true;
+    setDeletingVariant(true);
+    const target = variantDeletion;
+    try {
+      await deleteVisualVariant(projectId, target.variant.id);
+    } catch (error) {
+      const failure = error as { info?: { errorMessage?: string }; response?: { data?: { errorMessage?: string } } };
+      message.error(failure.info?.errorMessage || failure.response?.data?.errorMessage || '删除视觉形象失败，请重试。');
+      deletingVariantRef.current = false;
+      setDeletingVariant(false);
+      return;
+    }
+    if (batchProjectIdRef.current !== projectId) {
+      deletingVariantRef.current = false;
+      setDeletingVariant(false);
+      return;
+    }
+    setVariantDeletion(undefined);
+    const requestId = target.requestId === visualRequestIdRef.current
+      ? ++visualRequestIdRef.current : undefined;
+    if (requestId !== undefined) {
+      setSelectedVisualVariantId(undefined);
+      visualRefreshContext.current = { ...visualRefreshContext.current, selectedVisualVariantId: undefined };
+      setGenerationVariantId(undefined);
+      setVisualAsset((previous) => {
+        if (!previous || previous.type !== target.type || previous.item.id !== target.assetId || !previous.item.visual) return previous;
+        const visual = previous.item.visual;
+        return { ...previous, item: { ...previous.item, visual: {
+          ...visual,
+          variants: visual.variants.filter((variant) => variant.id !== target.variant.id),
+          selectedVariant: visual.selectedVariant?.id === target.variant.id ? undefined : visual.selectedVariant,
+          primaryVariant: visual.primaryVariant?.id === target.variant.id ? undefined : visual.primaryVariant,
+        } } };
+      });
+    }
+    try {
+      const [summary, detail] = await Promise.all([
+        queryAssetSettingsSummary(projectId),
+        requestId !== undefined
+          ? queryAssetVisualWorkspace(projectId, target.type, target.assetId, { current: 1, pageSize: 20, selectedVariantId: undefined })
+          : Promise.resolve(undefined),
+      ]);
+      if (batchProjectIdRef.current !== projectId) return;
+      setWorkspace({ ...emptyWorkspace(projectId), ...summary.data });
+      if (requestId !== undefined && visualRequestIdRef.current === requestId && detail) {
+        setVisualAsset((previous) => previous?.type === target.type && previous.item.id === target.assetId
+          ? { ...previous, item: { ...previous.item, visual: detail.data } } : previous);
+        setSelectedVisualVariantId(detail.data.selectedVariant?.id ?? detail.data.primaryVariant?.id ?? detail.data.variants[0]?.id);
+      }
+      message.success('视觉形象已删除');
+    } catch {
+      message.error('形态已删除，页面刷新失败，请刷新页面。');
+    } finally {
+      deletingVariantRef.current = false;
+      setDeletingVariant(false);
     }
   };
 
@@ -1408,6 +1521,25 @@ const ProductionWorkbenchSettings = () => {
         <div style={{ marginBottom: 16 }}>
           <VirtualAvatarPanel projectId={projectId} onChanged={() => mutateVariant(async () => undefined, '虚拟人像状态已更新')} />
         </div>
+        <Modal
+          title="确认删除此形态？"
+          open={Boolean(variantDeletion)}
+          okText="确认删除"
+          cancelText="取消"
+          okButtonProps={{ danger: true }}
+          cancelButtonProps={{ disabled: deletingVariant }}
+          confirmLoading={deletingVariant}
+          closable={!deletingVariant}
+          keyboard={!deletingVariant}
+          mask={{ closable: !deletingVariant }}
+          onCancel={() => { if (!deletingVariantRef.current) setVariantDeletion(undefined); }}
+          onOk={() => void confirmVariantDeletion()}
+        >
+          <p>即将删除「{variantDeletion?.variant.name}」。</p>
+          <p>{variantDeletion?.type === 'CHARACTER' && !variantDeletion.variant.primary
+            ? '删除后，引用此形态的分镜将自动改用该人物的默认形象。'
+            : '删除后无法恢复，请确认关联分镜的形象引用。'}</p>
+        </Modal>
         <PointEstimateModal operations={reextractionPreflight ? [{ url: `/api/projects/${projectId}/asset-reextraction`, data: { targetType: reextractionPreflight.targetType, promptPolicy: reextractionPolicy } }] : undefined}
           title={`确认重新提取${reextractionPreflight ? scopeLabels[reextractionPreflight.targetType] : ''}`}
           open={Boolean(reextractionPreflight)}
@@ -1633,6 +1765,32 @@ const ProductionWorkbenchSettings = () => {
               margin: 0,
             }}
           >
+            <ManualAssetCreate
+              key={projectId}
+              projectId={projectId}
+              type={activeType}
+              characters={workspace.characters}
+              blocked={normalizationBlocked}
+              onCreated={async (created, configure) => {
+                if (currentProjectId.current !== projectId) return;
+                setSelectedAssetIds([]);
+                try {
+                  const next = await reload();
+                  if (currentProjectId.current !== projectId) return;
+                  if (configure) {
+                    const assets = created.assetType === 'CHARACTER' ? next.characters
+                      : created.assetType === 'SCENE' ? next.scenes : next.props;
+                    const item = assets.find((asset) => asset.id === created.assetId);
+                    if (item) await openVisualGallery(created.assetType, item);
+                    else message.warning('资产已保存，请刷新列表后配置形象');
+                  }
+                } catch {
+                  if (currentProjectId.current !== projectId) return;
+                  message.warning('资产已保存，列表刷新失败，正在重新加载');
+                  setLoadVersion((value) => value + 1);
+                }
+              }}
+            />
             <span>
               {elementLabels[activeType]}总计 {activeAssets.length}
             </span>
@@ -1739,12 +1897,13 @@ const ProductionWorkbenchSettings = () => {
                 <div className={styles.assetGrid}>
                   {items.map((item: AssetRecord) => (
                     <AssetCard
-                      key={`${section.type}-${item.id}`}
+                      key={`${projectId}-${section.type}-${item.id}`}
                       item={item}
                       type={section.type}
                       selected={selectedAssetIds.includes(item.id)}
                       visualActive={visualAsset?.type === section.type && visualAsset.item.id === item.id}
                       readOnly={normalizationBlocked || Boolean(processingAction?.startsWith('delete-'))}
+                      renameDisabled={!canRename}
                       onSelectedChange={(selected) =>
                         setSelectedAssetIds((current) =>
                           selected
@@ -1754,6 +1913,7 @@ const ProductionWorkbenchSettings = () => {
                       }
                       onDelete={previewAssetDeletion}
                       onSave={saveAsset}
+                      onRename={renameAsset}
                       onManageVisual={(type, item) => {
                         void openVisualGallery(type, item);
                       }}
@@ -1830,9 +1990,21 @@ const ProductionWorkbenchSettings = () => {
                   <section aria-label="视觉形象画廊" className={styles.visualPanel}>
                     <header className={styles.visualHeader}>
                       <div className={styles.visualHeading}>
-                        <Typography.Title level={5} style={{ margin: 0 }}>
-                          {assetDisplayName(visualAsset.item)}
-                          {selectedVariant && !selectedVariant.primary ? ` · ${selectedVariant.name}` : ''}
+                        <Typography.Title level={5} style={{ margin: 0 }}
+                          aria-label={`${visualAsset.item.name}${selectedVariant ? ` · ${selectedVariant.name}` : ''}`}>
+                          <span className={styles.visualNames}>
+                            <AssetNameEditor key={`${projectId}-${visualAsset.type}-${visualAsset.item.id}`}
+                              name={visualAsset.item.name} label={elementLabels[visualAsset.type]} maxLength={100}
+                              disabled={!canRename || normalizationBlocked}
+                              onSave={(name) => renameAsset(visualAsset.type, visualAsset.item.id, name)} />
+                            {selectedVariant && <>
+                              <span aria-hidden="true">·</span>
+                              <AssetNameEditor key={`${projectId}-variant-${selectedVariant.id}`}
+                                name={selectedVariant.name} label="形态" maxLength={100}
+                                disabled={!canRename || normalizationBlocked || visualLoading}
+                                onSave={(name) => renameVariant(visualAsset.type, visualAsset.item.id, selectedVariant.id, name)} />
+                            </>}
+                          </span>
                         </Typography.Title>
                       </div>
                       <div className={styles.visualMeta}>
@@ -1961,33 +2133,23 @@ const ProductionWorkbenchSettings = () => {
                                         {variant.name}
                                       </span>
                                     </button>
-                                    <Popconfirm
+                                    <Button
+                                      size="small"
+                                      danger
+                                      icon={<DeleteOutlined />}
+                                      aria-label={`删除${variant.name}`}
                                       disabled={Boolean(deleteBlockReason)}
-                                      okButtonProps={{ disabled: Boolean(deleteBlockReason) }}
-                                      title={`确认删除${variant.name}`}
-                                      description="删除后无法恢复，确定继续吗？"
-                                      okText="删除"
-                                      cancelText="取消"
-                                      onConfirm={() => !deleteBlockReason && mutateVariant(
-                                        () => deleteVisualVariant(projectId, variant.id),
-                                        '视觉形象已删除',
-                                      )}
-                                    >
-                                      <Button
-                                        size="small"
-                                        danger
-                                        icon={<DeleteOutlined />}
-                                        aria-label={`删除${variant.name}`}
-                                        disabled={Boolean(deleteBlockReason)}
-                                        title={deleteBlockReason}
-                                        onClick={(event) => event.stopPropagation()}
-                                        className={styles.deleteVariant}
-                                        style={{
-                                          opacity: hoveredThumbnailId === variant.id ? 1 : 0,
-                                          pointerEvents: hoveredThumbnailId === variant.id ? 'auto' : 'none',
-                                        }}
-                                      />
-                                    </Popconfirm>
+                                      title={deleteBlockReason}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setVariantDeletion({ variant, type: visualAsset.type, assetId: visualAsset.item.id, requestId: visualRequestIdRef.current });
+                                      }}
+                                      className={styles.deleteVariant}
+                                      style={{
+                                        opacity: hoveredThumbnailId === variant.id ? 1 : 0,
+                                        pointerEvents: hoveredThumbnailId === variant.id ? 'auto' : 'none',
+                                      }}
+                                    />
                                   </div>
                                 );
                               })}

@@ -160,6 +160,9 @@ class AiModelRouterTest {
             "select id from ai_provider where code = 'VOLCENGINE_ARK' limit 1", Long.class);
         jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", arkProviderId);
         jdbcTemplate.update("update ai_provider_config set api_key_cipher = 'test-cipher', status = 'ENABLED' where provider_id = ?", arkProviderId);
+        jdbcTemplate.update("update ai_provider set status = 'ENABLED' where code = 'VOLCENGINE_ARK_XINJI'");
+        jdbcTemplate.update("update ai_provider_config set api_key_cipher = 'xinji-cipher', status = 'ENABLED'"
+            + " where provider_id = (select id from ai_provider where code = 'VOLCENGINE_ARK_XINJI')");
         for (String code : new String[] {"SEEDANCE_2_0_MINI", "SEEDANCE_2_0_FAST", "SEEDANCE_2_0_STANDARD", "SEEDANCE_2_5"}) {
             Long modelId = jdbcTemplate.queryForObject("select id from ai_model where code = ?", Long.class, code);
             jdbcTemplate.update("update ai_model set status = 'ENABLED' where id = ?", modelId);
@@ -167,7 +170,9 @@ class AiModelRouterTest {
 
             AiModelRoute route = router.route(modelId, "VIDEO");
 
-            assertThat(route.provider().getCode()).isEqualTo("VOLCENGINE_ARK");
+            assertThat(route.provider().getCode()).isEqualTo(
+                code.equals("SEEDANCE_2_0_STANDARD") || code.equals("SEEDANCE_2_5")
+                    ? "VOLCENGINE_ARK_XINJI" : "VOLCENGINE_ARK");
             assertThat(route.adapter()).isInstanceOf(com.antshorttv.video.SeedanceArkVideoProviderAdapter.class);
             assertThat(route.model().getCode()).isEqualTo(code);
         }
@@ -194,6 +199,33 @@ class AiModelRouterTest {
 
         assertThat(route.model().getId()).isEqualTo(miniId);
         assertThat(route.model().getCode()).isEqualTo("SEEDANCE_2_0_MINI");
+    }
+
+    @Test
+    void routesXinjiSupplierThroughExistingArkAdapterWithItsOwnConfiguration() {
+        jdbcTemplate.update("""
+            insert into ai_provider
+                (name, code, supported_types, status, created_at, updated_at)
+            select 'Xinji', 'VOLCENGINE_ARK_XINJI', 'VIDEO', 'ENABLED', now(), now()
+             where not exists (select 1 from ai_provider where code = 'VOLCENGINE_ARK_XINJI')
+            """);
+        Long xinjiId = jdbcTemplate.queryForObject(
+            "select id from ai_provider where code = 'VOLCENGINE_ARK_XINJI'", Long.class);
+        jdbcTemplate.update("update ai_provider set status = 'ENABLED' where id = ?", xinjiId);
+        jdbcTemplate.update("""
+            update ai_provider_config set api_key_cipher = 'xinji-cipher',
+                base_url = 'https://xinji.example/api/v3', status = 'ENABLED' where provider_id = ?
+            """, xinjiId);
+        Long standardId = jdbcTemplate.queryForObject(
+            "select id from ai_model where code = 'SEEDANCE_2_0_STANDARD'", Long.class);
+        jdbcTemplate.update("update ai_model set provider_id = ?, status = 'ENABLED' where id = ?", xinjiId, standardId);
+        jdbcTemplate.update("update ai_model_capability set status = 'ENABLED' where model_id = ?", standardId);
+        AiModelRoute route = router.route(standardId, "VIDEO");
+        assertThat(route.provider().getId()).isEqualTo(xinjiId);
+        assertThat(route.provider().getCode()).isEqualTo("VOLCENGINE_ARK_XINJI");
+        assertThat(route.providerConfig().getBaseUrl()).isEqualTo("https://xinji.example/api/v3");
+        assertThat(route.providerConfig().getApiKeyCipher()).isEqualTo("xinji-cipher");
+        assertThat(route.adapter()).isInstanceOf(com.antshorttv.video.SeedanceArkVideoProviderAdapter.class);
     }
 
     private Long insertModel(String code, String serviceType, boolean isDefault, int sort) {

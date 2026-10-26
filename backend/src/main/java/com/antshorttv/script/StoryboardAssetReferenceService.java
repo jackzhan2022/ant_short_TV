@@ -201,6 +201,13 @@ public class StoryboardAssetReferenceService {
                     .filter(v -> v.id().equals(target.variantId())).findFirst()
                     .orElseThrow(() -> StoryboardAssetReferenceValidation.invalid("制作形态不存在。"));
         }
+        if (type == StoryboardReferenceAssetType.CHARACTER && jdbc.queryForObject("""
+            select count(*) from asset_visual_variant where id=? and tenant_id=? and project_id=?
+              and asset_type='CHARACTER' and asset_id=? and deleted_at is not null
+            """,Long.class,variantId,tenantId,projectId,assetId)>0) {
+            return variants(tenantId, projectId, type, assetId, lock).stream().filter(VariantRef::primary).findFirst()
+                .orElseThrow(()->StoryboardAssetReferenceValidation.invalid("该人物暂无默认形象，请重新选择。"));
+        }
         throw StoryboardAssetReferenceValidation.invalid("视觉形象不属于所选素材或已确认的制作关系。");
     }
 
@@ -288,7 +295,7 @@ public class StoryboardAssetReferenceService {
             : requireVariant(tenantId, projectId, type, entity.assetId, entity.variantId, false);
         var response = new StoryboardAssetReferenceResponse(
             entity.id, entity.assetType, entity.assetId, asset == null ? null : asset.name(),
-            entity.variantId, variant == null ? null : variant.name(),
+            variant == null ? null : variant.id(), variant == null ? null : variant.name(),
             variant == null ? null : variant.imageUrl(), entity.referenceRole, entity.sortOrder,
             entity.resolutionStatus, entity.sourceType, entity.sourceName,
             Boolean.TRUE.equals(entity.lockedByUser));

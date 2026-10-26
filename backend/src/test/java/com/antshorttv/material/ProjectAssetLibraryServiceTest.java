@@ -106,6 +106,22 @@ class ProjectAssetLibraryServiceTest {
     }
 
     @Test
+    void includesGeneratedVideoCoversInOtherImagesWithTheirShotAndVersion() {
+        image(91901, 91001, 91002, "VIDEO_COVER", 91501, "ACTIVE");
+        var covers = service.list(91001L, 91002L, "IMAGE", "OTHER", 1, "视频封面", 1, 24);
+        assertThat(covers.items().data()).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo(91901L);
+            assertThat(item.name()).contains("镜头 1", "视频封面");
+            assertThat(item.sourceType()).isEqualTo("视频截帧");
+            assertThat(item.previewUrl()).isEqualTo("/api/projects/91002/ai-image-results/91901/display");
+            assertThat(item.episodeNo()).isEqualTo(1);
+        });
+        assertThat(service.list(91001L, 91003L, "IMAGE", "OTHER", null, "视频封面", 1, 24).items().total()).isZero();
+        jdbc.update("update ai_video_task set deleted_at=now() where id=91501");
+        assertThat(service.list(91001L, 91002L, "IMAGE", "OTHER", null, "视频封面", 1, 24).items().total()).isZero();
+    }
+
+    @Test
     void browsesScopedImagesWithCategorySearchCountsAndPagination() {
         var all = service.list(91001L,91002L,"IMAGE","ALL",null,null,1,2);
         assertThat(all.items().total()).isEqualTo(4);

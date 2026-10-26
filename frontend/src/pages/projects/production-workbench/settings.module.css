@@ -495,3 +495,52 @@
     min-height: 80px;
   }
 }
+
+
+.editableName {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.renameButton {
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.editableName:hover .renameButton,
+.editableName:focus-within .renameButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .renameButton {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.renameError {
+  margin: 8px 0 0;
+  color: var(--app-color-error);
+  font-size: 14px;
+}
+
+.visualNames {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}

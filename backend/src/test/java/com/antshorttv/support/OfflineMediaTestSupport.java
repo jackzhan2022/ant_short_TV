@@ -67,6 +67,13 @@ public abstract class OfflineMediaTestSupport {
         objects.clear();
         imageJobs.clear();
         when(credentials.getCredentials()).thenReturn(new BasicCOSCredentials("offline-id", "offline-key"));
+        when(cos.getSnapshot(any(com.qcloud.cos.model.ciModel.snapshot.CosSnapshotRequest.class))).thenAnswer(call -> {
+            var request = call.getArgument(0, com.qcloud.cos.model.ciModel.snapshot.CosSnapshotRequest.class);
+            assertThat(object(request.getObjectKey()).metadata().getContentType()).isEqualTo("video/mp4");
+            ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
+            ImageIO.write(new BufferedImage(16, 9, BufferedImage.TYPE_INT_RGB), "jpg", jpeg);
+            return new ByteArrayInputStream(jpeg.toByteArray());
+        });
         when(cos.putObject(any(PutObjectRequest.class))).thenAnswer(call -> upload(call.getArgument(0)));
         when(cos.getObjectMetadata(anyString(), anyString())).thenAnswer(call ->
             object(call.getArgument(1)).metadata());

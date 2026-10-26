@@ -92,7 +92,7 @@ class StoryboardEditorQueryService {
             rs.getObject("generated_by_run_id", Long.class), rs.getString("image_prompt"), rs.getString("video_prompt"),
             files.publicUrl(rs.getString("first_frame_url")), rs.getObject("current_video_result_id", Long.class),
             files.publicUrl(rs.getString("current_video_url")), rs.getObject("current_shot_result_id", Long.class),
-            files.publicUrl(rs.getString("current_shot_video_url")), List.of()),
+            files.publicUrl(rs.getString("current_shot_video_url")), List.of(), readJson(rs.getString("video_generation_settings_json"))),
             tenantId, projectId, scriptId, episodeId, selected, safeSize, ((long) safeCurrent - 1) * safeSize);
         Map<Long, List<StoryboardAssetReferenceResponse>> byShot = references.listResponsesForStoryboards(
             tenantId, projectId, page.stream().map(StoryboardResponse::id).toList());
@@ -180,7 +180,7 @@ class StoryboardEditorQueryService {
                    visual_description,characters,scene,props,dialogue,duration_seconds,%s editor_plan,
                    prompt_document_json,material_binding_status,source_fingerprint,generated_by_run_id,
                    image_prompt,video_prompt,first_frame_url,current_video_result_id,current_video_url,
-                   current_shot_result_id,current_shot_video_url
+                   current_shot_result_id,current_shot_video_url,video_generation_settings_json
               from storyboard where tenant_id=? and project_id=? and deleted_at is null
                and script_id=? and (episode_id=? or (episode_id is null and episode_no=?))
              order by shot_no,id limit ? offset ?

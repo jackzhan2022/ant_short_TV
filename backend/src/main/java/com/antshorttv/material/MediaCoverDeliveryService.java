@@ -52,9 +52,13 @@ public class MediaCoverDeliveryService {
         var context = permissions.require(source.tenantId(), projectId, kind.permission());
         if (source.url() == null || source.url().isBlank()) return null;
         var display = resolve(source.tenantId(), projectId, source.url(), kind.name() + "-cover-" + resourceId);
-        if (!ready(display, source.tenantId(), projectId)) return null;
+        if (!ready(display, source.tenantId(), projectId)) {
+            display = kind == MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT
+                ? generatedVideoCoverOriginal(source.tenantId(), projectId, source.url()) : null;
+            if (display == null) return null;
+        }
         return grants.issue(new DeliveryGrantRequest(source.tenantId(), projectId, context.userId(),
-            kind.name() + "_COVER", resourceId, display.identity().versionId(), "DISPLAY_IMAGE_SLIM", display.objectKey(), false));
+            kind.name() + "_COVER", resourceId, display.identity().versionId(), display.renditionType(), display.objectKey(), false));
     }
 
     public DeliveryGrant storyboardFirstFrame(Long projectId, Long storyboardId) {
@@ -149,6 +153,29 @@ public class MediaCoverDeliveryService {
             key = keys.objectKey(key);
             return key.startsWith("materials/" + tenantId + "/" + projectId + "/") ? key : null;
         } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private RegisteredMediaDetails generatedVideoCoverOriginal(Long tenantId, Long projectId, String source) {
+        var matcher = IMAGE.matcher(source);
+        if (!matcher.matches()) return null;
+        try {
+            if (!projectId.equals(Long.valueOf(matcher.group(1)))) return null;
+            Long imageId = Long.valueOf(matcher.group(2));
+            var image = images.selectById(imageId);
+            if (image == null || !Objects.equals(tenantId, image.getTenantId())
+                || !Objects.equals(projectId, image.getProjectId()) || !"ACTIVE".equals(image.getStatus())
+                || !"VIDEO_COVER".equals(image.getTargetType())) return null;
+            var original = renditions.originalDetails(new MediaObjectIdentity(
+                tenantId, projectId, "AI_IMAGE_RESULT", imageId, "result-" + imageId));
+            if (original == null || !"READY".equals(original.status()) || original.fileSize() <= 0
+                || !"ORIGINAL".equals(original.renditionType()) || !"image/jpeg".equals(original.mimeType())
+                || !Objects.equals(tenantId, original.identity().tenantId())
+                || !Objects.equals(projectId, original.identity().projectId()) || original.objectKey() == null
+                || !original.objectKey().startsWith("materials/" + tenantId + "/" + projectId + "/")) return null;
+            return original;
+        } catch (NumberFormatException exception) {
             return null;
         }
     }

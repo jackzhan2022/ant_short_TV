@@ -1,0 +1,201 @@
+{
+  "CHARACTER": {
+    "fields": [
+      {
+        "key": "era",
+        "label": "时代基底",
+        "group": "背景设定",
+        "placeholder": "例如：现代 / 明代 / 未来",
+        "unknown": "未明确",
+        "maxLength": 200
+      },
+      {
+        "key": "country",
+        "label": "国家/朝代",
+        "group": "背景设定",
+        "placeholder": "按剧本或已确认设定填写",
+        "unknown": "未明确",
+        "maxLength": 200
+      },
+      {
+        "key": "ethnicity",
+        "label": "人种",
+        "group": "背景设定",
+        "placeholder": "无可靠依据可选择未明确",
+        "unknown": "未明确",
+        "maxLength": 200
+      },
+      {
+        "key": "genre",
+        "label": "类型基底",
+        "group": "背景设定",
+        "placeholder": "例如：悬疑 / 奇幻 / 写实",
+        "unknown": "未明确",
+        "maxLength": 200
+      },
+      {
+        "key": "gender",
+        "label": "性别",
+        "group": "身份与年龄",
+        "placeholder": "按已确认设定填写",
+        "unknown": "未明确（待确认）",
+        "maxLength": 32
+      },
+      {
+        "key": "age",
+        "label": "年龄",
+        "group": "身份与年龄",
+        "placeholder": "例如：青年 / 25—30 岁",
+        "unknown": "未明确（待确认）",
+        "maxLength": 32
+      },
+      {
+        "key": "face",
+        "label": "脸型",
+        "group": "稳定外貌",
+        "placeholder": "例如：鹅蛋脸，下颌线清晰",
+        "maxLength": 200
+      },
+      {
+        "key": "hair",
+        "label": "发型",
+        "group": "稳定外貌",
+        "placeholder": "例如：黑色齐肩短发，发尾内扣",
+        "maxLength": 200
+      },
+      {
+        "key": "earrings",
+        "label": "耳饰",
+        "group": "稳定外貌",
+        "placeholder": "具体款式；不佩戴请填“无”",
+        "maxLength": 200
+      },
+      {
+        "key": "body",
+        "label": "身材",
+        "group": "稳定外貌",
+        "placeholder": "例如：体态修长，肩背挺直",
+        "maxLength": 200
+      },
+      {
+        "key": "ratio",
+        "label": "头身比",
+        "group": "稳定外貌",
+        "placeholder": "例如：7.5 头身",
+        "maxLength": 200
+      },
+      {
+        "key": "upper",
+        "label": "上身着装",
+        "group": "主体服装",
+        "placeholder": "说明外套、内搭、颜色与材质",
+        "maxLength": 200
+      },
+      {
+        "key": "lower",
+        "label": "下身着装",
+        "group": "主体服装",
+        "placeholder": "下装；连衣裙可填“与上装为同一件”",
+        "maxLength": 200
+      },
+      {
+        "key": "shoes",
+        "label": "鞋子",
+        "group": "主体服装",
+        "placeholder": "款式与颜色；不穿鞋请填“赤脚”",
+        "maxLength": 200
+      }
+    ],
+    "task": "## 任务：完成角色的上半身正面平视特写和该角色的全身三视图，左边是角色的上半身正面平视特写，右边是该角色的全身三视图。三视图不可以有分割线，左侧为角色胸部以上特写大图，占画面约 40% 宽度，用于展示面部、发型、表情、眼神、上半身服装和配饰细节，右侧为同一角色的三视图，占画面约 60% 宽度，依次展示正面全身、侧面全身、背面全身。"
+  },
+  "SCENE": {
+    "fields": [
+      {
+        "key": "space",
+        "label": "物理空间与布局",
+        "group": "场景设定",
+        "placeholder": "例如：长方形书店，入口在前墙中央，后墙设有通往库房的门",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "fixtures",
+        "label": "固定陈设与空间关系",
+        "group": "场景设定",
+        "placeholder": "例如：入口左侧为收银台，两侧墙面排列书架，中间保留通道",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "materials",
+        "label": "建筑与陈设材质",
+        "group": "场景设定",
+        "placeholder": "例如：旧木地板、深棕色实木书架、米白色墙面",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "lighting",
+        "label": "统一光照与色调",
+        "group": "场景设定",
+        "placeholder": "例如：窗侧柔和自然光，暖灰色调，四个视角保持一致",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "state",
+        "label": "时间与环境状态",
+        "group": "场景设定",
+        "placeholder": "例如：白天、晴天、陈设完整；同一地点的昼夜变化不新增资产",
+        "textarea": true,
+        "maxLength": 500
+      }
+    ],
+    "task": "生成四宫格画面，展示同一个场景中的四个不同视角。左上角为正视图，主体正面清晰可见，构图居中，细节完整；右上角为俯视图，从高空俯视整体空间布局，展示环境关系和场景结构；左下角为背视图，从主体后方观察，突出背部轮廓、空间纵深和环境延展；右下角为侧视图，从主体侧面观察，展示主体比例、层次和空间关系。四个画面保持同一场景、同一光照、同一色调、同一时间状态。不输出文字信息。\r\n\r\n1. 只出现场景，不出现人物、道具等无关内容\r\n2. 必须只展示静态事物，不能包含人、动物等可以自行运行的事物\r\n3. 无动态、特效、技能、光效及战斗相关描写"
+  },
+  "PROP": {
+    "fields": [
+      {
+        "key": "structure",
+        "label": "整体结构与组成",
+        "group": "道具本体",
+        "placeholder": "例如：圆形怀表，翻盖结构，顶部表冠连接一条细链",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "proportion",
+        "label": "大小与比例",
+        "group": "道具本体",
+        "placeholder": "例如：掌心大小，表盘直径约 4 厘米，厚度约 1 厘米",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "materialColor",
+        "label": "材质与颜色",
+        "group": "道具本体",
+        "placeholder": "例如：银色不锈钢外壳、乳白色表盘、透明玻璃镜面",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "surface",
+        "label": "表面工艺与局部装饰",
+        "group": "道具本体",
+        "placeholder": "例如：外壳细密拉丝、边缘抛光，表盖雕有简单花纹",
+        "textarea": true,
+        "maxLength": 500
+      },
+      {
+        "key": "details",
+        "label": "边缘、背面与可靠标识",
+        "group": "道具本体",
+        "placeholder": "例如：边缘圆润倒角，背面平整，无额外文字；剧情文字只能按已有设定填写",
+        "textarea": true,
+        "maxLength": 500
+      }
+    ],
+    "task": "仅展示道具本体，完整入画、居中，四周适当留白。背景为纯白色（#FFFFFF），无缝、无纹理、无渐变、无地平线。不得出现人物、手部、房间、桌面、展示支架或无关物品；道具自身的底座、支撑结构及组成部件须保留。画面风格仅作用于道具本体，背景始终保持纯白。保留道具原有结构、材质、颜色及有可靠依据的文字标识，不添加水印或额外文字。"
+  }
+}

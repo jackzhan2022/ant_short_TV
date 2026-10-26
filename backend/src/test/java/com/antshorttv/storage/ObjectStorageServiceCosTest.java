@@ -28,6 +28,24 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ObjectStorageServiceCosTest {
+    @Test
+    void rangeResourceRequestsOnlySelectedBytesAndClosesTheObjectStream() throws Exception {
+        COS cos = mock(COS.class);
+        COSObject object = new COSObject();
+        var input = org.mockito.Mockito.spy(new ByteArrayInputStream(new byte[] {1, 2, 3}));
+        object.setObjectContent(new com.qcloud.cos.model.COSObjectInputStream(input,
+            mock(org.apache.http.client.methods.HttpRequestBase.class)));
+        when(cos.getObject(any(com.qcloud.cos.model.GetObjectRequest.class))).thenReturn(object);
+        var resource = service(cos).rangeResource("materials/video.mp4", 20, 22);
+        try (var stream = resource.getInputStream()) {
+            assertThat(stream.readAllBytes()).containsExactly(1, 2, 3);
+        }
+        var request = ArgumentCaptor.forClass(com.qcloud.cos.model.GetObjectRequest.class);
+        verify(cos).getObject(request.capture());
+        assertThat(request.getValue().getRange()).containsExactly(20, 22);
+        verify(input).close();
+    }
+
 
     @Test
     void streamsObjectWithMetadataAndIntelligentTiering() throws Exception {

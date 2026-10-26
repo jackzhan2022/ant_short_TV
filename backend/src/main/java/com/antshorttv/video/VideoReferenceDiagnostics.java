@@ -23,7 +23,7 @@ public final class VideoReferenceDiagnostics {
             // Older tasks without a valid snapshot expose an empty diagnostic object.
             return result;
         }
-        if (!"VOLCENGINE_ARK".equalsIgnoreCase(providerCode) || errorMessage == null) return result;
+        if (!com.antshorttv.ai.VolcengineProviderCodes.isArk(providerCode) || errorMessage == null) return result;
         var failedImages = result.putArray("failedImages");
         var indices = new java.util.LinkedHashSet<Integer>();
         var matcher = java.util.regex.Pattern.compile("content\\[(\\d{1,9})\\]").matcher(errorMessage);

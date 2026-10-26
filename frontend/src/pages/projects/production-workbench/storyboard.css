@@ -479,6 +479,7 @@
 }
 
 .storyboard-reference-hover-actions {
+  pointer-events: none;
   position: absolute;
   inset: 0;
   display: flex;
@@ -489,6 +490,7 @@
 }
 
 .storyboard-reference-hover-actions .ant-btn {
+  pointer-events: auto;
   color: #fff;
   background: rgb(255 255 255 / 14%);
 }

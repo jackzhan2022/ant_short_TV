@@ -10,10 +10,12 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,8 +84,15 @@ public class AssetVisualVariantService {
         List<VariantResponse> values = jdbc.query(browserQuery(type)
             + condition + " order by v.is_primary desc, v.id asc limit 1", this::browserResponse,
             tenantId, projectId, type.name(), assetId, reference);
-        if (values.isEmpty() && selectedVariantId != null)
-            throw new BusinessException(ErrorCode.NOT_FOUND, "Selected visual variant is unavailable for this asset.");
+        if (values.isEmpty() && selectedVariantId != null) {
+            if (type == AssetType.CHARACTER && jdbc.queryForObject("""
+                select count(*) from asset_visual_variant where id=? and tenant_id=? and project_id=?
+                  and asset_type='CHARACTER' and asset_id=? and deleted_at is not null
+                """, Long.class,selectedVariantId,tenantId,projectId,assetId) > 0) {
+                return primaryVariant(tenantId,projectId,assetType,assetId);
+            }
+            throw new BusinessException(ErrorCode.NOT_FOUND, "所选视觉形象已失效，请刷新后重新选择。");
+        }
         return values.isEmpty() ? null : values.get(0);
     }
 
@@ -251,7 +260,29 @@ public class AssetVisualVariantService {
     @Transactional
     public void delete(Long tenantId, Long projectId, Long variantId) {
         AssetVisualVariantEntity entity = requireVariant(tenantId, projectId, variantId, true);
+        List<AssetVisualVariantEntity> lockedVariants = List.of();
+        if ("CHARACTER".equals(entity.getAssetType())) {
+            jdbc.queryForList("select id from character_asset where id=? and tenant_id=? and project_id=? for update",
+                Long.class,entity.getAssetId(),tenantId,projectId);
+            CharacterVariantReferenceFallback.lockEditableReferences(jdbc,tenantId,projectId,variantId);
+            // Use the locking read itself: a repeatable-read snapshot or MyBatis cache can predate the lock.
+            lockedVariants = jdbc.query("""
+                select * from asset_visual_variant where tenant_id=? and project_id=? and asset_type='CHARACTER'
+                  and asset_id=? and deleted_at is null order by is_primary desc,id for update
+                """,new BeanPropertyRowMapper<>(AssetVisualVariantEntity.class),tenantId,projectId,entity.getAssetId());
+            entity = lockedVariants.stream().filter(value -> variantId.equals(value.getId())).findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "视觉形象不存在。"));
+        }
         boolean wasPrimary = Boolean.TRUE.equals(entity.getIsPrimary());
+        if ("CHARACTER".equals(entity.getAssetType()) && !wasPrimary) {
+            var primary = lockedVariants.stream().filter(value -> Boolean.TRUE.equals(value.getIsPrimary())).findFirst().orElse(null);
+            if (primary == null) throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "该人物暂无默认形象，请先设置默认形象后再删除其他形态。");
+            String characterName = jdbc.queryForObject("select name from character_asset where id=? and tenant_id=? and project_id=?",
+                String.class,entity.getAssetId(),tenantId,projectId);
+            CharacterVariantReferenceFallback.replace(jdbc,tenantId,projectId,entity.getAssetId(),variantId,
+                primary.getId(),characterName+"·"+primary.getName(),usable(primary));
+        }
         entity.setIsPrimary(false);
         entity.setDeletedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
@@ -262,7 +293,13 @@ public class AssetVisualVariantService {
              where tenant_id = ? and project_id = ? and variant_id = ? and retired_at is null
             """, tenantId, projectId, variantId);
         if (wasPrimary) {
-            AssetVisualVariantEntity replacement = variantMapper.selectOne(
+            AssetVisualVariantEntity replacement = "CHARACTER".equals(entity.getAssetType())
+                ? lockedVariants.stream().filter(value -> !variantId.equals(value.getId()))
+                    .sorted(Comparator.comparing((AssetVisualVariantEntity value) ->
+                        "COMPLETED".equals(value.getGenerationStatus()) && value.getCurrentImageUrl() != null)
+                        .reversed().thenComparing(AssetVisualVariantEntity::getId))
+                    .findFirst().orElse(null)
+                : variantMapper.selectOne(
                 new QueryWrapper<AssetVisualVariantEntity>()
                     .eq("tenant_id", tenantId).eq("project_id", projectId)
                     .eq("asset_type", entity.getAssetType()).eq("asset_id", entity.getAssetId())
@@ -274,6 +311,12 @@ public class AssetVisualVariantService {
                 replacement.setIsPrimary(true);
                 replacement.setUpdatedAt(LocalDateTime.now());
                 variantMapper.updateById(replacement);
+                if ("CHARACTER".equals(entity.getAssetType())) {
+                    String name=jdbc.queryForObject("select name from character_asset where id=? and tenant_id=? and project_id=?",
+                        String.class,entity.getAssetId(),tenantId,projectId);
+                    CharacterVariantReferenceFallback.replace(jdbc,tenantId,projectId,entity.getAssetId(),variantId,
+                        replacement.getId(),name+"·"+replacement.getName(),usable(replacement));
+                }
             }
             if (replacement != null && usable(replacement)) {
                 publishLegacyIfUsable(replacement);
@@ -281,8 +324,10 @@ public class AssetVisualVariantService {
                 clearLegacyImage(entity);
             }
         } else if (legacyReferencesVariant(entity)) {
-            AssetVisualVariantEntity fallback = findUsableFallback(entity);
-            if (fallback == null) {
+            AssetVisualVariantEntity fallback = "CHARACTER".equals(entity.getAssetType())
+                ? lockedVariants.stream().filter(value -> Boolean.TRUE.equals(value.getIsPrimary())).findFirst().orElse(null)
+                : findUsableFallback(entity);
+            if (fallback == null || !usable(fallback)) {
                 clearLegacyImage(entity);
             } else {
                 publishLegacyFallback(fallback);
@@ -560,13 +605,14 @@ public class AssetVisualVariantService {
             case SCENE -> "scene_asset";
             case PROP -> "prop_asset";
         };
-        Integer count = jdbc.queryForObject("select count(*) from " + table
+        List<Long> matches = jdbc.queryForList("select id from " + table
                 + " where tenant_id = ? and project_id = ? and id = ? and deleted_at is null"
                 + " and ((main_image_result_id is not null and main_image_result_id = ?)"
-                + " or (main_image_result_id is null and main_image_url = ?))",
-            Integer.class, variant.getTenantId(), variant.getProjectId(), variant.getAssetId(),
+                + " or (main_image_result_id is null and main_image_url = ?))"
+                + (type == AssetType.CHARACTER ? " for update" : ""),
+            Long.class, variant.getTenantId(), variant.getProjectId(), variant.getAssetId(),
             variant.getCurrentImageResultId(), variant.getCurrentImageUrl());
-        return count != null && count > 0;
+        return !matches.isEmpty();
     }
 
     private AssetVisualVariantEntity findUsableFallback(AssetVisualVariantEntity deleted) {

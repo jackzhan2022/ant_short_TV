@@ -7,6 +7,8 @@ vi.mock('@/components/LazyMediaImage', () => ({
   default: ({ src, alt }: { src?: string; alt: string }) => <img src={src} alt={alt} />,
 }));
 
+vi.mock('@/pages/asset-library/audio-service', () => ({ queryStoryboardCharacterVoice: vi.fn() }));
+
 const variant: VisualVariant = {
   id: 33, assetType: 'SCENE', assetId: 21, name: '酒店后厨-夜 大图',
   sourceType: 'MANUAL', generationStatus: 'COMPLETED', primary: true, usable: true,
@@ -21,6 +23,7 @@ const asset: SceneAsset = {
   }], generationSummary: {}, episodeBindings: [] },
 };
 const reference: StoryboardAssetReference = {
+  imageUrl: '/old-original.png', imageThumbnailUrl: '/old-thumbnail.png',
   id: 1, assetType: 'SCENE', assetId: 21, assetName: '酒店后厨', variantId: 33,
   variantName: variant.name, referenceRole: 'MAIN', sortOrder: 0, resolutionStatus: 'RESOLVED',
   sourceType: 'MANUAL', lockedByUser: true,
@@ -72,7 +75,8 @@ describe('storyboard asset cascader', () => {
     expect(within(popup).queryByText('夜 大图')).not.toBeInTheDocument();
     fireEvent.click(result);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({ assetId: 21, variantId: 34, variantName: '酒店后厨-商用烤炉故障版 第19—21集' }),
+      expect.objectContaining({ assetId: 21, variantId: 34, variantName: '酒店后厨-商用烤炉故障版 第19—21集',
+        imageUrl: '/original.png', imageThumbnailUrl: null }),
     ]));
   });
 });

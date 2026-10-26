@@ -58,6 +58,7 @@ public class ScriptWorkflowService {
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationService assetNormalization;
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
+    @org.springframework.beans.factory.annotation.Autowired private AssetNameService assetNameService;
     @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination normalizationCoordination;
     @Autowired private AssetDeletionService assetDeletionService;
 
@@ -1270,6 +1271,21 @@ public class ScriptWorkflowService {
         return assetVisualVariantService.update(tenantId, projectId, variantId, editable);
     }
 
+    public void renameElement(Long tenantId, Long projectId, String elementType, Long elementId, String name) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        if (normalizationGuard != null) normalizationGuard.requireReady(tenantId, projectId);
+        assetNameService.renameAsset(tenantId, projectId, elementType, elementId, name);
+    }
+
+    public void renameVisualVariant(Long tenantId, Long projectId, Long variantId, String name) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        if (normalizationGuard != null) normalizationGuard.requireReady(tenantId, projectId);
+        assetNameService.renameVariant(tenantId, projectId, variantId, name);
+    }
     public AssetVisualVariantService.VariantResponse selectPrimaryVisualVariant(
         Long tenantId, Long projectId, Long variantId
     ) {
@@ -1359,6 +1375,8 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:EDIT", projectId);
         StoryboardPromptDocuments.validate(request.promptDocument());
+        var editableDocument = assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument());
+        var documentAssets = assetNameService.lockDocumentAssets(tenantId, projectId, editableDocument);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         Long episodeId = lockStoryboardEpisode(tenantId, projectId, script == null ? null : script.getId(), request.episodeNo());
         insertStoryboard(tenantId, projectId, script == null ? null : script.getId(), episodeId, context.userId(), request.episodeNo(), request.shotNo(), request.sceneNo(), request.shotType(), request.visualDescription(), request.characters(), request.actions(), request.dialogue(), request.scene(), request.props(), request.mood(), request.durationSeconds(), request.imagePrompt(), request.videoPrompt(), normalizeStatus(request.status()));
@@ -1368,7 +1386,8 @@ public class ScriptWorkflowService {
                  where tenant_id = ? and project_id = ? and id = (
                    select id from (select id from storyboard where tenant_id = ? and project_id = ?
                      and deleted_at is null order by id desc limit 1) latest)
-                """, request.storyboardNo(), writeJson(assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument())), tenantId, projectId,
+                """, request.storyboardNo(), writeJson(assetNameService.normalizeDocument(tenantId, projectId,
+                    CharacterVariantReferenceFallback.normalizeDocument(jdbcTemplate,tenantId,projectId,editableDocument), documentAssets)), tenantId, projectId,
                 tenantId, projectId);
         }
         return null;
@@ -1380,6 +1399,8 @@ public class ScriptWorkflowService {
         requireProjectAccess(context, projectId);
         requirePermission(context, "STORYBOARD:EDIT", projectId);
         StoryboardPromptDocuments.validate(request.promptDocument());
+        var editableDocument = assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument());
+        var documentAssets = assetNameService.lockDocumentAssets(tenantId, projectId, editableDocument);
         StoryboardUpdateState existing = lockStoryboardForUpdate(tenantId, projectId, storyboardId);
         ScriptEntity script = scriptMapper.selectCurrentByProject(tenantId, projectId);
         Integer episodeNo;
@@ -1417,7 +1438,8 @@ public class ScriptWorkflowService {
             mergeText(request.mood(), existing.mood()),
             request.durationSeconds() == null ? existing.durationSeconds() : request.durationSeconds(),
             mergeText(request.imagePrompt(), existing.imagePrompt()),
-            mergeText(request.videoPrompt(), existing.videoPrompt()), writeJson(assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument())),
+            mergeText(request.videoPrompt(), existing.videoPrompt()), writeJson(assetNameService.normalizeDocument(tenantId, projectId,
+                    CharacterVariantReferenceFallback.normalizeDocument(jdbcTemplate,tenantId,projectId,editableDocument), documentAssets)),
             request.status() == null ? existing.status() : normalizeStatus(request.status()),
             tenantId, projectId, storyboardId);
         return null;
@@ -1773,7 +1795,7 @@ public class ScriptWorkflowService {
                    shot_type, visual_description, characters, scene, props, dialogue, duration_seconds, shot_plan_json,
                    prompt_document_json, material_binding_status, source_fingerprint, generated_by_run_id,
                    image_prompt, video_prompt, first_frame_url, current_video_result_id, current_video_url,
-                   current_shot_result_id, current_shot_video_url
+                   current_shot_result_id, current_shot_video_url, video_generation_settings_json
               from storyboard where tenant_id = ? and project_id = ? and episode_no = ? and deleted_at is null
              order by shot_no, id limit ? offset ?
             """, (rs, rowNum) -> new StoryboardResponse(rs.getLong("id"), projectId, rs.getInt("shot_no"),
@@ -1788,7 +1810,7 @@ public class ScriptWorkflowService {
                 rs.getObject("current_video_result_id", Long.class),
                 materialFileAccessService.publicUrl(rs.getString("current_video_url")),
                 rs.getObject("current_shot_result_id", Long.class),
-                materialFileAccessService.publicUrl(rs.getString("current_shot_video_url")), List.of()),
+                materialFileAccessService.publicUrl(rs.getString("current_shot_video_url")), List.of(), readJson(rs.getString("video_generation_settings_json"))),
             tenantId, projectId, episodeNo, limit, offset);
         Map<Long, List<StoryboardAssetReferenceResponse>> references =
             storyboardAssetReferenceRepository.listResponsesForStoryboards(

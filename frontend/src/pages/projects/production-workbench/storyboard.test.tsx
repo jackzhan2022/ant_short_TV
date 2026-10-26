@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   bindAiVideoResultToStoryboard: vi.fn(),
   queryAiVoiceTasks: vi.fn(),
   createAiVoiceTask: vi.fn(),
+  saveStoryboardVideoSettings: vi.fn(),
   createAiVideoTask: vi.fn(),
   confirmPointEstimates: vi.fn(),
   confirmMissingImages: vi.fn(),
@@ -132,6 +133,7 @@ vi.mock('./service', () => ({
   bindAiVideoResultToStoryboard: mocks.bindAiVideoResultToStoryboard,
   queryAiVoiceTasks: mocks.queryAiVoiceTasks,
   createAiVoiceTask: mocks.createAiVoiceTask,
+  saveStoryboardVideoSettings: mocks.saveStoryboardVideoSettings,
   createAiVideoTask: mocks.createAiVideoTask,
   cancelAiVideoTask: mocks.cancelAiVideoTask,
   regenerateAiVideoTask: mocks.regenerateAiVideoTask,
@@ -145,6 +147,10 @@ vi.mock('./service', () => ({
   createStoryboardBatch: mocks.createStoryboardBatch,
   queryStoryboardBatch: mocks.queryStoryboardBatch,
   queryLatestStoryboardBatch: mocks.queryLatestStoryboardBatch,
+}));
+
+vi.mock('@/pages/asset-library/audio-service', () => ({
+  queryStoryboardCharacterVoice: vi.fn().mockResolvedValue({ success: true, data: { audio: null, overridden: false } }),
 }));
 
 vi.mock('./ShotProductionWorkspace', () => ({
@@ -679,6 +685,7 @@ const setupWorkspaceResponse = (
       })));
     return { data: { imageTasks: images?.data || [], videoTasks: videos?.data || [], voiceTasks: voices?.data || [], assetVisuals: assetVisuals.filter(({ visual }) => visual) } };
   });
+  mocks.saveStoryboardVideoSettings.mockImplementation(async (_projectId, _storyboardId, values) => ({ data: values }));
   mocks.createAiVideoTask.mockResolvedValue({
     data: { id: 9002, storyboardId: 101, executionId: 7002, results: [] },
   });
@@ -1992,7 +1999,7 @@ describe('ProductionWorkbench script page', () => {
     expect(mocks.confirmMissingImages).not.toHaveBeenCalled();
   });
 
-  it.each([[4422, 'ASSET_PENDING'], [null, 'ASSET_PENDING'], [4422, 'RESOLVED']] as const)('asks before using text-only generation for unavailable image variant %s (%s) and keeps the bindings', async (variantId, resolutionStatus) => {
+  it.each([[4422, 'ASSET_PENDING'], [null, 'ASSET_PENDING'], [4422, 'RESOLVED']] as const)('asks before skipping unavailable image variant %s (%s) and keeps the bindings', async (variantId, resolutionStatus) => {
     const original = pendingImageStoryboard();
     const shot = { ...original,
       assetReferences: [{ ...original.assetReferences[0], variantId, resolutionStatus, imageUrl: null }],
@@ -2007,14 +2014,35 @@ describe('ProductionWorkbench script page', () => {
     expect(mocks.updateStoryboard).not.toHaveBeenCalled();
     expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
     const dialog = mocks.confirmMissingImages.mock.calls[0][0];
-    expect(dialog.okText).toBe('继续纯文生视频');
+    expect(dialog.okText).toBe('跳过缺图继续生成');
     await act(async () => dialog.onOk());
     await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
-      expect.objectContaining({ storyboardId: 301, textOnly: true }), true));
+      expect.objectContaining({ storyboardId: 301, skipUnavailableImages: true }), true));
     const operation = mocks.confirmPointEstimates.mock.calls[0][0][0];
     expect(operation.data).toEqual({ ...mocks.createAiVideoTask.mock.calls[0][1], promptDocument: shot.promptDocument });
     expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301,
       expect.objectContaining({ promptDocument: shot.promptDocument }));
+    expect(mocks.replaceStoryboardAssetReferences).not.toHaveBeenCalled();
+  });
+
+  it('keeps the valid first frame and image bindings when skipping one missing image', async () => {
+    const pending = pendingImageStoryboard();
+    const shot = { ...pending, firstFrameUrl: '/existing-frame.png', assetReferences: [
+      ...pending.assetReferences,
+      { assetType: 'SCENE', assetId: 811, variantId: 4423, sourceName: '卧室',
+        referenceRole: 'MAIN', sortOrder: 1, resolutionStatus: 'RESOLVED', imageUrl: '/bedroom.png',
+        sourceType: 'AI', lockedByUser: false },
+    ] };
+    setupWorkspaceResponse({ storyboards: [shot] });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.confirmMissingImages).toHaveBeenCalledTimes(1));
+    const dialog = mocks.confirmMissingImages.mock.calls[0][0];
+    expect(dialog.okText).toBe('跳过缺图继续生成');
+    await act(async () => dialog.onOk());
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ storyboardId: 301, skipUnavailableImages: true, firstFrameUrl: '/existing-frame.png' }), true));
+    expect(mocks.createAiVideoTask.mock.calls[0][1].textOnly).not.toBe(true);
     expect(mocks.replaceStoryboardAssetReferences).not.toHaveBeenCalled();
   });
 
@@ -2029,7 +2057,7 @@ describe('ProductionWorkbench script page', () => {
     expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
   });
 
-  it('estimates a mixed batch once and applies text-only only to affected storyboards', async () => {
+  it('estimates a mixed batch once and skips missing images only in affected storyboards', async () => {
     const pending = pendingImageStoryboard();
     const ready = { ...pendingImageStoryboard(), id: 302, shotNo: 2, assetReferences: [],
       firstFrameUrl: '/ready.png', promptDocument: { version: 2, nodes: [{ type: 'text', text: '已有首帧' }] } };
@@ -2050,8 +2078,8 @@ describe('ProductionWorkbench script page', () => {
       expect(operations.find((op: any) => op.data.storyboardId === values.storyboardId).data)
         .toEqual(expect.objectContaining(values));
     }
-    expect(operations.find((op: any) => op.data.storyboardId === 301).data.textOnly).toBe(true);
-    expect(operations.find((op: any) => op.data.storyboardId === 302).data.textOnly).not.toBe(true);
+    expect(operations.find((op: any) => op.data.storyboardId === 301).data.skipUnavailableImages).toBe(true);
+    expect(operations.find((op: any) => op.data.storyboardId === 302).data.skipUnavailableImages).not.toBe(true);
   });
 
   it('shows a newly created video task in the right preview before polling returns, updates progress, and displays the result', async () => {
@@ -2087,6 +2115,8 @@ describe('ProductionWorkbench script page', () => {
     }] });
     await act(async () => { finishExecution({ id: 7002, status: 'SUCCEEDED', progress: 100 }); });
     await waitFor(() => expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument());
+    expect(await screen.findByAltText('分镜1成片预览')).toHaveAttribute('src', '/ready-cover.png');
+    expect(await screen.findByAltText('分镜1视频版本9102缩略图')).toHaveAttribute('src', '/ready-cover.png');
     fireEvent.click(await screen.findByRole('button', { name: '播放分镜1成片预览' }));
     expect(await screen.findByLabelText('分镜1成片预览')).toHaveAttribute('src', '/ready-video.mp4');
     expect(generate).not.toBeDisabled();
@@ -3160,6 +3190,67 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: /视频参数/ })[0]).toHaveTextContent('720p');
     });
+  });
+
+  it('automatically saves all video parameters per shot and restores them after a fresh page mount', async () => {
+    const response = await mocks.queryScriptWorkspace();
+    let stored = { durationSeconds: 5, resolution: '1080p', generateAudio: false, watermark: true };
+    mocks.saveStoryboardVideoSettings.mockImplementation(async (_projectId, _shotId, values) => {
+      stored = { ...values }; return { data: stored };
+    });
+    const view = render(<ProductionWorkbench />);
+    const duration = await screen.findByRole('spinbutton', { name: '分镜1视频时长' });
+    const second = screen.getByRole('spinbutton', { name: '分镜2视频时长' });
+    const secondValue = second.getAttribute('value');
+    fireEvent.change(duration, { target: { value: '15' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '分镜1视频分辨率' }), { target: { value: '720p' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: '分镜1生成音频' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '分镜1视频水印' }));
+    await waitFor(() => expect(stored).toEqual({ durationSeconds: 15, resolution: '720p', generateAudio: true, watermark: false }));
+    expect(await screen.findByText('视频参数已保存')).toBeInTheDocument();
+    expect(second).toHaveAttribute('value', secondValue);
+    expect(mocks.saveStoryboardVideoSettings.mock.calls.every((call) => call[0] === 1 && call[1] === 101)).toBe(true);
+    expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    view.unmount();
+    setupWorkspaceResponse({ storyboards: response.data.storyboards.map((shot: any) => shot.id === 101
+      ? { ...shot, videoGenerationSettings: stored } : shot) });
+    mocks.saveStoryboardVideoSettings.mockClear();
+    render(<ProductionWorkbench />);
+    expect(await screen.findByRole('spinbutton', { name: '分镜1视频时长' })).toHaveValue(15);
+    expect(screen.getByRole('combobox', { name: '分镜1视频分辨率' })).toHaveValue('720p');
+    expect(screen.getByRole('checkbox', { name: '分镜1生成音频' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '分镜1视频水印' })).not.toBeChecked();
+    expect(mocks.saveStoryboardVideoSettings).not.toHaveBeenCalled();
+  });
+
+  it('waits for parameter persistence before estimating and generating a video', async () => {
+    let finish!: (response: unknown) => void;
+    mocks.saveStoryboardVideoSettings.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(<ProductionWorkbench />);
+    fireEvent.change(await screen.findByRole('spinbutton', { name: '分镜1视频时长' }), { target: { value: '15' } });
+    await waitFor(() => expect(mocks.saveStoryboardVideoSettings).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    await act(async () => finish({ data: mocks.saveStoryboardVideoSettings.mock.calls[0][2] }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ storyboardId: 101, durationSeconds: 15 }), true));
+  });
+
+  it('keeps failed parameter edits visible, blocks video submission and supports saving again', async () => {
+    mocks.saveStoryboardVideoSettings.mockRejectedValueOnce(new Error('offline'));
+    render(<ProductionWorkbench />);
+    fireEvent.change(await screen.findByRole('spinbutton', { name: '分镜1视频时长' }), { target: { value: '15' } });
+    const retry = await screen.findByRole('button', { name: '重试保存分镜1视频参数' });
+    expect(screen.getByRole('spinbutton', { name: '分镜1视频时长' })).toHaveValue(15);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' })));
+    expect(mocks.createAiVideoTask).not.toHaveBeenCalled();
+    expect(mocks.confirmPointEstimates).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    expect(await screen.findByText('视频参数已保存')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1,
+      expect.objectContaining({ storyboardId: 101, durationSeconds: 15 }), true));
   });
 
   it('submits intelligent duration and per-storyboard video overrides', async () => {

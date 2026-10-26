@@ -1,6 +1,8 @@
 package com.antshorttv.script;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -18,6 +20,8 @@ public class StoryboardEntity {
     public Integer storyboardNo;
     public String shotPlanJson;
     public String promptDocumentJson;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    public String videoGenerationSettingsJson;
     public String sourceFingerprint;
     public Long generatedByRunId;
     public String materialBindingStatus;

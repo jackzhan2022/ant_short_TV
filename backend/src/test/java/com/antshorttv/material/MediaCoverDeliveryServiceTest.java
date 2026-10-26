@@ -96,6 +96,28 @@ class MediaCoverDeliveryServiceTest {
     }
 
     @Test
+    void generatedVideoCoverUsesCapturedJpegUntilItsCompressedDisplayIsReady() {
+        Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+        f.source("/api/projects/22/ai-image-results/44/display");
+        var image = new AiImageResultEntity();
+        image.setId(44L); image.setTenantId(11L); image.setProjectId(22L);
+        image.setTargetType("VIDEO_COVER"); image.setStatus("ACTIVE");
+        when(f.images.selectById(44L)).thenReturn(image);
+        var identity = new MediaObjectIdentity(11L, 22L, "AI_IMAGE_RESULT", 44L, "result-44");
+        when(f.renditions.displayDetails(identity)).thenReturn(new RegisteredMediaDetails(44L, identity,
+            "DISPLAY_IMAGE_SLIM", f.displayKey, "image/jpeg", 0, "SUBMITTED", null));
+        when(f.renditions.originalDetails(identity)).thenReturn(new RegisteredMediaDetails(45L, identity,
+            "ORIGINAL", f.originalKey, "image/jpeg", 100, "READY", null));
+        assertThat(f.service.delivery(22L, 1L, f.kind)).isNotNull();
+        var request = ArgumentCaptor.forClass(DeliveryGrantRequest.class);
+        verify(f.grants).issue(request.capture());
+        assertThat(request.getValue().objectKey()).isEqualTo(f.originalKey);
+        assertThat(request.getValue().renditionType()).isEqualTo("ORIGINAL");
+        image.setTargetType("STORYBOARD");
+        assertThat(f.service.delivery(22L, 1L, f.kind)).isNull();
+    }
+
+    @Test
     void missingOrUnknownSourcesStayEmptyAndNeverProxyOriginals() {
         Fixture f = new Fixture(MediaPlaybackService.ResourceKind.EPISODE_VIDEO_VERSION);
         for (String source : new String[] {null, "", "https://external.example/cover.jpg", "data:image/png;base64,secret",

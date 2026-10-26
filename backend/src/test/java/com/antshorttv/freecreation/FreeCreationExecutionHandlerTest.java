@@ -44,6 +44,24 @@ class FreeCreationExecutionHandlerTest {
         assertThat(creation.billingAttemptId).isEqualTo(5L);assertThat(creation.billingCallLogId).isEqualTo(7L);
     }
 
+    @Test void imagePrivacyRejectionExplainsReferenceIssueAndStillReleasesReservation() {
+        var context=context();var creation=creation();
+        creation.externalTaskId=null;creation.providerStartedAt=null;
+        when(creations.selectById(2L)).thenReturn(creation);when(creations.update(any(),any())).thenReturn(1);
+        when(executions.requireTaskForUpdate(1L)).thenReturn(context.task());
+        when(service.videoTask(creation,true)).thenReturn(new AiVideoTaskEntity());
+        when(service.read(null)).thenReturn(new ObjectMapper().createObjectNode());
+        when(invocation.invokeProviderNative(any(),anyString(),any())).thenThrow(new AiGatewayException(ErrorCode.VALIDATION_ERROR,
+            "火山方舟请求失败，HTTP 400：InputImageSensitiveContentDetected.PrivacyInformation: The input image may contain real person. Request id: private-request",7L));
+        var reserved=new AiPointReservationEntity();reserved.id=8L;reserved.status="RESERVED";
+        when(reservations.selectByExecutionId(1L)).thenReturn(reserved);
+        when(settlements.finalizeOutcome(anyLong(),any(),anyMap(),any(),any(),anyString())).thenReturn(reserved);
+        assertThatThrownBy(()->handler.execute(context)).isInstanceOf(IllegalStateException.class)
+            .hasMessage("参考图片未通过模型服务商审核，可能涉及真人形象，请更换符合该模型要求的参考图片后重试。");
+        verify(settlements).finalizeOutcome(eq(8L),eq(AiSettlementOutcome.PROVIDER_REJECTION),eq(Map.of()),eq(5L),eq(7L),anyString());
+        assertThat(creation.billingCallLogId).isEqualTo(7L);
+    }
+
     @Test void staleWorkerCannotSettleAfterItsClaimWasReplaced() {
         var context=context();var creation=creation();
         when(creations.selectById(2L)).thenReturn(creation);when(creations.update(any(),any())).thenReturn(1);

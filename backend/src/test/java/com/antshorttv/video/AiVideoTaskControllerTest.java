@@ -95,6 +95,114 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     }
 
     @Test
+    void skipsOneMissingImageButKeepsAvailableReferencesAndPublishesAnExtractedCover() throws Exception {
+        String token = registerUser("13800016029", "Partial Image Owner");
+        Long tenantId = createTenant(token, "缺图跳过团队");
+        Long ownerId = userIdByMobile("13800016029");
+        Long projectId = createProject(token, tenantId, ownerId, "缺图跳过项目", "PARTIAL_VIDEO_IMAGES");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        long availableId = seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+        jdbc.update("""
+            insert into storyboard_asset_reference
+              (tenant_id, project_id, storyboard_id, asset_type, asset_id, variant_id,
+               reference_role, sort_order, resolution_status, source_type, source_name,
+               created_by, created_at, updated_at)
+            values (?, ?, ?, 'CHARACTER', 88, null, 'VISIBLE', 0, 'ASSET_PENDING', 'MANUAL', '缺图客人', ?, now(), now())
+            """, tenantId, projectId, storyboardId, ownerId);
+        String document = """
+            {"version":2,"nodes":[
+              {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT","sourceId":999999,"variantId":999999,"displayName":"缺图客人"},
+              {"type":"text","text":"看向"},
+              {"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT","sourceId":%d,"variantId":%d,"displayName":"林晚"}]}
+            """.formatted(availableId, availableId);
+        jdbc.update("update storyboard set prompt_document_json=? where id=?", document, storyboardId);
+        String data = """
+            {"storyboardId":%d,"modelId":%d,"prompt":"缺图客人看向林晚","durationSeconds":5,
+             "aspectRatio":"9:16","resolution":"720p","skipUnavailableImages":true}
+            """.formatted(storyboardId, modelId);
+        grantTeamPoints(tenantId, 10);
+        String estimate = "{\"operations\":[{\"url\":\"/api/projects/" + projectId
+            + "/ai-video-tasks\",\"data\":" + data + "}]}";
+        mockMvc.perform(post("/api/tenants/%d/points/estimate".formatted(tenantId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content(estimate))
+            .andExpect(status().isOk());
+        MvcResult created = mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content(data))
+            .andExpect(status().isOk()).andReturn();
+        Long taskId = readLong(created, "$.data.id");
+        String snapshot = jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?", String.class, taskId);
+        assertThat(snapshot).contains("\"textOnly\":false", "缺图客人看向图片1", "IMAGE_UNAVAILABLE");
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task_reference where task_id=?", Integer.class, taskId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select prompt_document_json from storyboard where id=?", String.class, storyboardId)).isEqualTo(document);
+        pollVideoTask(token, tenantId, projectId, taskId).andExpect(status().isOk());
+        pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+        Long imageId = jdbc.queryForObject("select id from ai_image_result where target_type='VIDEO_COVER' and target_id=?", Long.class, taskId);
+        String cover = jdbc.queryForObject("select cover_url from ai_video_result where task_id=?", String.class, taskId);
+        assertThat(cover).isEqualTo("/api/projects/" + projectId + "/ai-image-results/" + imageId + "/display");
+        assertThat(jdbc.queryForObject("select status from ai_image_result where id=?", String.class, imageId)).isEqualTo("ACTIVE");
+        String original = jdbc.queryForObject("select storage_path from ai_image_result where id=?", String.class, imageId);
+        assertThat(javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(storedObjectBytes(original)))).isNotNull();
+        String coverEndpoint = "/api/projects/%d/ai-video-results/%d/cover".formatted(projectId,
+            jdbc.queryForObject("select id from ai_video_result where task_id=?", Long.class, taskId));
+        mockMvc.perform(get(coverEndpoint).with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isFound());
+        completePendingImageJobs(mockMvc);
+        mockMvc.perform(get(coverEndpoint).with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+            .andExpect(status().isFound());
+        pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+        assertThat(jdbc.queryForObject("select count(*) from ai_image_result where target_type='VIDEO_COVER' and target_id=?", Integer.class, taskId)).isEqualTo(1);
+        Long resultId = jdbc.queryForObject("select id from ai_video_result where task_id=?", Long.class, taskId);
+        MvcResult material = mockMvc.perform(post("/api/projects/%d/ai-video-results/%d/save-material".formatted(projectId, resultId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andReturn();
+        Long materialId = readLong(material, "$.data.materialId");
+        String imageEndpoint = "/api/projects/%d/ai-image-results/%d".formatted(projectId, imageId);
+        mockMvc.perform(delete(imageEndpoint).with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.errorCode", is("AI_IMAGE_RESULT_IN_USE")));
+        mockMvc.perform(delete(imageEndpoint + "?force=true").with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select cover_url from ai_video_result where id=?", String.class, resultId)).isNull();
+        assertThat(jdbc.queryForObject("select cover_url from material where id=?", String.class, materialId)).isNull();
+    }
+
+    @Test
+    void regenerationRechecksAvailableImagesAfterAllMissingImagesWereSkipped() throws Exception {
+        String token = registerUser("13800016030", "Recovered Image Owner");
+        Long tenantId = createTenant(token, "参考图恢复团队");
+        Long ownerId = userIdByMobile("13800016030");
+        Long projectId = createProject(token, tenantId, ownerId, "参考图恢复项目", "RECOVER_VIDEO_IMAGES");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        long variantId = seedStoryboardImageReference(tenantId, projectId, storyboardId, ownerId);
+        Long imageId = jdbc.queryForObject("select current_image_result_id from asset_visual_variant where id=?", Long.class, variantId);
+        jdbc.update("update asset_visual_variant set current_image_result_id=null, current_image_url=null where id=?", variantId);
+        grantTeamPoints(tenantId, 10);
+        String operation = "/api/projects/%d/ai-video-tasks".formatted(projectId);
+        MvcResult created = mockMvc.perform(post(operation)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON).content("""
+                {"storyboardId":%d,"modelId":%d,"prompt":"林晚完成广告","durationSeconds":5,
+                 "aspectRatio":"9:16","resolution":"720p","skipUnavailableImages":true}
+                """.formatted(storyboardId, modelId)))
+            .andExpect(status().isOk()).andReturn();
+        Long taskId = readLong(created, "$.data.id");
+        assertThat(jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?", String.class, taskId))
+            .contains("\"textOnly\":true", "\"references\":[]");
+        jdbc.update("update ai_video_task set status='CANCELED' where id=?", taskId);
+        jdbc.update("update asset_visual_variant set current_image_result_id=?, current_image_url='https://cdn.example/recovered.png' where id=?", imageId, variantId);
+        MvcResult regenerated = mockMvc.perform(post(operation + "/" + taskId + "/regenerate")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk()).andReturn();
+        Long nextId = readLong(regenerated, "$.data.id");
+        assertThat(jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?", String.class, nextId))
+            .contains("\"textOnly\":false", "\"skipUnavailableImages\":true");
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task_reference where task_id=?", Integer.class, nextId)).isEqualTo(1);
+    }
+
+    @Test
     void pendingFormalImagesExplainHowToUnblockVideoWithoutSubmittingOrReservingPoints() throws Exception {
         String token = registerUser("13800016023", "Pending Image Owner");
         Long tenantId = createTenant(token, "待生成参考图片团队");
@@ -121,7 +229,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
              "aspectRatio":"9:16","resolution":"720p"}
             """.formatted(storyboardId, modelId);
         String operationUrl = "/api/projects/%d/ai-video-tasks".formatted(projectId);
-        String reason = "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。";
+        String reason = "参考图片尚不可用，请先生成或重新绑定图片，或确认跳过缺图继续生成。";
         String estimate = "{\"operations\":[{\"url\":\"" + operationUrl + "\",\"data\":" + data + "}]}";
         for (Long pendingVariantId : java.util.Arrays.asList(variantId, null)) {
             jdbc.update("update storyboard_asset_reference set variant_id=? where storyboard_id=?", pendingVariantId, storyboardId);

@@ -140,7 +140,8 @@ record StoryboardResponse(
     String currentVideoUrl,
     Long currentShotResultId,
     String currentShotVideoUrl,
-    List<StoryboardAssetReferenceResponse> assetReferences
+    List<StoryboardAssetReferenceResponse> assetReferences,
+    com.fasterxml.jackson.databind.JsonNode videoGenerationSettings
 ) {
     static StoryboardResponse from(StoryboardEntity entity) {
         return new StoryboardResponse(
@@ -169,7 +170,7 @@ record StoryboardResponse(
             entity.currentVideoUrl,
             entity.currentShotResultId,
             entity.currentShotVideoUrl,
-            List.of()
+            List.of(), parseJson(entity.videoGenerationSettingsJson)
         );
     }
 
@@ -184,7 +185,7 @@ record StoryboardResponse(
             characters, scene, props, dialogue, durationSeconds, shotPlan, promptDocument,
             materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
             firstFrameUrl, currentVideoResultId, currentVideoUrl, currentShotResultId, currentShotVideoUrl,
-            references == null ? List.of() : references);
+            references == null ? List.of() : references, videoGenerationSettings);
     }
 
     StoryboardResponse forBrowser() {
@@ -194,7 +195,7 @@ record StoryboardResponse(
             materialBindingStatus, sourceFingerprint, generatedByRunId, imagePrompt, videoPrompt,
             firstFrameUrl, currentVideoResultId,
             playbackUrl("ai-video-results", currentVideoResultId, currentVideoUrl), currentShotResultId,
-            playbackUrl("shot-compose-results", currentShotResultId, currentShotVideoUrl), assetReferences);
+            playbackUrl("shot-compose-results", currentShotResultId, currentShotVideoUrl), assetReferences, videoGenerationSettings);
     }
 
     private String playbackUrl(String resourceType, Long resultId, String storedUrl) {

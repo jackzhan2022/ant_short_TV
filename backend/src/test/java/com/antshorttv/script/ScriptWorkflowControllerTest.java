@@ -374,6 +374,11 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
         Long storyboardId = jdbcTemplate.queryForObject(
             "select id from storyboard where tenant_id = ? and project_id = ?", Long.class, tenantId, projectId);
 
+        mockMvc.perform(put("/api/projects/%d/storyboards/%d/video-generation-settings".formatted(projectId,storyboardId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"durationSeconds\":15,\"resolution\":\"720p\",\"generateAudio\":false,\"watermark\":true}"))
+            .andExpect(status().isOk());
+
         mockMvc.perform(put("/api/projects/%d/storyboards/%d".formatted(projectId, storyboardId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                 .header("X-Tenant-Id", tenantId)
@@ -407,6 +412,11 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
 
         assertThat(jdbcTemplate.queryForObject(
             "select characters from storyboard where id = ?", String.class, storyboardId)).isNull();
+        mockMvc.perform(get("/api/projects/%d/storyboard-workspace".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenantId).param("episodeNo","1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.storyboards[0].videoGenerationSettings.durationSeconds",is(15)))
+            .andExpect(jsonPath("$.data.storyboards[0].durationSeconds",is(5)));
     }
 
     @Test

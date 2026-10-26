@@ -6,6 +6,8 @@ vi.mock('@umijs/max', () => ({ request }));
 
 import {
   queryStoryboardEditorPage,
+  renameScriptElement,
+  renameVisualVariant,
   queryStoryboardEpisodeDetails,
   queryStoryboardWorkspace,
   createAssetImageBatch,
@@ -152,5 +154,20 @@ describe('focused storyboard editor transport', () => {
   it('preserves the original workspace endpoint for other consumers', async () => {
     await queryStoryboardWorkspace(5);
     expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-workspace', { params: {} });
+  });
+});
+
+
+describe('name-only updates', () => {
+  beforeEach(() => request.mockReset());
+  it('renames an asset without submitting other fields', async () => {
+    await renameScriptElement(5, 'SCENE', 12, '夜间车站');
+    expect(request).toHaveBeenCalledWith('/api/projects/5/script-elements/SCENE/12/name',
+      expect.objectContaining({ method: 'PUT', data: { name: '夜间车站' }, skipErrorHandler: true }));
+  });
+  it('renames a variant without submitting prompts', async () => {
+    await renameVisualVariant(5, 22, '冬装');
+    expect(request).toHaveBeenCalledWith('/api/projects/5/visual-variants/22/name',
+      expect.objectContaining({ method: 'PUT', data: { name: '冬装' }, skipErrorHandler: true }));
   });
 });

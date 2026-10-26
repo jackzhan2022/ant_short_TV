@@ -32,7 +32,7 @@ class StoryboardEditorQueryServiceTest {
             create table storyboard(id bigint primary key, tenant_id bigint, project_id bigint, script_id bigint,
                 episode_id bigint, episode_no int, shot_no int, storyboard_no int, shot_type varchar(30),
                 visual_description clob, characters varchar(200), scene varchar(200), props varchar(200), dialogue clob,
-                duration_seconds int, shot_plan_json clob, prompt_document_json clob, material_binding_status varchar(50),
+                video_generation_settings_json clob, duration_seconds int, shot_plan_json clob, prompt_document_json clob, material_binding_status varchar(50),
                 source_fingerprint varchar(200), generated_by_run_id bigint, image_prompt clob, video_prompt clob,
                 first_frame_url varchar(200), current_video_result_id bigint, current_video_url varchar(200),
                 current_shot_result_id bigint, current_shot_video_url varchar(200), deleted_at timestamp)
@@ -65,6 +65,17 @@ class StoryboardEditorQueryServiceTest {
                 video_prompt,current_video_result_id,current_video_url)
             values (?,10,33,7,?,?,?,?,'script text','dialogue',?,?,'editable prompt',123,'internal/video.mp4')
             """, id, (long)(70+episodeNo), episodeNo, no, no, plan.toString(), prompt.toString());
+    }
+
+    @Test
+    void focusedEditorReadRestoresStoredVideoParametersWithoutChangingScriptDuration() throws Exception {
+        shot(1L,1,1);
+        jdbc.update("update storyboard set duration_seconds=5,video_generation_settings_json=? where id=1",
+            "{\"durationSeconds\":15,\"resolution\":\"720p\",\"generateAudio\":false,\"watermark\":true}");
+        var shot=service.page(10L,33L,1,1,20).storyboards().stream().filter(row -> row.id()==1L).findFirst().orElseThrow();
+        assertThat(shot.videoGenerationSettings().path("durationSeconds").asInt()).isEqualTo(15);
+        assertThat(shot.videoGenerationSettings().path("watermark").asBoolean()).isTrue();
+        assertThat(shot.durationSeconds()).isEqualTo(5);
     }
 
     @Test

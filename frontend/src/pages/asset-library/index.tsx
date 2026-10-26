@@ -11,7 +11,7 @@ import styles from './index.module.css';
 
 const categories = [
   { key: 'CHARACTER', label: '角色' }, { key: 'SCENE', label: '场景' },
-  { key: 'PROP', label: '道具' }, { key: 'OTHER', label: '其他' },
+  { key: 'PROP', label: '道具' }, { key: 'VIDEO_FRAME', label: '视频帧' }, { key: 'OTHER', label: '其他' },
 ];
 const dateText = (value?: string) => value ? value.replace('T', ' ').slice(0, 16) : '暂无更新时间';
 const durationText = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;

@@ -64,7 +64,7 @@ public class AiModelRouter {
             || config.getApiKeyCipher() == null || config.getApiKeyCipher().isBlank()) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_DISABLED, "AI 服务商配置不可用。");
         }
-        AiProviderAdapter adapter = adapters.get(provider.getCode().toUpperCase(Locale.ROOT));
+        AiProviderAdapter adapter = adapters.get(VolcengineProviderCodes.adapterCode(provider.getCode()).toUpperCase(Locale.ROOT));
         if (adapter == null) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_NOT_SUPPORTED, "AI 服务商暂未接入 Gateway。");
         }

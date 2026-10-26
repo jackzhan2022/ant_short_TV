@@ -24,6 +24,11 @@ public class AssetExtractionCoordination {
             from script_asset_extraction_owner where tenant_id=? and project_id=? and script_id=? for update
             """,tenant,project,script);
     }
+    @Transactional
+    public void lockForManualMutation(Long tenant, Long project, Long script) {
+        lock(tenant, project, script);
+    }
+
     private boolean active(Object execution) {
         return execution!=null && !jdbc.queryForList("""
             select id from ai_execution_task where id=? and status in ('PENDING','RUNNING') for update

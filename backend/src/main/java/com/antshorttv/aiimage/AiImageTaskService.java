@@ -42,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AiImageTaskService {
     @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
+    private static final List<String> VIDEO_COVER_TABLES = List.of("ai_video_result", "material", "shot_compose_result", "episode_video_version");
     private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "PROP", "STORYBOARD_FIRST_FRAME");
     private static final List<String> TARGET_TYPES = List.of("CHARACTER", "SCENE", "STORYBOARD", "VISUAL_VARIANT");
     private static final List<String> ASPECT_RATIOS = List.of("1:1", "3:4", "4:3", "9:16", "16:9");
@@ -517,6 +518,13 @@ public class AiImageTaskService {
             case "SCENE" -> countReferences("scene_asset", "main_image_result_id", result) > 0;
             case "STORYBOARD" -> countReferences("storyboard", "first_frame_result_id", result) > 0;
             case "VISUAL_VARIANT" -> countReferences("asset_visual_variant", "current_image_result_id", result) > 0;
+            case "VIDEO_COVER" -> VIDEO_COVER_TABLES.stream().anyMatch(table -> {
+                Integer count = jdbcTemplate.queryForObject(
+                    "select count(*) from " + table + " where tenant_id=? and project_id=? and cover_url=? and status='ACTIVE'"
+                        + ("material".equals(table) ? " and deleted_at is null" : ""),
+                    Integer.class, result.getTenantId(), result.getProjectId(), result.getImageUrl());
+                return count != null && count > 0;
+            });
             default -> false;
         };
     }
@@ -535,6 +543,9 @@ public class AiImageTaskService {
 
     private void clearBusinessBinding(AiImageResultEntity result) {
         switch (result.getTargetType()) {
+            case "VIDEO_COVER" -> VIDEO_COVER_TABLES.forEach(table -> jdbcTemplate.update(
+                "update " + table + " set cover_url=null, updated_at=now() where tenant_id=? and project_id=? and cover_url=?",
+                result.getTenantId(), result.getProjectId(), result.getImageUrl()));
             case "CHARACTER" -> jdbcTemplate.update("""
                 update character_asset
                    set main_image_url = null, main_image_result_id = null, updated_at = now()

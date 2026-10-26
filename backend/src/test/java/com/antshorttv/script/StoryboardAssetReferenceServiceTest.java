@@ -57,6 +57,17 @@ class StoryboardAssetReferenceServiceTest {
     }
 
     @Test
+    void staleCharacterBindingFallsBackToSameCharactersPrimary() {
+        jdbc.update("""
+            insert into asset_visual_variant (id,tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,is_primary,created_by,created_at,updated_at,deleted_at)
+            values (9950,9901,9911,'CHARACTER',9931,'已删除服装','MANUAL','COMPLETED',false,1,now(),now(),now())
+            """);
+        var result=service.replace(9901L,9911L,9921L,new ReplaceStoryboardAssetReferencesRequest(List.of(command("CHARACTER",9931L,9950L,"VISIBLE",0))));
+        assertThat(result.get(0).variantId()).isEqualTo(9941L);
+        assertThat(jdbc.queryForObject("select variant_id from storyboard_asset_reference where storyboard_id=9921 and retired_at is null",Long.class)).isEqualTo(9941L);
+    }
+
+    @Test
     void replacesMultipleReferencesAndSynchronizesLegacyFields() {
         var response = service.replace(9901L, 9911L, 9921L,
             new ReplaceStoryboardAssetReferencesRequest(List.of(

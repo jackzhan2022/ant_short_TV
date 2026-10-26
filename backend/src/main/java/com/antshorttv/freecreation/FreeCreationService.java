@@ -219,7 +219,7 @@ public class FreeCreationService {
             if(params.path("intelligentDuration").asBoolean()) params.put("durationSeconds",-1);
             if(!params.path("durationSeconds").isIntegralNumber() || !params.path("durationSeconds").canConvertToInt()) throw invalid("视频时长必须为整数。");
             if(!Set.of("1:1","3:4","4:3","9:16","16:9","21:9","adaptive").contains(params.path("aspectRatio").asText())) throw invalid("不支持的视频比例。");
-            if("VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())) {
+            if(VolcengineProviderCodes.isArk(route.provider().getCode())) {
                 if(params.path("durationSeconds").asInt()==-1 && !videoValidator.constraints(route.model()).path("duration").path("intelligent").asBoolean()) throw invalid("所选模型不支持智能时长。");
                 videoValidator.validate(route.model(),params.path("durationSeconds").asInt(),params.path("resolution").asText(),resolved(refs,false));
             } else {
@@ -303,8 +303,23 @@ public class FreeCreationService {
         result.put("taskKey","FREE_CREATION:"+item.id);
         result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status):List.of());
         result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(output->media.present(context,output)).toList():List.of());
-        result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?safeError(task.errorMessage):null); return result;
+        result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?errorMessage(item,task):null); return result;
     }
+    private String errorMessage(FreeCreationEntity item,AiExecutionTaskEntity task) {
+        // Older executions persisted only the generic message. Resolve their known cause without rewriting history.
+        if ("FAILED".equals(task.status) && FreeCreationErrorMessages.UNAVAILABLE.equals(task.errorMessage)
+            && item.billingCallLogId != null) {
+            var errors=jdbc.queryForList(
+                "select error_message from ai_call_log where id=? and tenant_id=? and execution_id=?",
+                String.class,item.billingCallLogId,item.tenantId,item.executionId);
+            if (!errors.isEmpty()) {
+                String recognized=FreeCreationErrorMessages.recognized(errors.get(0));
+                if (recognized != null) return recognized;
+            }
+        }
+        return safeError(task.errorMessage);
+    }
+
     private static String safeError(String message) {
         if(message==null) return "生成失败，请重新提交。";
         String redacted=com.antshorttv.storage.SensitiveValueRedactor.redact(message).replaceAll("https?://[^\\s]+","[供应商地址]");

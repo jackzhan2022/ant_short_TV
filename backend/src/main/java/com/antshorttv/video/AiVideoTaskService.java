@@ -106,6 +106,8 @@ public class AiVideoTaskService {
     private final AiVideoProviderAdapter providerAdapter;
     private final SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter;
     private final StoryboardPromptCompiler promptCompiler;
+    private final AvailableVideoReferences availableVideoReferences;
+    private final AiVideoCoverService videoCoverService;
     private final StoryboardAssetReferenceRepository storyboardReferenceRepository;
     private final VideoTaskReferenceResolver referenceResolver;
     private final CharacterVoiceVideoReferences characterVoiceReferences;
@@ -148,6 +150,8 @@ public class AiVideoTaskService {
         AiVideoProviderAdapter providerAdapter,
         SeedanceArkVideoProviderAdapter seedanceArkProviderAdapter,
         StoryboardPromptCompiler promptCompiler,
+        AvailableVideoReferences availableVideoReferences,
+        AiVideoCoverService videoCoverService,
         StoryboardAssetReferenceRepository storyboardReferenceRepository,
         VideoTaskReferenceResolver referenceResolver,
         CharacterVoiceVideoReferences characterVoiceReferences,
@@ -189,6 +193,8 @@ public class AiVideoTaskService {
         this.providerAdapter = providerAdapter;
         this.seedanceArkProviderAdapter = seedanceArkProviderAdapter;
         this.promptCompiler = promptCompiler;
+        this.availableVideoReferences = availableVideoReferences;
+        this.videoCoverService = videoCoverService;
         this.storyboardReferenceRepository = storyboardReferenceRepository;
         this.referenceResolver = referenceResolver;
         this.characterVoiceReferences = characterVoiceReferences;
@@ -588,7 +594,7 @@ public class AiVideoTaskService {
     }
 
     private void cancelAcceptedSeedanceTask(AiVideoTaskEntity task) {
-        if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)
+        if (!com.antshorttv.ai.VolcengineProviderCodes.isArk(task.providerCode)
             || task.externalTaskId == null || task.externalTaskId.isBlank()) {
             return;
         }
@@ -614,6 +620,7 @@ public class AiVideoTaskService {
     @Transactional
     public AiVideoTaskResponse regenerate(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
         AiVideoTaskEntity source = requireTask(tenantId, projectId, taskId);
+        JsonNode sourceSnapshot = videoSnapshot(source);
         CreateAiVideoTaskRequest request = new CreateAiVideoTaskRequest(
             source.storyboardId,
             source.modelId,
@@ -631,7 +638,9 @@ public class AiVideoTaskService {
             source.cameraMovement,
             source.motionStrength,
             source.randomSeed,
-            videoSnapshot(source).path("textOnly").asBoolean(false)
+            sourceSnapshot.path("explicitTextOnly").asBoolean(
+                sourceSnapshot.path("textOnly").asBoolean(false) && !sourceSnapshot.path("skipUnavailableImages").asBoolean(false)),
+            sourceSnapshot.path("skipUnavailableImages").asBoolean(false)
         );
         AiVideoTaskResponse response = create(tenantId, projectId, request, servletRequest);
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
@@ -795,6 +804,7 @@ public class AiVideoTaskService {
         CreateAiVideoTaskRequest request
     ) {
         boolean textOnly = Boolean.TRUE.equals(request.textOnly());
+        boolean skipUnavailableImages = Boolean.TRUE.equals(request.skipUnavailableImages());
         List<StoryboardAssetReferenceEntity> formalRows = textOnly ? List.of() : storyboardReferenceRepository.listActive(
             storyboard.tenantId, storyboard.projectId, storyboard.id);
         List<Map<String, Object>> omittedReferences = new ArrayList<>();
@@ -820,8 +830,15 @@ public class AiVideoTaskService {
                 }
             }
             if (!"RESOLVED".equals(row.resolutionStatus) || row.variantId == null) {
+                if (skipUnavailableImages) {
+                    omittedReferences.add(objectMapper.convertValue(new VideoReferenceSubsetSelector.OmittedReference(
+                        "IMAGE", "ASSET_VISUAL_VARIANT", row.variantId, row.variantId, row.assetType, row.assetId,
+                        row.sourceName, row.referenceRole, row.sortOrder, "IMAGE_UNAVAILABLE"),
+                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
+                    continue;
+                }
                 throw new BusinessException(ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED,
-                    "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。");
+                    "参考图片尚不可用，请先生成或重新绑定图片，或确认跳过缺图继续生成。");
             }
             formalBindings.add(new StoryboardPromptCompiler.BindingReference(
                 row.assetType, row.assetId, row.variantId, row.sourceName,
@@ -847,15 +864,22 @@ public class AiVideoTaskService {
                         if(scenePropMentions.containsKey(original)) {mention.removeAll();mention.put("type","text").put("text",scenePropMentions.get(original));}
                         else if(propVariantRemap.containsKey(original)) mention.put("sourceId",propVariantRemap.get(original));
                     }
-                    if ("mention".equals(node.path("type").asText())
+                    if (!skipUnavailableImages && "mention".equals(node.path("type").asText())
                         && "IMAGE".equals(node.path("mediaType").asText())
                         && "FORMAL".equals(node.path("bindingSource").asText())
                         && formalBindings.stream().noneMatch(binding -> binding.variantId() == node.path("sourceId").asLong())) {
                         throw new BusinessException(ErrorCode.AI_VIDEO_STORYBOARD_FIRST_FRAME_REQUIRED,
-                            "参考图片尚不可用，请先生成或重新绑定图片，或确认继续纯文生视频。");
+                            "参考图片尚不可用，请先生成或重新绑定图片，或确认跳过缺图继续生成。");
                     }
                 }
-                compiled = promptCompiler.compile(document, formalBindings);
+                if (skipUnavailableImages) {
+                    var selection = availableVideoReferences.compile(storyboard.tenantId, storyboard.projectId, document, formalBindings);
+                    compiled = selection.compiled();
+                    omittedReferences.addAll(selection.omitted().stream().map(item -> objectMapper.convertValue(item,
+                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {})).toList());
+                } else {
+                    compiled = promptCompiler.compile(document, formalBindings);
+                }
             }
         } catch (BusinessException exception) {
             throw exception;
@@ -922,6 +946,8 @@ public class AiVideoTaskService {
             "video", constraints.path("video").path("maxCount").asInt(0),
             "audio", constraints.path("audio").path("maxCount").asInt(0)));
         snapshot.put("textOnly", references.isEmpty());
+        snapshot.put("explicitTextOnly", textOnly);
+        snapshot.put("skipUnavailableImages", skipUnavailableImages);
         snapshot.put("references", references);
         snapshot.put("omittedReferences", omittedReferences);
         String snapshotJson;
@@ -980,7 +1006,7 @@ public class AiVideoTaskService {
     }
 
     private boolean isSeedance(AiModelRoute route) {
-        return "VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())
+        return com.antshorttv.ai.VolcengineProviderCodes.isArk(route.provider().getCode())
             && route.model().getCode() != null
             && route.model().getCode().startsWith("SEEDANCE_");
     }
@@ -1089,7 +1115,7 @@ public class AiVideoTaskService {
                 });
             }
             // Download/upload can take minutes and must not hold a database connection.
-            AiVideoResultEntity result = succeeded
+            GeneratedVideoResult result = succeeded
                 && aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id).isEmpty()
                 ? prepareGeneratedResult(task, providerResult) : null;
             AiInvocationResult<AiVideoProviderAdapter.VideoResult> observed = invocation;
@@ -1104,7 +1130,10 @@ public class AiVideoTaskService {
                     task.updatedAt = now;
                     task.nextPollAt = null;
                     saveOwnedTask(task);
-                    if (result != null) aiVideoResultMapper.insert(result);
+                    if (result != null) {
+                        aiVideoResultMapper.insert(result.video());
+                        videoCoverService.publish(result.cover());
+                    }
                     finishExecutionAttempt(attempt, observed, "SUCCEEDED", false, null, null);
                     settleExecution(task, AiSettlementOutcome.SUCCESS, attempt.id, observed.aiCallLogId(), "SUCCEEDED");
                 } else if (failed) {
@@ -1189,7 +1218,7 @@ public class AiVideoTaskService {
         AiVideoTaskEntity task,
         String idempotencyKey
     ) throws Exception {
-        if ("VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())) {
+        if (com.antshorttv.ai.VolcengineProviderCodes.isArk(route.provider().getCode())) {
             return seedanceArkProviderAdapter.submit(route.providerConfig(), route.model(), task, idempotencyKey);
         }
         return providerAdapter.submit(route.providerConfig(), route.model(), task, idempotencyKey);
@@ -1200,7 +1229,7 @@ public class AiVideoTaskService {
         String externalTaskId,
         String idempotencyKey
     ) throws Exception {
-        if ("VOLCENGINE_ARK".equalsIgnoreCase(route.provider().getCode())) {
+        if (com.antshorttv.ai.VolcengineProviderCodes.isArk(route.provider().getCode())) {
             return seedanceArkProviderAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
         }
         return providerAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
@@ -1216,7 +1245,7 @@ public class AiVideoTaskService {
         saveOwnedTask(task);
     }
 
-    private AiVideoResultEntity prepareGeneratedResult(
+    private GeneratedVideoResult prepareGeneratedResult(
         AiVideoTaskEntity task,
         AiVideoProviderAdapter.VideoResult providerResult
     ) throws Exception {
@@ -1238,7 +1267,6 @@ public class AiVideoTaskService {
         );
         long fileSize = writeVideoFile(result.storagePath, providerResult.videoUrl());
         result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
-        result.coverUrl = task.firstFrameUrl == null ? null : materialFileAccessService.publicUrl(task.firstFrameUrl);
         result.durationSeconds = providerResult.durationSeconds() == null
             ? BigDecimal.valueOf(task.durationSeconds == null ? 5 : task.durationSeconds)
             : providerResult.durationSeconds();
@@ -1265,8 +1293,10 @@ public class AiVideoTaskService {
         result.status = AiVideoResultStatus.ACTIVE.name();
         result.createdAt = now;
         result.updatedAt = now;
-        return result;
+        return new GeneratedVideoResult(result, videoCoverService.prepare(task, result));
     }
+
+    private record GeneratedVideoResult(AiVideoResultEntity video, com.antshorttv.aiimage.AiImageResultEntity cover) {}
 
     private long writeVideoFile(String storagePath, String externalVideoUrl) throws Exception {
         Path file = Files.createTempFile("ant-short-tv-ai-video-", ".mp4");
@@ -1555,7 +1585,7 @@ public class AiVideoTaskService {
     }
 
     public Map<AiUsageMetric, BigDecimal> videoAuthorizedUsage(AiVideoTaskEntity task, int maximumDuration) {
-        if (!"VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)) {
+        if (!com.antshorttv.ai.VolcengineProviderCodes.isArk(task.providerCode)) {
             return Map.of(AiUsageMetric.CALL, BigDecimal.ONE,
                 AiUsageMetric.VIDEO_SECOND, BigDecimal.valueOf(maximumDuration));
         }
@@ -1603,7 +1633,7 @@ public class AiVideoTaskService {
         for (JsonNode item : videoSnapshot(task).path("references")) {
             if ("VIDEO".equalsIgnoreCase(item.path("reference").path("mediaType").asText())) referenceVideo = true;
         }
-        return Map.of("resolution", "VOLCENGINE_ARK".equalsIgnoreCase(task.providerCode)
+        return Map.of("resolution", com.antshorttv.ai.VolcengineProviderCodes.isArk(task.providerCode)
                 ? task.resolution.toLowerCase(java.util.Locale.ROOT) : task.resolution,
             "aspectRatio", task.aspectRatio, "referenceVideo", String.valueOf(referenceVideo));
     }

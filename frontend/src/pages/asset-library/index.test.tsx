@@ -139,3 +139,12 @@ it('retries a failed project asset request while keeping the project breadcrumb'
   expect(await screen.findByRole('button', { name: '预览林夏 · 主形象' })).toBeTruthy();
   expect(screen.getByRole('navigation', { name: '资产库导航' })).toHaveTextContent('长夜未央');
 });
+
+it('opens captured frames in the dedicated project image category', async () => {
+  route('/asset-library/projects/1?category=VIDEO_FRAME');
+  mocks.library.mockResolvedValue(response([{ ...image, name: '分镜 3 · 视频 22 · 1.240s', category: 'VIDEO_FRAME', sourceType: '视频截帧' }]));
+  render(<AssetLibrary />);
+  await screen.findByRole('button', { name: '预览分镜 3 · 视频 22 · 1.240s' });
+  expect(screen.getByRole('button', { name: '视频帧' })).toBeInTheDocument();
+  expect(mocks.library).toHaveBeenCalledWith(1, expect.objectContaining({ category: 'VIDEO_FRAME' }), expect.any(AbortSignal));
+});

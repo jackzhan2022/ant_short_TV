@@ -259,7 +259,8 @@ it('shows persisted voice information and does not silently accept a failed save
 
 it('saves a storyboard shape override without changing the characters default voice', async () => {
   const scope = { id: 301, variantId: 101, variantName: '老年形态' };
-  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国" storyboard={scope} onClose={mocks.close} onSaved={mocks.saved} /></App>);
+  const changed = vi.fn();
+  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国" storyboard={scope} onClose={mocks.close} onSaved={mocks.saved} onChanged={changed} /></App>);
   await screen.findByText(/使用角色默认音色/);
   expect(mocks.current).not.toHaveBeenCalled();
   expect(mocks.storyboardCurrent).toHaveBeenCalledWith(1, 11, scope, expect.any(AbortSignal));
@@ -268,6 +269,7 @@ it('saves a storyboard shape override without changing the characters default vo
   fireEvent.click(screen.getByRole('button', { name: '确认' }));
   await waitFor(() => expect(mocks.saved).toHaveBeenCalledWith(reference));
   expect(mocks.storyboardSave).toHaveBeenCalledWith(1, 11, scope, expect.objectContaining({ sourceProjectId: 1, resourceId: 51 }));
+  expect(changed).toHaveBeenCalledTimes(1);
   expect(mocks.save).not.toHaveBeenCalled();
 });
 
@@ -282,4 +284,17 @@ it('removes only the storyboard override when restoring the default voice', asyn
   expect(screen.queryByRole('button', { name: '恢复角色默认音色' })).not.toBeInTheDocument();
   expect(mocks.save).not.toHaveBeenCalled();
   expect(mocks.storyboardSave).not.toHaveBeenCalled();
+});
+
+
+it.each([reference, null])('notifies the card after restoring a default, including an empty default (%s)', async (audio) => {
+  mocks.storyboardCurrent.mockResolvedValue({ success: true, data: { audio: reference, overridden: true } });
+  mocks.storyboardReset.mockResolvedValue({ success: true, data: { audio, overridden: false } });
+  const changed = vi.fn();
+  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国"
+    storyboard={{ id: 301, variantId: 101 }} onClose={mocks.close} onSaved={mocks.saved} onChanged={changed} /></App>);
+  fireEvent.click(await screen.findByRole('button', { name: '恢复角色默认音色' }));
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+  expect(mocks.saved).not.toHaveBeenCalled();
+  expect(mocks.close).not.toHaveBeenCalled();
 });

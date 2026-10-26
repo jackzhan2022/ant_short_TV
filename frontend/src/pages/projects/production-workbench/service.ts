@@ -1,3 +1,4 @@
+import type { VideoGenerationSettings } from './useStoryboardVideoSettings';
 import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import { pointEstimatedRequest as request } from '@/services/point-estimate';
 
@@ -159,6 +160,7 @@ export type PropAsset = {
 };
 
 export type StoryboardShot = {
+  videoGenerationSettings?: VideoGenerationSettings | null;
   id: number;
   shotNo: number;
   storyboardNo?: number;
@@ -637,7 +639,7 @@ export const queryAssetVisualWorkspace = async (
 ) =>
   request<ApiResponse<AssetVisualWorkspace>>(
     `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/visual-workspace`,
-    { params },
+    { params, skipErrorHandler: true },
   );
 
 export const queryStoryboardWorkspace = async (
@@ -846,6 +848,20 @@ export const createVisualVariant = async (
     },
   );
 
+export const renameScriptElement = async (
+  projectId: number,
+  elementType: Exclude<ScriptElementType, 'ALL'>,
+  elementId: number,
+  name: string,
+) => request<ApiResponse<void>>(
+  `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/name`,
+  { method: 'PUT', data: { name }, skipErrorHandler: true },
+);
+
+export const renameVisualVariant = async (projectId: number, variantId: number, name: string) =>
+  request<ApiResponse<void>>(`/api/projects/${projectId}/visual-variants/${variantId}/name`,
+    { method: 'PUT', data: { name }, skipErrorHandler: true });
+
 export const updateVisualVariant = async (
   projectId: number,
   variantId: number,
@@ -885,7 +901,7 @@ export const deleteVisualVariant = async (
 ) =>
   request<ApiResponse<void>>(
     `/api/projects/${projectId}/visual-variants/${variantId}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', skipErrorHandler: true },
   );
 
 export const bindVisualVariantEpisodes = async (
@@ -1351,6 +1367,7 @@ export type CreateAiVideoTaskValues = {
   motionStrength?: string;
   randomSeed?: number;
   textOnly?: boolean;
+  skipUnavailableImages?: boolean;
 };
 
 export const queryAiVideoTasks = async (
@@ -2088,3 +2105,8 @@ export const downloadStoryboardVideo = (projectId: number, storyboardId: number)
 
 export const downloadEpisodeStoryboardVideos = (projectId: number, episodeNo: number) =>
   downloadWorkbenchFile(`/api/projects/${projectId}/episodes/${episodeNo}/download-videos`, `episode_${episodeNo}_storyboards.zip`, 'zip');
+
+export const saveStoryboardVideoSettings = (projectId: number, storyboardId: number, values: VideoGenerationSettings) =>
+  request<ApiResponse<VideoGenerationSettings>>(`/api/projects/${projectId}/storyboards/${storyboardId}/video-generation-settings`, {
+    method: 'PUT', data: values,
+  });

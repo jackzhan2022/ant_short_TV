@@ -13,6 +13,12 @@ import ProductionWorkbenchSettings from './settings';
 vi.mock('./CharacterVoiceModal', () => ({
   default: ({ characterName, onClose }: { characterName: string; onClose: () => void }) => <section aria-label={`配置${characterName}音色弹窗`}><button type="button" onClick={onClose}>关闭音色弹窗</button></section>,
 }));
+vi.mock('./manual-assets', async (original) => ({
+  ...await original<object>(),
+  queryManualAssetOptions: vi.fn().mockResolvedValue({ success: true, data: {
+    scriptId: 1, canCreate: false, disabledReason: '测试中禁用新增入口', definitions: {},
+  } }),
+}));
 vi.mock('./AssetNormalizationPanel', () => ({
   default: ({ onBlocked }: { onBlocked: (blocked: boolean, reason?: string) => void }) => (
     <>
@@ -26,6 +32,7 @@ vi.mock('./AssetNormalizationPanel', () => ({
 
 const mocks = vi.hoisted(() => ({
   messageError: vi.fn(),
+  canEdit: true,
   confirmScriptElement: vi.fn(),
   deleteScriptElement: vi.fn(),
   queryAssetDeletionImpact: vi.fn(),
@@ -51,11 +58,13 @@ const mocks = vi.hoisted(() => ({
   selectPrimaryVisualVariant: vi.fn(),
   bindVisualVariantEpisodes: vi.fn(),
   updateVisualVariant: vi.fn(),
+  renameScriptElement: vi.fn(),
+  renameVisualVariant: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
   useParams: () => ({ id: '1' }),
-  useOutletContext: () => ({}),
+  useOutletContext: () => ({ project: { capabilities: { canEdit: mocks.canEdit } } }),
   useIntl: () => ({
     formatMessage: ({ defaultMessage }: { defaultMessage: string }) =>
       defaultMessage,
@@ -74,6 +83,8 @@ vi.mock('./service', () => ({
   queryAiImageResults: mocks.queryAiImageResults,
   selectAiImageResult: mocks.selectAiImageResult,
   updateScriptElement: mocks.updateScriptElement,
+  renameScriptElement: mocks.renameScriptElement,
+  renameVisualVariant: mocks.renameVisualVariant,
   queryAssetCandidates: mocks.queryAssetCandidates,
   decideAssetCandidate: mocks.decideAssetCandidate,
   createVisualVariant: mocks.createVisualVariant,
@@ -244,7 +255,7 @@ vi.mock('antd', () => ({
   Typography: {
     Paragraph: ({ children }: any) => <p>{children}</p>,
     Text: ({ children }: any) => <span>{children}</span>,
-    Title: ({ children }: any) => <h2>{children}</h2>,
+    Title: ({ children, level, ...props }: any) => <h2 {...props}>{children}</h2>,
   },
 }));
 
@@ -376,6 +387,7 @@ describe('ProductionWorkbenchSettings', () => {
     });
     sessionStorage.clear();
     vi.clearAllMocks();
+    mocks.canEdit = true;
     mocks.queryAiImageResults.mockResolvedValue({ success: true, data: { data: [], total: 0 } });
     mocks.queryAssetSettingsSummary.mockReset();
     mocks.queryAssetVisualWorkspace.mockReset();
@@ -429,6 +441,8 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.queryAssetDeletionImpact.mockReset();
     mocks.queryAssetDeletionImpact.mockResolvedValue({ data: { assetName: '斌斌', affectedStoryboardCount: 5, promptMentionCount: 9 } });
     mocks.updateScriptElement.mockResolvedValue({ data: null });
+    mocks.renameScriptElement.mockReset().mockResolvedValue({ data: null });
+    mocks.renameVisualVariant.mockReset().mockResolvedValue({ data: null });
     mocks.queryAssetCandidates.mockResolvedValue({
       data: {
         items: [
@@ -511,6 +525,128 @@ describe('ProductionWorkbenchSettings', () => {
     mocks.selectPrimaryVisualVariant.mockResolvedValue({ data: {} });
     mocks.updateVisualVariant.mockResolvedValue({ data: {} });
     mocks.bindVisualVariantEpisodes.mockResolvedValue({ data: [] });
+  });
+
+  it.each([
+    ['CHARACTER', '角色', '斌斌', 1],
+    ['SCENE', '场景', '地下停车场', 2],
+    ['PROP', '道具', '灰色轿车后备箱', 3],
+  ] as const)('renames %s from its card using a name-only request', async (type, label, name, id) => {
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByRole('button', { name: '查看斌斌视觉形象' });
+    fireEvent.click(screen.getByRole('tab', { name: new RegExp(label) }));
+    fireEvent.click(screen.getByRole('button', { name: `修改${label}名称：${name}` }));
+    const dialog = screen.getByRole('region', { name: `修改${label}名称` });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: `  新${name}  ` } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.renameScriptElement).toHaveBeenCalledWith(1, type, id, `新${name}`));
+    expect(await screen.findByRole('button', { name: `查看新${name}视觉形象` })).toBeInTheDocument();
+    expect(mocks.updateScriptElement).not.toHaveBeenCalled();
+  });
+
+  it('cancels or rejects blank names without changing the asset', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '修改角色名称：斌斌' }));
+    let dialog = screen.getByRole('region', { name: '修改角色名称' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '取消的新名' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(mocks.renameScriptElement).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '修改角色名称：斌斌' }));
+    dialog = screen.getByRole('region', { name: '修改角色名称' });
+    expect(within(dialog).getByRole('textbox')).toHaveValue('斌斌');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '   ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('名称不能为空');
+    expect(mocks.renameScriptElement).not.toHaveBeenCalled();
+  });
+
+  it('renames the selected variant independently and preserves its image and prompt', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    fireEvent.click(await screen.findByRole('button', { name: '选择婚礼礼服' }));
+    fireEvent.click(screen.getByRole('button', { name: '修改形态名称：婚礼礼服' }));
+    const dialog = screen.getByRole('region', { name: '修改形态名称' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '晚宴礼服' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.renameVisualVariant).toHaveBeenCalledWith(1, 12, '晚宴礼服'));
+    expect(await screen.findByRole('button', { name: '修改形态名称：晚宴礼服' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择晚宴礼服' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('img', { name: '晚宴礼服预览图' })).toHaveAttribute('src', '/wedding-thumb.png');
+    expect(mocks.updateVisualVariant).not.toHaveBeenCalled();
+    expect(mocks.renameScriptElement).not.toHaveBeenCalled();
+    const gallery = screen.getByRole('region', { name: '视觉形象画廊' });
+    fireEvent.click(within(gallery).getByRole('button', { name: '修改角色名称：斌斌' }));
+    const assetDialog = screen.getByRole('region', { name: '修改角色名称' });
+    fireEvent.change(within(assetDialog).getByRole('textbox'), { target: { value: '新角色' } });
+    fireEvent.click(within(assetDialog).getByRole('button', { name: '保存' }));
+    await screen.findByRole('button', { name: '查看新角色视觉形象' });
+    expect(within(gallery).getByRole('button', { name: '修改角色名称：新角色' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择晚宴礼服' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('ignores an older background response after renaming with Enter', async () => {
+    const snapshot = structuredClone(workspace);
+    snapshot.characters[0].visual.generationSummary.GENERATING = 1;
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: snapshot });
+    mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: snapshot.characters[0].visual });
+    vi.useFakeTimers();
+    await act(async () => { render(<ProductionWorkbenchSettings />); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' })); });
+    let finishSummary!: (response: unknown) => void;
+    let finishDetail!: (response: unknown) => void;
+    mocks.queryAssetSettingsSummary.mockImplementationOnce(() => new Promise((resolve) => { finishSummary = resolve; }));
+    mocks.queryAssetVisualWorkspace.mockImplementationOnce(() => new Promise((resolve) => { finishDetail = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    fireEvent.click(screen.getByRole('button', { name: '修改形态名称：日常形象' }));
+    const dialog = screen.getByRole('region', { name: '修改形态名称' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '新默认形态' } });
+    await act(async () => { fireEvent.keyDown(within(dialog).getByRole('textbox'), { key: 'Enter' }); });
+    expect(mocks.renameVisualVariant).toHaveBeenCalledWith(1, 11, '新默认形态');
+    await act(async () => {
+      finishSummary({ data: snapshot });
+      finishDetail({ data: snapshot.characters[0].visual });
+    });
+    expect(screen.getByRole('button', { name: '修改形态名称：新默认形态' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择新默认形态' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not offer rename to a read-only project member', async () => {
+    mocks.canEdit = false;
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    await screen.findByRole('button', { name: '选择日常形象' });
+    expect(screen.queryByRole('button', { name: /^修改(角色|形态)名称：/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /场景/ }));
+    expect(screen.queryByRole('button', { name: /^修改场景名称：/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /道具/ }));
+    expect(screen.queryByRole('button', { name: /^修改道具名称：/ })).not.toBeInTheDocument();
+    expect(mocks.renameScriptElement).not.toHaveBeenCalled();
+    expect(mocks.renameVisualVariant).not.toHaveBeenCalled();
+  });
+
+  it('hides name edit controls while asset normalization blocks editing', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    await screen.findByRole('button', { name: '修改形态名称：日常形象' });
+    fireEvent.click(screen.getByRole('button', { name: '模拟归一处理中' }));
+    expect(screen.queryByRole('button', { name: /^修改(角色|形态)名称：/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps input on rename failure and prevents duplicate saves', async () => {
+    let rejectSave!: (reason: unknown) => void;
+    mocks.renameScriptElement.mockImplementation(() => new Promise((_, reject) => { rejectSave = reject; }));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '修改角色名称：斌斌' }));
+    const dialog = screen.getByRole('region', { name: '修改角色名称' });
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '新角色' } });
+    const save = within(dialog).getByRole('button', { name: '保存' });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(mocks.renameScriptElement).toHaveBeenCalledTimes(1);
+    await act(async () => rejectSave({ info: { errorMessage: '该角色名称已存在' } }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('该角色名称已存在');
+    expect(within(dialog).getByRole('textbox')).toHaveValue('新角色');
+    expect(screen.getByRole('button', { name: '查看斌斌视觉形象' })).toBeInTheDocument();
   });
 
   it('shows a skeleton while the initial asset settings data is loading', () => {
@@ -614,7 +750,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(
       1, 'SCENE', 2, { current: 1, pageSize: 20 },
     );
-    expect(screen.getByRole('heading', { name: '地下停车场' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^地下停车场/ })).toBeInTheDocument();
   });
 
   it('switches asset details without applying a late response or keeping the previous add form', async () => {
@@ -644,7 +780,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.getByRole('button', { name: '查看林夏视觉形象' })).toHaveAttribute('aria-expanded', 'true');
 
     await act(async () => { resolveFirst({ data: workspace.characters[0].visual }); });
-    expect(screen.getByRole('heading', { name: '林夏' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^林夏/ })).toBeInTheDocument();
     expect(screen.getByAltText('林夏日常预览图')).toBeInTheDocument();
     expect(screen.queryByAltText('日常形象预览图')).not.toBeInTheDocument();
   });
@@ -668,7 +804,7 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.change(screen.getByLabelText('新视觉形象名称'), { target: { value: '林夏礼服' } });
 
     await act(async () => { finishCreate({ data: {} }); });
-    expect(screen.getByRole('heading', { name: '林夏' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^林夏/ })).toBeInTheDocument();
     expect(screen.getByLabelText('新视觉形象名称')).toHaveValue('林夏礼服');
   });
 
@@ -702,7 +838,7 @@ describe('ProductionWorkbenchSettings', () => {
     render(<ProductionWorkbenchSettings />);
     fireEvent.click(await screen.findByRole('button', { name: '配置斌斌音色' }));
     expect(screen.getByRole('region', { name: '配置斌斌音色弹窗' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '管理斌斌视觉形象' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '视觉形象画廊' })).not.toBeInTheDocument();
     expect(mocks.queryAssetVisualWorkspace).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '关闭音色弹窗' }));
     fireEvent.click(screen.getByRole('button', { name: '查看斌斌视觉形象' }));
@@ -731,7 +867,7 @@ describe('ProductionWorkbenchSettings', () => {
     expect(
       screen.getByRole('region', { name: '视觉形象画廊' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '斌斌' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^斌斌/ })).toBeInTheDocument();
     expect(screen.getByText('出镜剧集')).toBeInTheDocument();
     expect(screen.getByTestId('视觉形象主图预览')).not.toContainElement(
       screen.getByLabelText('日常形象关联剧集'),
@@ -838,10 +974,47 @@ describe('ProductionWorkbenchSettings', () => {
     fireEvent.mouseEnter(screen.getByTestId('视觉形象缩略图-婚礼礼服'));
     fireEvent.click(screen.getByRole('button', { name: '删除婚礼礼服' }));
     expect(mocks.deleteVisualVariant).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '确认删除婚礼礼服' }));
+    fireEvent.click(within(screen.getByRole('region', { name: '确认删除此形态？' })).getByRole('button', { name: '确认删除' }));
     await waitFor(() => {
       expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
+  });
+
+  it('confirms deletion, permits cancellation and refreshes without the deleted selection', async () => {
+    const primary = workspace.characters[0].visual.variants[0];
+    let deleted = false;
+    let finishDelete!: () => void;
+    mocks.deleteVisualVariant.mockImplementation(() => new Promise<void>((resolve) => {
+      finishDelete = () => { deleted = true; resolve(); };
+    }));
+    mocks.queryAssetVisualWorkspace.mockImplementation((_project, _type, _asset, params = {}) => {
+      if (deleted && params.selectedVariantId === 12) return Promise.reject(new Error('deleted selection'));
+      return Promise.resolve({ data: deleted
+        ? { ...workspace.characters[0].visual, variants: [primary], selectedVariant: primary, primaryVariant: primary }
+        : workspace.characters[0].visual });
+    });
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+    fireEvent.click(await screen.findByRole('button', { name: '选择婚礼礼服' }));
+    fireEvent.mouseEnter(screen.getByTestId('视觉形象缩略图-婚礼礼服'));
+    fireEvent.click(screen.getByRole('button', { name: '删除婚礼礼服' }));
+    let dialog = within(screen.getByRole('region', { name: '确认删除此形态？' }));
+    expect(dialog.getByText('删除后，引用此形态的分镜将自动改用该人物的默认形象。')).toBeInTheDocument();
+    expect(mocks.deleteVisualVariant).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('region', { name: '确认删除此形态？' })).not.toBeInTheDocument();
+    expect(mocks.deleteVisualVariant).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '删除婚礼礼服' }));
+    dialog = within(screen.getByRole('region', { name: '确认删除此形态？' }));
+    fireEvent.click(dialog.getByRole('button', { name: '确认删除' }));
+    expect(dialog.getByRole('button', { name: '确认删除' })).toBeDisabled();
+    await act(async () => finishDelete());
+    await waitFor(() => expect(screen.queryByRole('button', { name: '选择婚礼礼服' })).not.toBeInTheDocument());
+    expect(mocks.deleteVisualVariant).toHaveBeenCalledTimes(1);
+    expect(mocks.queryAssetVisualWorkspace).toHaveBeenLastCalledWith(1, 'CHARACTER', 1,
+      expect.objectContaining({ current: 1, selectedVariantId: undefined }));
+    expect(screen.getByAltText('日常形象预览图')).toBeInTheDocument();
+    expect(mocks.messageError).not.toHaveBeenCalled();
   });
 
   it('marks only virtual-avatar visual variants with the green virtual tag', async () => {

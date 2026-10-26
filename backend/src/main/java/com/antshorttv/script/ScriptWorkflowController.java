@@ -306,6 +306,30 @@ public class ScriptWorkflowController {
             tenantId(request), projectId, variantId, body));
     }
 
+    @PutMapping("/script-elements/{elementType}/{elementId}/name")
+    @RequireProjectPermission("SCRIPT:EDIT")
+    public ApiResponse<Void> renameElement(
+        @PathVariable Long projectId,
+        @PathVariable String elementType,
+        @PathVariable Long elementId,
+        @RequestBody RenameAssetRequest body,
+        HttpServletRequest request
+    ) {
+        scriptWorkflowService.renameElement(tenantId(request), projectId, elementType, elementId, body.name());
+        return ApiResponse.success(null);
+    }
+
+    @PutMapping("/visual-variants/{variantId}/name")
+    @RequireProjectPermission("ELEMENT:EDIT")
+    public ApiResponse<Void> renameVisualVariant(
+        @PathVariable Long projectId,
+        @PathVariable Long variantId,
+        @RequestBody RenameAssetRequest body,
+        HttpServletRequest request
+    ) {
+        scriptWorkflowService.renameVisualVariant(tenantId(request), projectId, variantId, body.name());
+        return ApiResponse.success(null);
+    }
     @PutMapping("/visual-variants/{variantId}/primary")
     @RequireProjectPermission("ELEMENT:EDIT")
     public ApiResponse<AssetVisualVariantService.VariantResponse> selectPrimaryVisualVariant(

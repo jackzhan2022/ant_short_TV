@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { imageFor, referenceReady } from './StoryboardAssetReferenceEditor';
+import { describe, expect, it, vi } from 'vitest';
+import { imageFor, originalImageFor, referenceReady } from './StoryboardAssetReferenceEditor';
 import type { AssetVisualWorkspace, CharacterAsset, StoryboardAssetReference, VisualVariant } from './service';
+
+vi.mock('@/pages/asset-library/audio-service', () => ({ queryStoryboardCharacterVoice: vi.fn() }));
 
 const variant: VisualVariant = {
   id: 11,
@@ -71,5 +73,25 @@ describe('StoryboardAssetReferenceEditor display delivery', () => {
   it('reflects a newly usable image while preserving unresolved references', () => {
     expect(referenceReady({ ...reference, resolutionStatus: 'ASSET_PENDING' }, variant)).toBe(true);
     expect(referenceReady({ ...reference, resolutionStatus: 'UNRESOLVED' }, variant)).toBe(false);
+  });
+});
+
+
+describe('storyboard reference original delivery', () => {
+  it('previews the original while retaining the display thumbnail', () => {
+    expect(originalImageFor(reference, [asset])).toBe('/original.png');
+    expect(imageFor(reference, [asset])).toBe('/display.png');
+  });
+
+  it.each(['thumbnail', 'display', 'image', 'file'])('uses download for a project %s endpoint', (endpoint) => {
+    expect(originalImageFor({ ...reference, imageThumbnailUrl: `/api/projects/12/ai-image-results/77/${endpoint}?token=old` }, []))
+      .toBe('/api/projects/12/ai-image-results/77/download');
+  });
+
+  it('uses the reference original only when its thumbnail is displayed', () => {
+    expect(originalImageFor({ ...reference, imageThumbnailUrl: '/reference-thumb.png' }, []))
+      .toBe('/stale-original.png');
+    expect(originalImageFor(reference, [])).toBeUndefined();
+    expect(originalImageFor({ ...reference, resolutionStatus: 'SCENE_INCLUDED' }, [asset])).toBeUndefined();
   });
 });

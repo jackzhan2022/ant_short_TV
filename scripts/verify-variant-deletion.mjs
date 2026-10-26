@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+const require=createRequire(import.meta.url);
+const root=resolve(import.meta.dirname,'..');
+const runtime=join(homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules');
+const {chromium}=require(join(runtime,'playwright'));
+const cache=join(homedir(),'AppData/Local/ms-playwright');
+const version=(await readdir(cache)).filter(x=>/^chromium-\d+$/.test(x)).sort().at(-1);
+const output=join(root,'outputs/variant-deletion');await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:join(cache,version,'chrome-win64/chrome.exe')});
+const context=await browser.newContext({viewport:{width:1440,height:1000}});
+await context.addInitScript(()=>localStorage.setItem('currentTenantId','1'));
+const page=await context.newPage();page.setDefaultTimeout(20000);
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+let deletes=0,deleted=false;const reads=[];
+const permissions=['PROJECT:CREATE','PROJECT:VIEW','ELEMENT:VIEW','ELEMENT:EDIT','STORYBOARD:VIEW','STORYBOARD:EDIT','AI_SERVICE:USE','AI_IMAGE_TASK:VIEW'];
+const tenant={id:1,code:'QA',name:'验收团队',type:'STUDIO',status:'ACTIVE',memberType:'OWNER',memberId:1};
+const bootstrap={user:{id:1,nickname:'验收',status:'ACTIVE'},session:{sessionId:'qa',expiresAt:'2099-01-01T00:00:00Z'},platform:{roles:[],permissions:[]},tenants:[tenant],selectedTenant:{tenant,membership:{id:1,memberType:'OWNER',status:'ACTIVE'},roles:[],permissions},nextAction:'ENTER_WORKSPACE'};
+const project={id:1,tenantId:1,name:'形态删除验收',status:'IN_PROGRESS',aspectRatio:'9:16',effectivePermissions:permissions,capabilities:{canView:true,canEdit:true}};
+const primary={id:11,assetType:'CHARACTER',assetId:1,name:'默认形象',primary:true,usable:true,generationStatus:'COMPLETED',currentImageUrl:'/qa/primary.png',currentImageThumbnailUrl:'/qa/primary.png'};
+const costume={...primary,id:12,name:'晚宴礼服',primary:false,currentImageUrl:'/qa/costume.png',currentImageThumbnailUrl:'/qa/costume.png'};
+const visual=()=>({variantCount:deleted?1:2,total:deleted?1:2,current:1,pageSize:20,primaryVariant:primary,selectedVariant:primary,variants:deleted?[primary]:[primary,costume],generationSummary:{COMPLETED:deleted?1:2},episodeBindings:[],resolvedImageUrl:primary.currentImageUrl,resolvedImageSource:'PRIMARY_VARIANT'});
+const character={id:1,name:'林夏',roleType:'LEAD',status:'CONFIRMED',appearance:'人物默认形象',prompt:'人物设定',mainImageUrl:primary.currentImageUrl,mainImageThumbnailUrl:primary.currentImageUrl,visual:visual()};
+const reply=(route,data)=>route.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
+await context.route('**/qa/**',async route=>route.fulfill({contentType:'image/png',body:await readFile(join(root,'.temp/video-frame-browser',route.request().url().includes('primary')?'capture-1.png':'capture-2.png'))}));
+await context.route('**/api/**',async route=>{
+ const url=new URL(route.request().url());const path=url.pathname;
+ if(path==='/api/auth/bootstrap')return reply(route,bootstrap);
+ if(path.endsWith('/metadata')||path==='/api/projects/1')return reply(route,project);
+ if(path.endsWith('/asset-settings-summary'))return reply(route,{projectId:1,characters:[character],scenes:[],props:[]});
+ if(path.endsWith('/asset-normalization'))return reply(route,{status:'READY',blocked:false});
+ if(path.endsWith('/visual-workspace')) {reads.push(Object.fromEntries(url.searchParams));if(deleted&&url.searchParams.get('selectedVariantId')==='12')return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({success:false,errorMessage:'旧选择失效'})});return reply(route,visual());}
+ if(path.endsWith('/visual-variants/12')&&route.request().method()==='DELETE'){deletes++;deleted=true;return reply(route,null);}
+ if(path.endsWith('/ai/models'))return reply(route,{imageModels:[],videoModels:[],audioModels:[],textModels:[]});
+ if(path.endsWith('/ai/config'))return reply(route,{});
+ if(path.endsWith('/points/account'))return reply(route,{balance:1000});
+ return reply(route,[]);
+});
+try {
+ await page.goto('http://localhost:8000/projects/1/production-workbench/settings',{waitUntil:'domcontentloaded',timeout:90000});
+ await page.getByRole('button',{name:'查看林夏视觉形象',exact:true}).click();
+ await page.getByRole('button',{name:'选择晚宴礼服',exact:true}).click();
+ await page.getByTestId('视觉形象缩略图-晚宴礼服').hover();
+ await page.getByRole('button',{name:'删除晚宴礼服',exact:true}).click();
+ let modal=page.getByRole('dialog',{name:'确认删除此形态？'});await modal.waitFor();
+ assert.equal(deletes,0);await modal.getByText('删除后，引用此形态的分镜将自动改用该人物的默认形象。',{exact:true}).waitFor();
+ assert(!(await modal.innerText()).includes('原始衣服'));
+ await page.screenshot({path:join(output,'confirmation.png')});
+ await modal.getByRole('button',{name:/^取\s*消$/}).click();await modal.waitFor({state:'hidden'});assert.equal(deletes,0);
+ await page.getByTestId('视觉形象缩略图-晚宴礼服').hover();await page.getByRole('button',{name:'删除晚宴礼服',exact:true}).click();
+ modal=page.getByRole('dialog',{name:'确认删除此形态？'});await modal.getByRole('button',{name:'确认删除',exact:true}).click();
+ await page.getByRole('button',{name:'选择晚宴礼服',exact:true}).waitFor({state:'detached'});
+ await page.getByAltText('默认形象预览图',{exact:true}).waitFor();
+ assert.equal(deletes,1);assert(!reads.at(-1).selectedVariantId);assert.deepEqual(errors,[]);
+ await page.screenshot({path:join(output,'after-delete.png')});
+ await writeFile(join(output,'evidence.json'),JSON.stringify({deletes,reads,errors,checks:['confirm before delete','cancel keeps variant','exact approved message','default selected after delete','no stale selection request']},null,2));
+ console.log('PASS',output);
+} finally {await browser.close();}

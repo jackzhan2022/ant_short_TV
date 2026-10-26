@@ -36,6 +36,7 @@ class VideoTaskReferenceResolverTest {
     @Autowired private AiVideoTaskMapper videoTaskMapper;
     @Autowired private AiVideoResultMapper videoResultMapper;
     @Autowired private SeedanceArkVideoProviderAdapter seedance;
+    @MockBean private AiVideoCoverService videoCovers;
 
     @MockBean
     private ObjectStorageService objectStorageService;
@@ -150,7 +151,7 @@ class VideoTaskReferenceResolverTest {
         var storyboard = new com.antshorttv.script.StoryboardEntity();
         storyboard.id=97402L; storyboard.tenantId=TENANT_ID; storyboard.projectId=PROJECT_ID;
         var request = new CreateAiVideoTaskRequest(storyboard.id,99L,"角色说话",null,null,null,null,null,
-            5,"9:16","720p",true,false,null,null,null,null);
+            5,"9:16","720p",true,false,null,null,null,null,null);
         Object target = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(videoTasks);
         Object prepared = org.springframework.test.util.ReflectionTestUtils.invokeMethod(target,"prepareSeedanceRequest",project,storyboard,
             new com.antshorttv.ai.AiModelRoute(model,null,null,null),request);
@@ -159,6 +160,18 @@ class VideoTaskReferenceResolverTest {
         task.requestSnapshotJson=org.springframework.test.util.ReflectionTestUtils.invokeMethod(prepared,"snapshotJson");
         assertThat(task.compiledPrompt).contains("陈志国", "常态", "使用音频1作为音色参考");
         assertThat(task.requestSnapshotJson).contains("characterVoices", "97410");
+
+        jdbc.update("update storyboard_asset_reference set resolution_status='ASSET_PENDING' where storyboard_id=97402");
+        var skipMissing = new CreateAiVideoTaskRequest(storyboard.id,99L,"角色说话",null,null,null,null,null,
+            5,"9:16","720p",true,false,null,null,null,false,true);
+        Object audioOnly = org.springframework.test.util.ReflectionTestUtils.invokeMethod(target,"prepareSeedanceRequest",project,storyboard,
+            new com.antshorttv.ai.AiModelRoute(model,null,null,null),skipMissing);
+        String audioOnlySnapshot=org.springframework.test.util.ReflectionTestUtils.invokeMethod(audioOnly,"snapshotJson");
+        var kept=new com.fasterxml.jackson.databind.ObjectMapper().readTree(audioOnlySnapshot).path("references");
+        assertThat(kept.size()).isEqualTo(1);
+        assertThat(kept.get(0).path("reference").path("mediaType").asText()).isEqualTo("AUDIO");
+        assertThat(audioOnlySnapshot).contains("97410", "IMAGE_UNAVAILABLE");
+        jdbc.update("update storyboard_asset_reference set resolution_status='RESOLVED' where storyboard_id=97402");
 
         jdbc.update("""
             insert into storyboard_character_voice
@@ -196,7 +209,7 @@ class VideoTaskReferenceResolverTest {
     }
 
     @Test
-    void multimodalPosterPersistsDisplayIdentityWhileProviderUsesOriginalGrant() {
+    void multimodalReferencesKeepBrowserIdentityWhileVideoUsesAnExtractedCover() {
         String original = "materials/97001/97002/images/202610/97101/result-97101/original.png";
         String browserDisplay = "/api/projects/97002/ai-image-results/97101/file";
         String providerOriginal = "https://cos.example/" + original + "?sign=original-only";
@@ -223,7 +236,7 @@ class VideoTaskReferenceResolverTest {
             serviceTarget, "prepareSeedanceRequest", project, storyboard,
             new com.antshorttv.ai.AiModelRoute(model, null, null, null),
             new CreateAiVideoTaskRequest(storyboard.id, 99L, "Prompt", null, null, null, null, null,
-                5, "9:16", "720p", true, false, null, null, null, null));
+                5, "9:16", "720p", true, false, null, null, null, null, null));
         AiVideoTaskEntity task = new AiVideoTaskEntity();
         task.tenantId = TENANT_ID;
         task.projectId = PROJECT_ID;
@@ -243,15 +256,21 @@ class VideoTaskReferenceResolverTest {
         task.createdAt = java.time.LocalDateTime.now();
         task.updatedAt = task.createdAt;
         videoTaskMapper.insert(task);
-        AiVideoResultEntity generated = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+        String capturedCover = "/api/projects/97002/ai-image-results/97501/display";
+        when(videoCovers.prepare(any(), any())).thenAnswer(call -> {
+            call.getArgument(1, AiVideoResultEntity.class).coverUrl = capturedCover;
+            return new com.antshorttv.aiimage.AiImageResultEntity();
+        });
+        Object preparedResult = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
             serviceTarget, "prepareGeneratedResult", task,
             new AiVideoProviderAdapter.VideoResult("SUCCEEDED", null, null));
+        AiVideoResultEntity generated = org.springframework.test.util.ReflectionTestUtils.invokeMethod(preparedResult, "video");
         videoResultMapper.insert(generated);
 
         assertThat(jdbc.queryForObject("select first_frame_url from ai_video_task where id = ?", String.class, task.id))
             .isEqualTo(browserDisplay);
         assertThat(jdbc.queryForObject("select cover_url from ai_video_result where task_id = ?", String.class, task.id))
-            .isEqualTo(browserDisplay);
+            .isEqualTo(capturedCover);
         Object content = org.springframework.test.util.ReflectionTestUtils.invokeMethod(seedance, "content", task);
         assertThat(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(content).toString())
             .contains(providerOriginal);

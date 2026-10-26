@@ -95,7 +95,7 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
             claims.requireActive(context.claim());
             creation.billingCallLogId=failure.getAiCallLogId();creation.billingAttemptId=context.claim().attemptId();save(context,creation);
             settle(context,creation,creation.externalTaskId==null && isRejection(failure)?AiSettlementOutcome.PROVIDER_REJECTION:AiSettlementOutcome.TRANSPORT_UNKNOWN);
-            throw new IllegalStateException("生成服务暂时不可用，请稍后重试。");
+            throw new IllegalStateException(FreeCreationErrorMessages.forProviderFailure(failure.getMessage()));
         } catch(RuntimeException failure) {
             settle(context,creation,creation.providerResultJson!=null?AiSettlementOutcome.BUSINESS_FAILURE:
                 creation.providerStartedAt==null?AiSettlementOutcome.PRE_CALL_CANCELED:AiSettlementOutcome.TRANSPORT_UNKNOWN);
@@ -122,7 +122,7 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
     private void generateVideo(AiExecutionContext context,FreeCreationEntity creation) {
         AiVideoTaskEntity task=service.videoTask(creation,true);
         var request=base(context,creation,AiCapability.VIDEO).build();
-        boolean seedance="VOLCENGINE_ARK".equalsIgnoreCase(creation.providerCode);
+        boolean seedance=VolcengineProviderCodes.isArk(creation.providerCode);
         AiInvocationResult<AiVideoProviderAdapter.VideoResult> response;
         if(creation.externalTaskId==null) {
             beginProvider(context,creation);
@@ -167,7 +167,7 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
         if("IMAGE".equals(creation.mediaType)) return Map.of(AiUsageMetric.CALL,BigDecimal.ONE,
             AiUsageMetric.IMAGE,BigDecimal.valueOf(result.path("images").size()),
             AiUsageMetric.INPUT_IMAGE,BigDecimal.valueOf(Math.max(0,media.items(creation.id,"REFERENCE").size()-1)));
-        if("VOLCENGINE_ARK".equalsIgnoreCase(creation.providerCode)) {
+        if(VolcengineProviderCodes.isArk(creation.providerCode)) {
             if(!result.path("completionTokens").isIntegralNumber() || result.path("completionTokens").asLong()<=0) return Map.of();
             String resolution=result.path("resolution").asText("");
             if(!resolution.isBlank() && !resolution.equalsIgnoreCase(service.read(creation.parametersJson).path("resolution").asText())) return Map.of();
