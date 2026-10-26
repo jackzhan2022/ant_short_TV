@@ -56,6 +56,7 @@ const types: Record<string, string> = {
   REVIEW: '剧本审核',
   IMAGE: '图片生成',
   VIDEO: '视频生成',
+  VIRTUAL_AVATAR: '虚拟人像',
 };
 const actions: Record<string, string> = {
   CANCEL: '取消任务',

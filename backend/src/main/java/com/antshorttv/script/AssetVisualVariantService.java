@@ -137,6 +137,7 @@ public class AssetVisualVariantService {
             select v.id, v.asset_type, v.asset_id, v.name, v.appearance,
                    case when v.is_primary = true then a.prompt else v.prompt end as effective_prompt,
                    v.source_type, v.generation_status, v.generation_task_id, v.current_image_result_id,
+                   v.virtual_avatar_asset_id,
                    case when v.current_image_url like 'data:%%' then null else v.current_image_url end as current_image_url,
                    v.generation_error_code, v.generation_error_message, v.is_primary, v.project_id,
                    image.display_path
@@ -159,6 +160,7 @@ public class AssetVisualVariantService {
             row.getString("name"), row.getString("appearance"), row.getString("effective_prompt"),
             row.getString("source_type"), status, row.getObject("generation_task_id", Long.class), resultId,
             imageUrl, thumbnail, row.getString("generation_error_code"), row.getString("generation_error_message"),
+            row.getString("virtual_avatar_asset_id"),
             row.getBoolean("is_primary"), "COMPLETED".equals(status)
                 && (resultId != null || imageUrl != null && !imageUrl.isBlank()));
     }
@@ -195,6 +197,7 @@ public class AssetVisualVariantService {
         entity.setGenerationStatus(defaultValue(command.generationStatus(), "NOT_STARTED"));
         entity.setCurrentImageResultId(command.currentImageResultId());
         entity.setCurrentImageUrl(blankToNull(command.currentImageUrl()));
+        entity.setVirtualAvatarAssetId(blankToNull(command.virtualAvatarAssetId()));
         entity.setIsPrimary(primary);
         entity.setCreatedBy(userId);
         entity.setCreatedAt(LocalDateTime.now());
@@ -217,6 +220,7 @@ public class AssetVisualVariantService {
         }
         entity.setName(command.name().trim());
         entity.setAppearance(blankToNull(command.appearance()));
+        // Asset binding belongs to the image and is updated by the ingestion task.
         if (Boolean.TRUE.equals(entity.getIsPrimary())) {
             updateCanonicalPrompt(entity, command.prompt());
         } else {
@@ -348,6 +352,12 @@ public class AssetVisualVariantService {
     }
 
     private VariantResponse completeImage(AssetVisualVariantEntity entity, Long imageResultId, String imageUrl) {
+        if (!java.util.Objects.equals(entity.getCurrentImageResultId(), imageResultId)
+            || !java.util.Objects.equals(entity.getCurrentImageUrl(), blankToNull(imageUrl))) {
+            entity.setVirtualAvatarAssetId(null);
+            jdbc.update("update asset_visual_variant set virtual_avatar_asset_id=null where id=? and tenant_id=? and project_id=?",
+                entity.getId(), entity.getTenantId(), entity.getProjectId());
+        }
         entity.setGenerationStatus("COMPLETED");
         entity.setCurrentImageResultId(imageResultId);
         entity.setCurrentImageUrl(blankToNull(imageUrl));
@@ -368,7 +378,7 @@ public class AssetVisualVariantService {
         requireVariant(tenantId, projectId, variantId, true);
         int updated = jdbc.update("""
             update asset_visual_variant
-               set generation_status = 'COMPLETED', current_image_result_id = ?, current_image_url = ?,
+               set virtual_avatar_asset_id = null, generation_status = 'COMPLETED', current_image_result_id = ?, current_image_url = ?,
                    generation_error_code = null, generation_error_message = null, updated_at = now()
              where id = ? and tenant_id = ? and project_id = ? and deleted_at is null
                and generation_task_id = ?
@@ -397,7 +407,7 @@ public class AssetVisualVariantService {
     public void discardGeneratedResult(Long tenantId, Long projectId, Long variantId, Long imageResultId) {
         int updated = jdbc.update("""
             update asset_visual_variant
-               set current_image_result_id = null, current_image_url = null,
+               set virtual_avatar_asset_id = null, current_image_result_id = null, current_image_url = null,
                    generation_status = case when generation_status = 'COMPLETED' then 'NOT_STARTED' else generation_status end,
                    updated_at = now()
              where id = ? and tenant_id = ? and project_id = ? and current_image_result_id = ?
@@ -626,6 +636,7 @@ public class AssetVisualVariantService {
             entity.getGenerationTaskId(), entity.getCurrentImageResultId(), entity.getCurrentImageUrl(),
             currentImageThumbnailUrl(entity),
             entity.getGenerationErrorCode(), entity.getGenerationErrorMessage(),
+            entity.getVirtualAvatarAssetId(),
             Boolean.TRUE.equals(entity.getIsPrimary()), usable(entity));
     }
 
@@ -649,14 +660,24 @@ public class AssetVisualVariantService {
 
     public record VariantCommand(
         String name, String appearance, String prompt, String sourceType, String generationStatus,
-        Long currentImageResultId, String currentImageUrl, Boolean primary
-    ) {}
+        Long currentImageResultId, String currentImageUrl, Boolean primary, String virtualAvatarAssetId
+    ) {
+        public VariantCommand(String name, String appearance, String prompt, String sourceType,
+            String generationStatus, Long currentImageResultId, String currentImageUrl, Boolean primary) {
+            this(name, appearance, prompt, sourceType, generationStatus, currentImageResultId,
+                currentImageUrl, primary, null);
+        }
+    }
     public record VariantResponse(
         Long id, String assetType, Long assetId, String name, String appearance, String prompt,
         String sourceType, String generationStatus, Long generationTaskId, Long currentImageResultId,
         String currentImageUrl, String currentImageThumbnailUrl, String errorCode, String errorMessage,
-        boolean primary, boolean usable
-    ) {}
+        String virtualAvatarAssetId, boolean primary, boolean usable
+    ) {
+        public boolean virtualAvatar() {
+            return virtualAvatarAssetId != null && !virtualAvatarAssetId.isBlank();
+        }
+    }
     public record ResolvedVisual(Long variantId, Long imageResultId, String imageUrl, String source) {}
     public record GenerationInput(String prompt, List<String> referenceImages) {}
 }

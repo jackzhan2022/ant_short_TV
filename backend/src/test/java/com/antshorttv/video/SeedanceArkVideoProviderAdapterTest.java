@@ -91,6 +91,28 @@ class SeedanceArkVideoProviderAdapterTest {
     }
 
     @Test
+    void submitsVirtualAvatarReferenceUsingItsProviderAssetId() throws Exception {
+        AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+        HttpServer server = server(exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody().readAllBytes()));
+            writeJson(exchange, 200, "{\"id\":\"ark-virtual-avatar\"}");
+        });
+        try {
+            AiVideoTaskEntity task = multimodalTask();
+            task.requestSnapshotJson = task.requestSnapshotJson.replace(
+                "{\"reference\":{\"mediaType\":\"IMAGE\",\"providerRole\":\"reference_image\"},\"providerUrl\":\"https://cdn.example/image.png\"}",
+                "{\"reference\":{\"mediaType\":\"IMAGE\",\"providerRole\":\"reference_image\"},\"providerAssetId\":\"va_123\",\"providerUrl\":\"https://cdn.example/image.png\"}");
+
+            new SeedanceArkVideoProviderAdapter(secretCodec, objectMapper)
+                .submit(config(server), model("ep-seedance-fast"), task, "virtual-avatar-1");
+
+            assertThat(requestBody.get().at("/content/1/image_url/url").asText()).isEqualTo("asset://va_123");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void omitsImageContentForTextToVideoTask() throws Exception {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         HttpServer server = server(exchange -> {

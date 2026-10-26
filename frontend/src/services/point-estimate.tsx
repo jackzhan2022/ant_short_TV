@@ -51,6 +51,7 @@ type Options = RequestOptions & { pointEstimateConfirmed?: boolean };
 
 export function requiresPointEstimate(url: string, options: Options = {}) {
   if ((options.method || 'GET').toUpperCase() !== 'POST') return false;
+  if (/^\/api\/tenants\/\d+\/production-tasks\/VIRTUAL_AVATAR(?::|%3A)\d+\/retry$/i.test(url)) return false;
   if (url === '/api/projects') {
     return Boolean(
       (

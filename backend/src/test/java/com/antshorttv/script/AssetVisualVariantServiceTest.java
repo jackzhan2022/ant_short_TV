@@ -82,6 +82,35 @@ class AssetVisualVariantServiceTest {
     }
 
     @Test
+    void storesVirtualAvatarProviderAssetIdOnOneVisualVariantOnly() {
+        var virtual = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "虚拟形象", null, "虚拟人像", "MANUAL", "COMPLETED", null,
+                "https://cdn.example/virtual.png", true, "va_123"));
+        var regular = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand(
+                "普通形象", null, "普通人像", "MANUAL", "COMPLETED", null,
+                "https://cdn.example/regular.png", false));
+
+        assertThat(virtual.virtualAvatarAssetId()).isEqualTo("va_123");
+        assertThat(virtual.virtualAvatar()).isTrue();
+        assertThat(regular.virtualAvatarAssetId()).isNull();
+        assertThat(regular.virtualAvatar()).isFalse();
+    }
+
+    @Test
+    void removesVirtualAvatarBindingWhenImageChangesButKeepsItForMetadataEdits() {
+        var variant = service.create(9901L, 9902L, "CHARACTER", 9910L, 9999L,
+            new AssetVisualVariantService.VariantCommand("原图", null, "提示词", "MANUAL", "COMPLETED", null,
+                "https://example.com/a.png", true, "asset-old"));
+        var renamed = service.update(9901L, 9902L, variant.id(),
+            new AssetVisualVariantService.VariantCommand("改名", null, "提示词", null, null, null, null, true));
+        assertThat(renamed.virtualAvatarAssetId()).isEqualTo("asset-old");
+        service.bindUploadedImage(9901L,9902L,variant.id(),9977L,"https://example.com/new.png");
+        assertThat(jdbc.queryForObject("select virtual_avatar_asset_id from asset_visual_variant where id=?",String.class,variant.id())).isNull();
+    }
+
+    @Test
     void bindsLocalImagesToAllAssetTypesAndClearsPreviousGenerationOwner() {
         String[] types = {"CHARACTER", "SCENE", "PROP"};
         String[] tables = {"character_asset", "scene_asset", "prop_asset"};

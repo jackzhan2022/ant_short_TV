@@ -269,6 +269,7 @@ const workspace = {
             generationStatus: 'COMPLETED',
             currentImageUrl: '/daily.png',
             currentImageThumbnailUrl: '/daily-thumb.png',
+            virtualAvatarAssetId: null,
           },
           {
             id: 12,
@@ -279,6 +280,7 @@ const workspace = {
             generationStatus: 'FAILED',
             currentImageUrl: '/wedding.png',
             currentImageThumbnailUrl: '/wedding-thumb.png',
+            virtualAvatarAssetId: null,
             errorMessage: '生成超时',
           },
         ],
@@ -362,6 +364,7 @@ describe('ProductionWorkbenchSettings', () => {
     workspace.characters[0].visual.variants[0].currentImageUrl = '/daily.png';
     workspace.characters[0].visual.variants[0].currentImageThumbnailUrl =
       '/daily-thumb.png';
+    workspace.characters[0].visual.variants[0].virtualAvatarAssetId = null;
     workspace.characters[0].visual.variants[1].currentImageUrl = '/wedding.png';
     workspace.characters[0].visual.variants[1].currentImageThumbnailUrl =
       '/wedding-thumb.png';
@@ -774,6 +777,17 @@ describe('ProductionWorkbenchSettings', () => {
     await waitFor(() => {
       expect(mocks.deleteVisualVariant).toHaveBeenCalledWith(1, 12);
     });
+  });
+
+  it('marks only virtual-avatar visual variants with the green virtual tag', async () => {
+    (workspace.characters[0].visual.variants[0] as any).virtualAvatarAssetId = 'va_123';
+
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看斌斌视觉形象' }));
+
+    expect(screen.getAllByText('虚拟')).toHaveLength(1);
+    expect(screen.getByTestId('视觉形象缩略图-日常形象')).toHaveTextContent('虚拟');
+    expect(screen.getByTestId('视觉形象缩略图-婚礼礼服')).not.toHaveTextContent('虚拟');
   });
 
   it('pages visual candidates while keeping a selected variant outside the page', async () => {

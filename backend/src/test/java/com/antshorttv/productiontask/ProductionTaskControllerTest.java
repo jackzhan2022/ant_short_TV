@@ -403,6 +403,25 @@ class ProductionTaskControllerTest extends com.antshorttv.support.RegistrationTe
         mvc.perform(get(base).param("scope","team").with(authenticated(member))).andExpect(status().isOk());
     }
 
+    @Test void includesVirtualAvatarTasksWithScopedDetailsAndRetryAction() throws Exception {
+        String token=register("13800019780");long tenant=tenant(token),user=user("13800019780");
+        jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'avatar','avatar',?,'ACTIVE',?,now(),now())",tenant,user,user);
+        long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
+        jdbc.update("insert into virtual_avatar_task(tenant_id,project_id,variant_id,character_id,title,source_image_url,provider_project,provider_asset_id,status,phase,retryable,error_code,error_message,created_by) values(?,?,1,1,'角色 · 礼服 · 虚拟人像','https://example.com/source.png','default','asset-1','FAILED','保存素材结果',true,'STORAGE_FAILED','保存失败',?)",tenant,project,user);
+        long task=jdbc.queryForObject("select id from virtual_avatar_task where tenant_id=?",Long.class,tenant);
+        String base="/api/tenants/"+tenant+"/production-tasks";
+        mvc.perform(get(base).param("type","VIRTUAL_AVATAR").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].taskKey").value("VIRTUAL_AVATAR:"+task))
+            .andExpect(jsonPath("$.data.items[0].statusGroup").value("FAILED"))
+            .andExpect(jsonPath("$.data.items[0].destination").value("/projects/"+project+"/production-workbench/settings"))
+            .andExpect(jsonPath("$.data.items[0].allowedActions").value(org.hamcrest.Matchers.hasItem("RETRY")));
+        mvc.perform(get(base+"/VIRTUAL_AVATAR:"+task+"/content").with(authenticated(token))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sections[1].fields[?(@.label == '资产 ID')].value").value(org.hamcrest.Matchers.hasItem("asset-1")))
+            .andExpect(jsonPath("$.data.sections[1].fields[?(@.label == '失败原因')].value").value(org.hamcrest.Matchers.hasItem("保存失败")));
+        String other=register("13800019781");
+        mvc.perform(get(base+"/VIRTUAL_AVATAR:"+task).with(authenticated(other))).andExpect(status().isForbidden());
+    }
+
     private String register(String mobile) throws Exception {
         return SessionTestSupport.sessionCredential(mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
             .content("{\"mobile\":\""+mobile+"\",\"nickname\":\"Task tester\",\"verificationCode\":\""+registrationVerificationCode(mvc, mobile)+"\",\"password\":\"Password123\"}"))

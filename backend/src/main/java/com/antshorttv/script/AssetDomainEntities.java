@@ -108,6 +108,8 @@ class AssetVisualVariantEntity extends TenantProjectRecord {
     private Long generationTaskId;
     private Long currentImageResultId;
     private String currentImageUrl;
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    private String virtualAvatarAssetId;
     private String generationErrorCode;
     private String generationErrorMessage;
     private Boolean isPrimary;
@@ -136,6 +138,8 @@ class AssetVisualVariantEntity extends TenantProjectRecord {
     public void setCurrentImageResultId(Long currentImageResultId) { this.currentImageResultId = currentImageResultId; }
     public String getCurrentImageUrl() { return currentImageUrl; }
     public void setCurrentImageUrl(String currentImageUrl) { this.currentImageUrl = currentImageUrl; }
+    public String getVirtualAvatarAssetId() { return virtualAvatarAssetId; }
+    public void setVirtualAvatarAssetId(String virtualAvatarAssetId) { this.virtualAvatarAssetId = virtualAvatarAssetId; }
     public String getGenerationErrorCode() { return generationErrorCode; }
     public void setGenerationErrorCode(String generationErrorCode) { this.generationErrorCode = generationErrorCode; }
     public String getGenerationErrorMessage() { return generationErrorMessage; }

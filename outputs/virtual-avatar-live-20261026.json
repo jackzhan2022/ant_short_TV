@@ -1,0 +1,22 @@
+{
+  "checkedAt" : "2026-10-26T07:50:35.251884800Z",
+  "project" : "default",
+  "groupId" : "group-20261026154446-gdhwn",
+  "stage" : "SUCCEEDED",
+  "sourceVariantId" : 5495,
+  "sourceResultId" : 1571,
+  "localDatabaseOnly" : true,
+  "taskId" : 202610260001,
+  "phase" : "入库完成",
+  "assetId" : "asset-20261026155020-sfm2z",
+  "errorCode" : null,
+  "storagePath" : "materials/37/66/virtual-avatars/202610/202610260001/v1/original.png",
+  "taskCenterStatus" : "SUCCEEDED",
+  "taskCenterKey" : "VIRTUAL_AVATAR:202610260001",
+  "storedBytes" : 2195706,
+  "storedContentType" : "image/png",
+  "localVariantBound" : true,
+  "seedanceReference" : "asset://asset-20261026155020-sfm2z",
+  "taskCenterListed" : true,
+  "taskCenterContentReadable" : true
+}
