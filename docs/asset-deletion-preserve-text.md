@@ -14,4 +14,4 @@
 
 2026-10-26 验证通过：设定页 55 项测试；删除服务 7 项、提示词编译 3 项和接口集成 1 项测试。前端 lint、TypeScript、antd 检查通过；保留仓库既有 CSS、测试 cookie 与全局静态反馈 API 警告。
 
-代码完成不代表已经部署线上；此前历史“香烟”修复记录见 `deleted-asset-reference-history-repair-2026-10-25.md`。
+已于 2026-10-26 部署线上，发布版本与验收结果见 `asset-deletion-release-2026-10-26.md`。此前历史“香烟”修复记录见 `deleted-asset-reference-history-repair-2026-10-25.md`。
