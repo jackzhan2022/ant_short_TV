@@ -39,6 +39,7 @@ class ProjectAudioServiceTest {
         jdbc = new JdbcTemplate(dataSource);
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V151__project_audio_assets_and_character_voices.sql")).execute(dataSource);
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V152__storyboard_character_voice_overrides.sql")).execute(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V163__system_audio_library.sql")).execute(dataSource);
         jdbc.execute("create table project(id bigint primary key,tenant_id bigint,name varchar(50),deleted_at timestamp)");
         jdbc.execute("create table character_asset(id bigint primary key,tenant_id bigint,project_id bigint,merge_target_id bigint,deleted_at timestamp,name varchar(50))");
         jdbc.execute("create table storyboard(id bigint primary key,tenant_id bigint,project_id bigint,deleted_at timestamp)");
@@ -74,6 +75,29 @@ class ProjectAudioServiceTest {
               file_size,duration_seconds,status,created_by,created_at,updated_at)
             values (?,?,?,'参考音频',? ,?,'audio/wav',100,12,'ACTIVE',99,now(),now())
             """, tenant, project, id, "upload-" + id, "materials/" + tenant + "/" + project + "/audio.wav");
+    }
+
+    @Test
+    void systemAudioBindsToCharactersAndStoryboardShapesAndRemainsUsableByVideoPreparation() {
+        String path = "materials/0/system_audio/202610/" + "a".repeat(64) + "/v1/original.wav";
+        jdbc.update("""
+            insert into system_audio_asset(id,name,source_path,content_sha256,storage_path,mime_type,file_size,duration_seconds,status,created_at,updated_at)
+            values (71,'系统男声','男/男声.wav',?,?,'audio/wav',1024,12,'ACTIVE',now(),now())
+            """, "a".repeat(64), path);
+        var saved = service.bind(1L, 2L, 10L, 2L, "SYSTEM_AUDIO_ASSET", 71L);
+        assertThat(saved.sourceProjectName()).isEqualTo("系统音频");
+        assertThat(saved.previewUrl()).isEqualTo("/api/system-audio/71/playback");
+        assertThat(service.current(1L, 2L, 10L)).isEqualTo(saved);
+        assertThat(storyboardVoices.current(1L, 2L, 20L, 10L, 100L).audio()).isEqualTo(saved);
+        assertThat(storyboardVoices.bind(1L, 2L, 20L, 10L, 100L, 2L, "SYSTEM_AUDIO_ASSET", 71L).overridden()).isTrue();
+        var media = service.trustedMedia(1L, 2L, "SYSTEM_AUDIO_ASSET", 71L);
+        assertThat(media.storagePath()).isEqualTo(path);
+        assertThat(media.format()).isEqualTo("wav");
+        assertThatThrownBy(() -> service.bind(1L, 2L, 10L, 4L, "SYSTEM_AUDIO_ASSET", 71L)).hasMessage("denied");
+        jdbc.update("update system_audio_asset set storage_path='materials/1/2/private.wav' where id=71");
+        assertThatThrownBy(() -> service.trustedMedia(1L, 2L, "SYSTEM_AUDIO_ASSET", 71L)).isInstanceOf(BusinessException.class);
+        jdbc.update("update system_audio_asset set storage_path=?,status='INACTIVE' where id=71", path);
+        assertThat(service.current(1L, 2L, 10L)).isNull();
     }
 
     @Test

@@ -1076,6 +1076,51 @@ describe('ProductionWorkbenchSettings', () => {
     expect(screen.queryByRole('button', { name: /生成所选角色/ })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['角色', '斌斌', '斌'],
+    ['场景', '地下停车场', '停车'],
+    ['道具', '灰色轿车后备箱', '后备箱'],
+  ])('filters %s names as the user types and restores the list when cleared', async (label, name, keyword) => {
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByRole('button', { name: '查看斌斌视觉形象' });
+    fireEvent.click(screen.getByRole('tab', { name: new RegExp(label) }));
+    const input = screen.getByRole('textbox', { name: '搜索资产' });
+    fireEvent.change(input, { target: { value: `  ${keyword}  ` } });
+    expect(screen.getByRole('button', { name: `查看${name}视觉形象` })).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '不存在的资产' } });
+    expect(screen.getByText(`未找到相关${label}`)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: `查看${name}视觉形象` })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '全选搜索结果' })).toBeDisabled();
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: `查看${name}视觉形象` })).toBeInTheDocument();
+  });
+
+  it('selects only search matches and clears hidden selections when the query or category changes', async () => {
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: {
+      projectId: 1,
+      characters: [...workspace.characters, { ...workspace.characters[0], id: 99, name: 'Alice', visual: undefined }],
+      scenes: workspace.scenes, props: workspace.props,
+    } });
+    render(<ProductionWorkbenchSettings />);
+    await screen.findByRole('checkbox', { name: '选择Alice' });
+    fireEvent.click(screen.getByRole('checkbox', { name: '选择斌斌' }));
+    const input = screen.getByRole('textbox', { name: '搜索资产' });
+    fireEvent.change(input, { target: { value: ' alice ' } });
+    expect(screen.getByText('已选择 0 项')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '选择斌斌' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选搜索结果' }));
+    expect(screen.getByRole('checkbox', { name: '选择Alice' })).toBeChecked();
+    expect(screen.getByText('已选择 1 项')).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByRole('checkbox', { name: '选择Alice' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '选择斌斌' })).not.toBeChecked();
+    fireEvent.change(input, { target: { value: 'alice' } });
+    fireEvent.click(screen.getByRole('tab', { name: /场景/ }));
+    expect(input).toHaveValue('');
+    expect(screen.getByRole('button', { name: '查看地下停车场视觉形象' })).toBeInTheDocument();
+    expect(mocks.queryAssetSettingsSummary).toHaveBeenCalledTimes(1);
+  });
+
   it('consolidates extraction actions and confirms selected primary image generation', async () => {
     render(<ProductionWorkbenchSettings />);
 

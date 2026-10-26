@@ -1,4 +1,5 @@
 export default {
+  'menu.system-audio': 'সিস্টেম অডিও লাইব্রেরি',
   'menu.free-creation': 'মুক্ত সৃজন',
   'menu.asset-library': 'অ্যাসেট লাইব্রেরি',
   'menu.messages': 'বার্তা কেন্দ্র',

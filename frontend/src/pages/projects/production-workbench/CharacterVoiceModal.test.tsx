@@ -11,6 +11,7 @@ import CharacterVoiceModal from './CharacterVoiceModal';
 
 const mocks = vi.hoisted(() => ({
   projects: vi.fn(),
+  system: vi.fn(),
   library: vi.fn(),
   current: vi.fn(),
   save: vi.fn(),
@@ -39,6 +40,9 @@ vi.mock('@/pages/asset-library/audio-service', () => ({
   queryStoryboardCharacterVoice: mocks.storyboardCurrent,
   saveStoryboardCharacterVoice: mocks.storyboardSave,
   resetStoryboardCharacterVoice: mocks.storyboardReset,
+}));
+vi.mock('@/pages/system-audio/service', () => ({
+  querySystemAudio: mocks.system,
 }));
 vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: mocks.upload }));
 
@@ -72,8 +76,8 @@ const response = (items = [audio]) => ({
     categoryCounts: { REFERENCE: 1, GENERATED: 0 },
   },
 });
-const show = () =>
-  render(
+const show = (system = false) => {
+  const view = render(
     <App>
       <CharacterVoiceModal
         projectId={1}
@@ -84,8 +88,30 @@ const show = () =>
       />
     </App>,
   );
+  if (!system) fireEvent.click(screen.getByRole('tab', { name: '项目音频库' }));
+  return view;
+};
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.system.mockResolvedValue({
+    success: true,
+    data: {
+      data: [
+        {
+          id: 71,
+          name: '清朗少年',
+          gender: '男声',
+          ageGroup: '少年',
+          category: '清朗',
+          durationSeconds: 12,
+          previewUrl: '/api/system-audio/71/playback',
+        },
+      ],
+      total: 1,
+      current: 1,
+      pageSize: 12,
+    },
+  });
   mocks.projects.mockResolvedValue({
     success: true,
     data: { data: [project, otherProject], total: 2 },
@@ -93,9 +119,18 @@ beforeEach(() => {
   mocks.library.mockReset();
   mocks.library.mockResolvedValue(response());
   mocks.current.mockResolvedValue({ success: true, data: null });
-  mocks.storyboardCurrent.mockResolvedValue({ success: true, data: { audio: reference, overridden: false } });
-  mocks.storyboardSave.mockResolvedValue({ success: true, data: { audio: reference, overridden: true } });
-  mocks.storyboardReset.mockResolvedValue({ success: true, data: { audio: null, overridden: false } });
+  mocks.storyboardCurrent.mockResolvedValue({
+    success: true,
+    data: { audio: reference, overridden: false },
+  });
+  mocks.storyboardSave.mockResolvedValue({
+    success: true,
+    data: { audio: reference, overridden: true },
+  });
+  mocks.storyboardReset.mockResolvedValue({
+    success: true,
+    data: { audio: null, overridden: false },
+  });
   mocks.save.mockResolvedValue({ success: true, data: reference });
   mocks.register.mockResolvedValue({ success: true, data: reference });
   mocks.upload.mockResolvedValue({
@@ -131,6 +166,97 @@ it('loads project folders first and saves an audio only from the selected projec
     11,
     expect.objectContaining({ sourceProjectId: 1, resourceId: 51 }),
   );
+});
+
+it('selects system audio and saves its reference in the current project without uploading', async () => {
+  show(true);
+  expect(screen.getByRole('tab', { name: '系统音频' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  const systemReference = {
+    sourceProjectId: 1,
+    sourceProjectName: '系统音频',
+    resourceType: 'SYSTEM_AUDIO_ASSET',
+    resourceId: 71,
+    name: '清朗少年',
+    previewUrl: '/api/system-audio/71/playback',
+    durationSeconds: 12,
+  };
+  mocks.save.mockResolvedValueOnce({ success: true, data: systemReference });
+  fireEvent.click(await screen.findByRole('radio', { name: /清朗少年/ }));
+  fireEvent.click(screen.getByRole('button', { name: '试听清朗少年' }));
+  expect(
+    screen.getByLabelText('试听清朗少年', { selector: 'audio' }),
+  ).toHaveAttribute('src', systemReference.previewUrl);
+  const firstPlayer = screen.getByLabelText('试听清朗少年', { selector: 'audio' });
+  fireEvent.error(firstPlayer);
+  expect(screen.getByRole('alert')).toHaveTextContent('音频播放失败');
+  fireEvent.click(screen.getByRole('button', { name: '试听清朗少年' }));
+  expect(screen.getByLabelText('试听清朗少年', { selector: 'audio' })).not.toBe(firstPlayer);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  await waitFor(() =>
+    expect(mocks.saved).toHaveBeenCalledWith(systemReference),
+  );
+  expect(mocks.save).toHaveBeenCalledWith(1, 11, systemReference);
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.projects).not.toHaveBeenCalled();
+});
+
+it('clears a system selection and its player when switching sources', async () => {
+  show(true);
+  fireEvent.click(await screen.findByRole('radio', { name: /清朗少年/ }));
+  fireEvent.click(screen.getByRole('button', { name: '试听清朗少年' }));
+  expect(screen.getByRole('button', { name: '确认' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('tab', { name: '项目音频库' }));
+  await screen.findByRole('button', { name: '打开匠心音频库' });
+  expect(
+    screen.queryByLabelText('试听清朗少年', { selector: 'audio' }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('tab', { name: '系统音频' }));
+  expect(
+    await screen.findByRole('radio', { name: /清朗少年/ }),
+  ).not.toBeChecked();
+  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+});
+
+it('ignores stale system audio results after changing filters and supports retry', async () => {
+  let finish!: (value: unknown) => void;
+  mocks.system.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  show(true);
+  await waitFor(() => expect(mocks.system).toHaveBeenCalledOnce());
+  mocks.system.mockResolvedValueOnce({
+    success: true,
+    data: { data: [], total: 0 },
+  });
+  fireEvent.change(screen.getByLabelText('筛选性别'), {
+    target: { value: '女声' },
+  });
+  await screen.findByText('未找到相关音频');
+  await act(async () =>
+    finish({
+      success: true,
+      data: { data: [{ id: 71, name: '旧男声' }], total: 1 },
+    }),
+  );
+  expect(screen.queryByText('旧男声')).not.toBeInTheDocument();
+  mocks.system.mockRejectedValueOnce(new Error('network'));
+  fireEvent.change(screen.getByLabelText('筛选性别'), {
+    target: { value: '' },
+  });
+  await screen.findByText('音频加载失败');
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  expect(
+    await screen.findByRole('radio', { name: /清朗少年/ }),
+  ).toBeInTheDocument();
 });
 
 it('clears selection and playback when returning to projects and filters folders on the server', async () => {
@@ -264,6 +390,7 @@ it('saves a storyboard shape override without changing the characters default vo
   await screen.findByText(/使用角色默认音色/);
   expect(mocks.current).not.toHaveBeenCalled();
   expect(mocks.storyboardCurrent).toHaveBeenCalledWith(1, 11, scope, expect.any(AbortSignal));
+  fireEvent.click(screen.getByRole('tab', { name: '项目音频库' }));
   fireEvent.click(await screen.findByRole('button', { name: '打开匠心音频库' }));
   fireEvent.click(await screen.findByRole('radio', { name: /角色参考.wav/ }));
   fireEvent.click(screen.getByRole('button', { name: '确认' }));

@@ -43,6 +43,7 @@ export default function access(
       (!initialState?.selectedTenant || hasMenu('TEAM_MANAGEMENT')),
     canUseFreeCreation: hasMenu('FREE_CREATION'),
     canViewStyleLibrary: Boolean(currentUser),
+    canViewSystemAudio: Boolean(currentUser),
     canUseVideoScriptDecomposition:
       currentUser &&
       hasMenu('VIDEO_DECOMPOSITION'),

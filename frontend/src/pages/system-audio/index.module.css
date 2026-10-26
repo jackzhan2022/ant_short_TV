@@ -1,0 +1,117 @@
+.page {
+  max-width: 1200px;
+  padding: 24px 30px 40px;
+  margin: 0 auto;
+}
+.page h1 {
+  margin: 0 0 24px;
+  font-size: 23px;
+  font-weight: 600;
+}
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+}
+.filters select {
+  padding: 5px 10px;
+  border: 1px solid var(--app-color-border, #e7e9f0);
+  border-radius: 6px;
+  background: var(--app-color-bg-container, white);
+  color: var(--app-color-text-secondary, #6e718c);
+  font: inherit;
+  font-size: 12px;
+}
+.filters > span {
+  margin-left: auto;
+  color: var(--app-color-text-tertiary, #9296aa);
+  font-size: 12px;
+}
+.list {
+  display: grid;
+  gap: 9px;
+}
+.picker .list {
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--app-color-border-secondary, #edf0f5);
+  border-radius: 8px;
+  background: var(--app-color-bg-container, white);
+}
+.row[data-selected="true"] {
+  border-color: var(--app-color-primary, #5252ff);
+  background: var(--app-color-primary-bg, #f0edff);
+}
+.row label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.row input {
+  flex-shrink: 0;
+  accent-color: var(--app-color-primary, #5252ff);
+}
+.row strong {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-color-text-tertiary, #9296aa);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.info {
+  flex: 1;
+  min-width: 0;
+}
+.duration {
+  font-size: 12px;
+  color: var(--app-color-text-tertiary, #9296aa);
+}
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 45px 0;
+  color: var(--app-color-text-secondary, #6e718c);
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+.player {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--app-color-text-secondary, #6e718c);
+  overflow-wrap: anywhere;
+}
+.player audio {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+.player [role="alert"] {
+  display: block;
+  color: var(--app-color-error, #d43838);
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .page {
+    padding: 16px;
+  }
+}

@@ -1,4 +1,5 @@
 export default {
+  'menu.system-audio': 'System audio library',
   'menu.free-creation': 'Free Creation',
   'menu.asset-library': 'Asset Library',
   'menu.messages': 'Message Center',

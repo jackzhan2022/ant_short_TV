@@ -1,4 +1,5 @@
 export default {
+  'menu.system-audio': 'کتابخانه صوتی سیستم',
   'menu.free-creation': 'آفرینش آزاد',
   'menu.asset-library': 'کتابخانه دارایی',
   'menu.messages': 'مرکز پیام',

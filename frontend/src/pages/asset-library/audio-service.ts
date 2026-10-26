@@ -4,7 +4,7 @@ import type { ApiResponse } from '@/services/account-team/types';
 export type AudioReference = {
   sourceProjectId: number;
   sourceProjectName: string;
-  resourceType: 'PROJECT_AUDIO_ASSET' | 'AI_VOICE_RESULT';
+  resourceType: 'PROJECT_AUDIO_ASSET' | 'AI_VOICE_RESULT' | 'SYSTEM_AUDIO_ASSET';
   resourceId: number;
   name: string;
   previewUrl: string;

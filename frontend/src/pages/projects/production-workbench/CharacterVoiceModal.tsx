@@ -6,26 +6,27 @@ import {
 import { useModel } from '@umijs/max';
 import { App, Button, Empty, Input, Modal, Pagination } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import {
+  type AudioReference,
+  queryCharacterVoice,
+  queryStoryboardCharacterVoice,
+  registerProjectAudio,
+  resetStoryboardCharacterVoice,
+  type StoryboardVoiceScope,
+  saveCharacterVoice,
+  saveStoryboardCharacterVoice,
+} from '@/pages/asset-library/audio-service';
+import {
+  type AssetLibraryItem,
+  queryProjectAssetLibrary,
+} from '@/pages/asset-library/service';
+import SystemAudioList from '@/pages/system-audio/AudioList';
 import { queryProjects } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
 import {
   type MediaUploadHandle,
   startMediaUpload,
 } from '@/services/mediaUpload';
-import {
-  type AudioReference,
-  queryCharacterVoice,
-  registerProjectAudio,
-  saveCharacterVoice,
-  type StoryboardVoiceScope,
-  queryStoryboardCharacterVoice,
-  saveStoryboardCharacterVoice,
-  resetStoryboardCharacterVoice,
-} from '@/pages/asset-library/audio-service';
-import {
-  type AssetLibraryItem,
-  queryProjectAssetLibrary,
-} from '@/pages/asset-library/service';
 import styles from './CharacterVoiceModal.module.css';
 
 type Props = {
@@ -68,7 +69,9 @@ function VoicePicker({
   onChanged,
 }: Props) {
   const { message } = App.useApp();
-  const [source, setSource] = useState<'library' | 'upload'>('library');
+  const [source, setSource] = useState<'library' | 'upload' | 'system'>(
+    'system',
+  );
   const [project, setProject] = useState<Project>();
   const [projects, setProjects] = useState<Project[]>([]);
   const [items, setItems] = useState<AssetLibraryItem[]>([]);
@@ -373,7 +376,8 @@ function VoicePicker({
         {(
           [
             { key: 'upload', label: '本地上传' },
-            { key: 'library', label: '音频库' },
+            { key: 'system', label: '系统音频' },
+            { key: 'library', label: '项目音频库' },
           ] as const
         ).map((tab) => (
           <button
@@ -385,15 +389,44 @@ function VoicePicker({
             aria-selected={source === tab.key}
             disabled={saving}
             onClick={() => {
+              if (source === tab.key) return;
               setSource(tab.key);
               setPreview(undefined);
+              setSelected(undefined);
             }}
           >
             {tab.label}
           </button>
         ))}
       </div>
-      {source === 'upload' ? (
+      {source === 'system' ? (
+        <section
+          id="voice-panel-system"
+          role="tabpanel"
+          aria-labelledby="voice-system"
+          className={styles.panel}
+        >
+          <SystemAudioList
+            disabled={disabled || saving}
+            selectedId={
+              selected?.resourceType === 'SYSTEM_AUDIO_ASSET'
+                ? selected.resourceId
+                : undefined
+            }
+            onSelect={(audio) =>
+              setSelected({
+                sourceProjectId: projectId,
+                sourceProjectName: '系统音频',
+                resourceType: 'SYSTEM_AUDIO_ASSET',
+                resourceId: audio.id,
+                name: audio.name,
+                previewUrl: audio.previewUrl,
+                durationSeconds: audio.durationSeconds,
+              })
+            }
+          />
+        </section>
+      ) : source === 'upload' ? (
         <section
           id="voice-panel-upload"
           role="tabpanel"
@@ -707,10 +740,10 @@ function VoicePicker({
             ? `已选择：${file.name}`
             : '未选择音频'
           : selected
-            ? `已选择：${selected.name} · ${selected.sourceProjectName}`
-            : project
-              ? '未选择音频'
-              : '请先选择项目'}
+            ? `已选择：${selected.name}${source === 'library' ? ` · ${selected.sourceProjectName}` : ''}`
+            : source === 'library' && !project
+              ? '请先选择项目'
+              : '未选择音频'}
       </div>
     </Modal>
   );

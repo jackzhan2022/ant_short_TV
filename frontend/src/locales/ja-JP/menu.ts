@@ -1,4 +1,5 @@
 export default {
+  'menu.system-audio': 'システム音声ライブラリ',
   'menu.free-creation': '自由創作',
   'menu.asset-library': 'アセットライブラリ',
   'menu.messages': 'メッセージセンター',

@@ -45,5 +45,5 @@ public class ProjectAudioController {
     }
     public record Upload(@NotBlank String sessionToken, @NotBlank @Size(max=255) String name) {}
     public record Binding(@NotNull @Positive Long sourceProjectId,
-        @NotBlank @Pattern(regexp="PROJECT_AUDIO_ASSET|AI_VOICE_RESULT") String resourceType, @NotNull @Positive Long resourceId) {}
+        @NotBlank @Pattern(regexp="PROJECT_AUDIO_ASSET|AI_VOICE_RESULT|SYSTEM_AUDIO_ASSET") String resourceType, @NotNull @Positive Long resourceId) {}
 }

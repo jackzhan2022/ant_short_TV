@@ -100,7 +100,19 @@
   min-width: 0;
 }
 
+.assetSearch {
+  width: 240px;
+  max-width: 100%;
+}
+
+.workspaceOpen .assetSearch {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
+  .assetSearch {
+    width: 100%;
+  }
   .toolbarRow {
     flex-direction: column;
     align-items: stretch;

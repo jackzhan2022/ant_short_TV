@@ -128,7 +128,8 @@ public class ProjectAudioService {
     public AudioReference reference(Long tenantId, Long projectId, String type, Long id) {
         permissions.require(tenantId, projectId, "AI_VOICE_TASK:VIEW");
         var audio = resource(tenantId, projectId, type, id);
-        String name = jdbc.queryForObject("select name from project where tenant_id=? and id=? and deleted_at is null", String.class, tenantId, projectId);
+        String name = "SYSTEM_AUDIO_ASSET".equals(type) ? "系统音频"
+            : jdbc.queryForObject("select name from project where tenant_id=? and id=? and deleted_at is null", String.class, tenantId, projectId);
         return new AudioReference(projectId, name, type, id, audio.name(), playbackPath(projectId, type, id), audio.duration());
     }
 
@@ -157,7 +158,8 @@ public class ProjectAudioService {
         var context = permissions.require(tenantId, projectId, "AI_VOICE_TASK:VIEW");
         var audio = resource(tenantId, projectId, type, id);
         String key = audio.key().startsWith("/") ? audio.key().substring(1) : audio.key();
-        if (!key.startsWith("materials/" + tenantId + "/" + projectId + "/")) throw unavailable();
+        if ("SYSTEM_AUDIO_ASSET".equals(type) ? !SystemAudioLibraryService.validStoragePath(key)
+            : !key.startsWith("materials/" + tenantId + "/" + projectId + "/")) throw unavailable();
         return grants.issue(new DeliveryGrantRequest(tenantId, projectId, context.userId(), type, id,
             "audio-" + id, "AUDIO", key, false));
     }
@@ -172,18 +174,23 @@ public class ProjectAudioService {
               join storyboard s on s.id=r.storyboard_id and s.tenant_id=r.tenant_id and s.project_id=r.project_id and s.deleted_at is null
              where r.tenant_id=? and r.project_id=? and r.id=? and r.status='ACTIVE'
             """;
+        else if ("SYSTEM_AUDIO_ASSET".equals(type)) sql = "select name,storage_path,duration_seconds,file_size,mime_type from system_audio_asset where id=? and status='ACTIVE'";
         else throw new BusinessException(ErrorCode.VALIDATION_ERROR, "音频类型不正确。");
-        List<AudioResource> resources = jdbc.query(sql, (rs, index) -> new AudioResource(rs.getString(1), rs.getString(2), rs.getBigDecimal(3), rs.getObject(4, Long.class), rs.getString(5)), tenantId, projectId, id);
+        boolean system = "SYSTEM_AUDIO_ASSET".equals(type);
+        List<AudioResource> resources = jdbc.query(sql, (rs, index) -> new AudioResource(rs.getString(1), rs.getString(2), rs.getBigDecimal(3), rs.getObject(4, Long.class), rs.getString(5)),
+            system ? new Object[] {id} : new Object[] {tenantId, projectId, id});
         if (resources.isEmpty() || resources.get(0).key() == null || resources.get(0).key().isBlank()) throw unavailable();
         var audio = resources.get(0);
         try {
             String key = keys.objectKey(audio.key().startsWith("/") ? audio.key().substring(1) : audio.key());
-            if (!key.startsWith("materials/" + tenantId + "/" + projectId + "/")) throw unavailable();
+            if (system ? !SystemAudioLibraryService.validStoragePath(key)
+                : !key.startsWith("materials/" + tenantId + "/" + projectId + "/")) throw unavailable();
         } catch (IllegalArgumentException exception) { throw unavailable(); }
         return audio;
     }
 
     public static String playbackPath(Long projectId, String type, Long id) {
+        if ("SYSTEM_AUDIO_ASSET".equals(type)) return SystemAudioLibraryService.playbackPath(id);
         return "/api/projects/" + projectId + ("PROJECT_AUDIO_ASSET".equals(type) ? "/audio-assets/" : "/ai-voice-results/") + id + "/playback";
     }
     private BusinessException unavailable() { return new BusinessException(ErrorCode.NOT_FOUND, "音频不存在或已失效。"); }

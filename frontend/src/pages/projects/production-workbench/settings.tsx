@@ -7,6 +7,7 @@ import {
   EditOutlined,
   PlusOutlined,
   RobotOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useOutletContext, useParams } from '@umijs/max';
 import {
@@ -507,6 +508,7 @@ const ProductionWorkbenchSettings = () => {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const [activeType, setActiveType] = useState<ElementType>('CHARACTER');
+  const [assetKeyword, setAssetKeyword] = useState('');
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const [batchMode, setBatchMode] = useState<'PRIMARY' | 'ALL'>('PRIMARY');
   const [batchPreflight, setBatchPreflight] =
@@ -709,6 +711,7 @@ const ProductionWorkbenchSettings = () => {
     setVisualAsset(undefined);
     setSelectedVisualVariantId(undefined);
     setSelectedAssetIds([]);
+    setAssetKeyword('');
     setBatchPreflight(undefined);
     setActiveImageBatch(undefined);
     setBatchLoading(false);
@@ -787,6 +790,12 @@ const ProductionWorkbenchSettings = () => {
   );
 
   const activeAssets = assetsByType[activeType];
+  const assetSearch = assetKeyword.trim().toLocaleLowerCase();
+  const matchesAssetName = (name: string) => name.toLocaleLowerCase().includes(assetSearch);
+  const visibleAssets = activeAssets.filter((item) =>
+    [item.name, assetDisplayName(item), ...('production' in item ? item.production?.sourceNames ?? [] : [])]
+      .some(matchesAssetName));
+  const visibleSceneProps = productionProps.sceneItems.filter((item) => matchesAssetName(item.sourceName));
   const activeGeneration = activeAssets.reduce(
     (
       summary: { completed: number; failed: number; generating: number },
@@ -1711,6 +1720,7 @@ const ProductionWorkbenchSettings = () => {
                   aria-selected={active}
                   onClick={() => {
                     setActiveType(section.type);
+                    setAssetKeyword('');
                     setSelectedAssetIds([]);
                     closeVisualGallery();
                   }}
@@ -1747,6 +1757,18 @@ const ProductionWorkbenchSettings = () => {
               );
             })}
           </div>
+          <Input
+            className={styles.assetSearch}
+            aria-label="搜索资产"
+            placeholder={`搜索${elementLabels[activeType]}名称`}
+            prefix={<SearchOutlined />}
+            allowClear
+            value={assetKeyword}
+            onChange={(event) => {
+              setAssetKeyword(event.target.value);
+              setSelectedAssetIds([]);
+            }}
+          />
           <fieldset
             disabled={normalizationBlocked}
             role="toolbar"
@@ -1773,6 +1795,7 @@ const ProductionWorkbenchSettings = () => {
               blocked={normalizationBlocked}
               onCreated={async (created, configure) => {
                 if (currentProjectId.current !== projectId) return;
+                setAssetKeyword('');
                 setSelectedAssetIds([]);
                 try {
                   const next = await reload();
@@ -1801,19 +1824,20 @@ const ProductionWorkbenchSettings = () => {
             <span style={{ color: 'var(--app-color-border)' }}>|</span>
             <span>失败 {activeGeneration.failed}</span>
             <Checkbox
-              aria-label="全选当前分类"
+              aria-label={assetSearch ? '全选搜索结果' : '全选当前分类'}
+              disabled={!visibleAssets.length || (activeType === 'PROP' && showSceneProps)}
               checked={
-                activeAssets.length > 0 &&
-                selectedAssetIds.length === activeAssets.length
+                visibleAssets.length > 0 &&
+                visibleAssets.every((item) => selectedAssetIds.includes(item.id))
               }
               indeterminate={
                 selectedAssetIds.length > 0 &&
-                selectedAssetIds.length < activeAssets.length
+                selectedAssetIds.length < visibleAssets.length
               }
               onChange={(event) =>
                 setSelectedAssetIds(
                   event.target.checked
-                    ? activeAssets.map((item) => item.id)
+                    ? visibleAssets.map((item) => item.id)
                     : [],
                 )
               }
@@ -1883,14 +1907,14 @@ const ProductionWorkbenchSettings = () => {
           </section>
         ) : null}
         {activeType === 'PROP' && showSceneProps ? <section aria-label="随场景呈现的道具">
-          {productionProps.sceneItems.length ? productionProps.sceneItems.map((item) => <div key={item.sourceId} style={{ padding: '14px 16px', marginBottom: 8, borderRadius: 8, background: 'var(--app-color-bg-container)' }}>
+          {visibleSceneProps.length ? visibleSceneProps.map((item) => <div key={item.sourceId} style={{ padding: '14px 16px', marginBottom: 8, borderRadius: 8, background: 'var(--app-color-bg-container)' }}>
             <strong>{item.sourceName}</strong><span style={{ marginLeft: 12, color: 'var(--app-color-text-secondary)' }}>{item.sceneIds.map((id) => workspace.scenes.find((scene) => scene.id === id)?.name ?? `场景 #${id}`).join('、')} · 场景待确认 / 更新</span>
-          </div>) : <Empty description="暂无随场景呈现的物品" />}
+          </div>) : <Empty description={assetSearch ? '未找到相关道具' : '暂无随场景呈现的物品'} />}
         </section> : (() => {
           const section =
             assetSections.find((item) => item.type === activeType) ??
             assetSections[0];
-          const items = assetsByType[section.type];
+          const items = visibleAssets;
           return (
             <section>
               {items.length ? (
@@ -1931,7 +1955,7 @@ const ProductionWorkbenchSettings = () => {
                   }}
                 >
                   <Empty
-                    description={`暂无${elementLabels[section.type]}设定`}
+                    description={assetSearch ? `未找到相关${elementLabels[section.type]}` : `暂无${elementLabels[section.type]}设定`}
                   />
                 </div>
               )}
