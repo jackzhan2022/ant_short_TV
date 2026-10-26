@@ -365,6 +365,15 @@ public class ScriptWorkflowController {
     }
 
 
+    @GetMapping("/script-elements/{elementType}/{elementId}/deletion-impact")
+    @RequireProjectPermission("SCRIPT:EDIT")
+    public ApiResponse<AssetDeletionService.Impact> elementDeletionImpact(
+        @PathVariable Long projectId, @PathVariable String elementType,
+        @PathVariable Long elementId, HttpServletRequest request
+    ) {
+        return ApiResponse.success(scriptWorkflowService.elementDeletionImpact(tenantId(request), projectId, elementType, elementId));
+    }
+
     @DeleteMapping("/script-elements/{elementType}/{elementId}")
     @RequireProjectPermission("SCRIPT:EDIT")
     public ApiResponse<Void> deleteElement(

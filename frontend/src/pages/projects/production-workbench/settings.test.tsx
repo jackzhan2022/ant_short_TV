@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   messageError: vi.fn(),
   confirmScriptElement: vi.fn(),
   deleteScriptElement: vi.fn(),
+  queryAssetDeletionImpact: vi.fn(),
   queryAssetReextractionPreflight: vi.fn(),
   submitAssetReextraction: vi.fn(),
   queryScriptWorkspace: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock('@umijs/max', () => ({
 vi.mock('./service', () => ({
   confirmScriptElement: mocks.confirmScriptElement,
   deleteScriptElement: mocks.deleteScriptElement,
+  queryAssetDeletionImpact: mocks.queryAssetDeletionImpact,
   queryAssetReextractionPreflight: mocks.queryAssetReextractionPreflight,
   submitAssetReextraction: mocks.submitAssetReextraction,
   queryScriptWorkspace: mocks.queryScriptWorkspace,
@@ -142,15 +144,15 @@ vi.mock('antd', () => ({
   ),
   Drawer: ({ children, open, title }: any) =>
     open ? <section aria-label={title}>{children}</section> : null,
-  Modal: ({ children, open, title, onOk, onCancel }: any) =>
+  Modal: ({ children, open, title, onOk, onCancel, okText, okButtonProps, confirmLoading }: any) =>
     open ? (
       <section aria-label={title}>
         {children}
         <button type="button" onClick={onCancel}>
           取消
         </button>
-        <button type="button" onClick={onOk}>
-          确认提交
+        <button type="button" onClick={onOk} disabled={okButtonProps?.disabled || confirmLoading}>
+          {okText || '确认提交'}
         </button>
       </section>
     ) : null,
@@ -421,6 +423,8 @@ describe('ProductionWorkbenchSettings', () => {
     });
     mocks.confirmScriptElement.mockResolvedValue({ data: workspace });
     mocks.deleteScriptElement.mockResolvedValue({ data: null });
+    mocks.queryAssetDeletionImpact.mockReset();
+    mocks.queryAssetDeletionImpact.mockResolvedValue({ data: { assetName: '斌斌', affectedStoryboardCount: 5, promptMentionCount: 9 } });
     mocks.updateScriptElement.mockResolvedValue({ data: null });
     mocks.queryAssetCandidates.mockResolvedValue({
       data: {
@@ -1430,7 +1434,7 @@ describe('ProductionWorkbenchSettings', () => {
   });
   it('renders the reference-style asset workbench instead of the old image task table', async () => {
     render(<ProductionWorkbenchSettings />);
-
+    await screen.findByRole('button', { name: '斌斌资产操作' });
     expect(
       await screen.findByText(/请确保需要独立制作的角色、场景及道具已生成。/),
     ).toBeInTheDocument();
@@ -1689,6 +1693,60 @@ describe('ProductionWorkbenchSettings', () => {
     expect(viewport.scrollLeft).toBe(0);
     expect(screen.getByRole('button', { name: '生成图片日常形象' })).toBeEnabled();
     expect(screen.getByRole('button', { name: /本地上传/ })).toBeEnabled();
+  });
+
+  it('shows the asset menu without hovering and deletes only after impact confirmation', async () => {
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除斌斌' }));
+    const dialog = await screen.findByRole('region', { name: '删除斌斌' });
+    expect(mocks.queryAssetDeletionImpact).toHaveBeenCalledWith(1, 'CHARACTER', 1);
+    expect(dialog).toHaveTextContent('该资产被 5 个分镜引用');
+    expect(dialog).toHaveTextContent('提示词引用转为普通文字');
+    expect(dialog).toHaveTextContent('已有图片、视频将保留');
+    expect(mocks.deleteScriptElement).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除并保留文字' }));
+    await waitFor(() => expect(mocks.deleteScriptElement).toHaveBeenCalledExactlyOnceWith(1, 'CHARACTER', 1));
+    await waitFor(() => expect(screen.queryByRole('region', { name: '删除斌斌' })).not.toBeInTheDocument());
+  });
+
+  it('allows cancelling deletion without sending a delete request', async () => {
+    mocks.queryAssetDeletionImpact.mockResolvedValueOnce({ data: { assetName: '斌斌', affectedStoryboardCount: 0, promptMentionCount: 0 } });
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除斌斌' }));
+    const dialog = await screen.findByRole('region', { name: '删除斌斌' });
+    expect(dialog).toHaveTextContent('该资产目前没有分镜引用');
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(mocks.deleteScriptElement).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: '删除斌斌' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer deletion when the impact lookup fails', async () => {
+    mocks.queryAssetDeletionImpact.mockRejectedValueOnce(new Error('影响读取失败'));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除斌斌' }));
+    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith('影响读取失败'));
+    expect(mocks.deleteScriptElement).not.toHaveBeenCalled();
+    expect(screen.queryByRole('region', { name: '删除斌斌' })).not.toBeInTheDocument();
+  });
+
+  it('keeps confirmation open after a failed deletion and prevents duplicate submission', async () => {
+    let rejectDeletion!: (error: Error) => void;
+    mocks.deleteScriptElement.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectDeletion = reject; }));
+    render(<ProductionWorkbenchSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: '斌斌资产操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除斌斌' }));
+    const dialog = await screen.findByRole('region', { name: '删除斌斌' });
+    const confirm = within(dialog).getByRole('button', { name: '删除并保留文字' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(mocks.deleteScriptElement).toHaveBeenCalledTimes(1);
+    await act(async () => rejectDeletion(new Error('删除未完成')));
+    expect(dialog).toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+    expect(mocks.messageError).toHaveBeenCalledWith('删除未完成');
   });
 
   it('shows the terminal backend failure reason', async () => {

@@ -59,6 +59,7 @@ public class ScriptWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationService assetNormalization;
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
     @org.springframework.beans.factory.annotation.Autowired private AssetExtractionCoordination normalizationCoordination;
+    @Autowired private AssetDeletionService assetDeletionService;
 
     public AiExecutionResponse submitAssetNormalization(Long tenantId,Long projectId,HttpServletRequest request) {
         TenantContext context=tenantContextResolver.requireActiveMember(tenantId);
@@ -1335,16 +1336,20 @@ public class ScriptWorkflowService {
     }
 
 
+    public AssetDeletionService.Impact elementDeletionImpact(Long tenantId, Long projectId, String elementType, Long elementId) {
+        TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
+        requireProjectAccess(context, projectId);
+        requirePermission(context, "ELEMENT:EDIT", projectId);
+        return assetDeletionService.preview(tenantId, projectId, normalizeElementType(elementType), elementId);
+    }
+
     @Transactional
     public Void deleteElement(Long tenantId, Long projectId, String elementType, Long elementId, HttpServletRequest servletRequest) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         requirePermission(context, "ELEMENT:EDIT", projectId);
         if(normalizationGuard!=null) normalizationGuard.requireReady(tenantId,projectId);
-        jdbcTemplate.update("""
-            update %s set deleted_at = now(), updated_at = now()
-             where tenant_id = ? and project_id = ? and id = ? and deleted_at is null
-            """.formatted(elementTable(normalizeElementType(elementType))), tenantId, projectId, elementId);
+        assetDeletionService.delete(tenantId, projectId, normalizeElementType(elementType), elementId);
         return null;
     }
 
@@ -1363,7 +1368,7 @@ public class ScriptWorkflowService {
                  where tenant_id = ? and project_id = ? and id = (
                    select id from (select id from storyboard where tenant_id = ? and project_id = ?
                      and deleted_at is null order by id desc limit 1) latest)
-                """, request.storyboardNo(), writeJson(request.promptDocument()), tenantId, projectId,
+                """, request.storyboardNo(), writeJson(assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument())), tenantId, projectId,
                 tenantId, projectId);
         }
         return null;
@@ -1412,7 +1417,7 @@ public class ScriptWorkflowService {
             mergeText(request.mood(), existing.mood()),
             request.durationSeconds() == null ? existing.durationSeconds() : request.durationSeconds(),
             mergeText(request.imagePrompt(), existing.imagePrompt()),
-            mergeText(request.videoPrompt(), existing.videoPrompt()), writeJson(request.promptDocument()),
+            mergeText(request.videoPrompt(), existing.videoPrompt()), writeJson(assetDeletionService.retainDeletedAssetText(tenantId, projectId, request.promptDocument())),
             request.status() == null ? existing.status() : normalizeStatus(request.status()),
             tenantId, projectId, storyboardId);
         return null;

@@ -915,6 +915,20 @@ export const updateScriptElement = async (
     },
   );
 
+export type AssetDeletionImpact = {
+  assetName: string;
+  affectedStoryboardCount: number;
+  promptMentionCount: number;
+};
+
+export const queryAssetDeletionImpact = async (
+  projectId: number,
+  elementType: Exclude<ScriptElementType, 'ALL'>,
+  elementId: number,
+) => request<ApiResponse<AssetDeletionImpact>>(
+  `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/deletion-impact`,
+);
+
 export const deleteScriptElement = async (
   projectId: number,
   elementType: Exclude<ScriptElementType, 'ALL'>,

@@ -17,6 +17,7 @@ import {
   Empty,
   Flex,
   Input,
+  Modal,
   Pagination,
   Popconfirm,
   Radio,
@@ -52,6 +53,7 @@ import StableImage from './StableImage';
 import styles from './settings.module.css';
 import {
   type AssetImageBatch,
+  type AssetDeletionImpact,
   type AssetImageBatchPreflight,
   type AssetImageBatchValues,
   type AssetPromptPolicy,
@@ -66,6 +68,7 @@ import {
   deleteVisualVariant,
   type PropAsset,
   queryAssetImageBatch,
+  queryAssetDeletionImpact,
   queryAssetImageBatchPreflight,
   queryAssetReextractionPreflight,
   queryAssetSettingsSummary,
@@ -230,7 +233,6 @@ const AssetCard = ({
   readOnly: boolean;
   onSelectedChange: (selected: boolean) => void;
 }) => {
-  const [imageHovered, setImageHovered] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const pendingThumbnailUrl = item.imagePreview?.pendingImageThumbnailUrl;
   const thumbnailUrl = item.mainImageThumbnailUrl || pendingThumbnailUrl;
@@ -282,9 +284,7 @@ const AssetCard = ({
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
           data-testid={`asset-image-${type}-${item.id}`}
-          onMouseEnter={() => setImageHovered(true)}
           onMouseLeave={() => {
-            setImageHovered(false);
             setActionMenuOpen(false);
           }}
           style={{
@@ -335,7 +335,6 @@ const AssetCard = ({
           >
             {!showingPendingImage && item.status === 'CONFIRMED' ? '已确认' : '待确认'}
           </span>
-          {imageHovered || actionMenuOpen ? (
             <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
               <Button
                 size="small"
@@ -386,7 +385,6 @@ const AssetCard = ({
                 </Flex>
               ) : null}
             </div>
-          ) : null}
           {!thumbnailUrl && assetGenerationStatus ? (
             <GenerationStatusOverlay
               status={assetGenerationStatus.status}
@@ -516,6 +514,11 @@ const ProductionWorkbenchSettings = () => {
   const batchProjectIdRef = useRef(projectId);
   batchProjectIdRef.current = projectId;
   const [processingAction, setProcessingAction] = useState<string>();
+  const [deletionTarget, setDeletionTarget] = useState<{
+    projectId: number; type: ElementType; id: number; impact: AssetDeletionImpact;
+  }>();
+  const deletionBusy = useRef(false);
+  useEffect(() => { setDeletionTarget(undefined); }, [projectId]);
   const [normalizationBlocked, setNormalizationBlocked] = useState(false);
   const [normalizationBlockReason, setNormalizationBlockReason] = useState<string>();
   const visualEditBlockReason = normalizationBlocked
@@ -1216,17 +1219,46 @@ const ProductionWorkbenchSettings = () => {
     }
   };
 
-  const deleteAsset = async (type: ElementType, id: number) => {
+  const previewAssetDeletion = async (type: ElementType, id: number) => {
+    if (deletionBusy.current || normalizationBlocked) return;
+    deletionBusy.current = true;
+    setProcessingAction(`delete-preview-${type}-${id}`);
+    try {
+      const response = await queryAssetDeletionImpact(projectId, type, id);
+      if (batchProjectIdRef.current !== projectId) return;
+      if (!response.data) throw new Error('无法获取删除影响，请重试');
+      setDeletionTarget({ projectId, type, id, impact: response.data });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '无法获取删除影响，请重试');
+    } finally {
+      deletionBusy.current = false;
+      setProcessingAction(undefined);
+    }
+  };
+
+  const deleteAsset = async () => {
+    if (!deletionTarget || deletionBusy.current || normalizationBlocked || deletionTarget.projectId !== projectId) return;
+    const { type, id } = deletionTarget;
+    deletionBusy.current = true;
     setProcessingAction(`delete-${type}-${id}`);
     try {
       await deleteScriptElement(projectId, type, id);
+      setDeletionTarget(undefined);
+      if (batchProjectIdRef.current !== projectId) return;
+      if (activeType === type) setSelectedAssetIds((ids) => ids.filter((value) => value !== id));
       const currentVisual = visualRefreshContext.current.visualAsset;
       if (currentVisual?.type === type && currentVisual.item.id === id) closeVisualGallery();
-      await reload();
-      message.success('设定已删除');
-    } catch {
-      message.error('删除设定失败');
+      message.success('资产已删除，分镜文字已保留');
+      try {
+        await reload();
+      } catch {
+        setLoadFailed(true);
+        message.error('删除已完成，但设定刷新失败，请重试加载');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除未完成，请重试');
     } finally {
+      deletionBusy.current = false;
       setProcessingAction(undefined);
     }
   };
@@ -1321,6 +1353,24 @@ const ProductionWorkbenchSettings = () => {
       className={`${styles.settings} ${visualAsset ? styles.settingsOpen : ''}`}
     >
       <div className={styles.settingsContent}>
+        <Modal
+          open={Boolean(deletionTarget)}
+          title={`删除${deletionTarget?.impact.assetName || '资产'}`}
+          okText="删除并保留文字"
+          cancelText="取消"
+          okButtonProps={{ danger: true, disabled: normalizationBlocked }}
+          confirmLoading={processingAction?.startsWith('delete-') && !processingAction.startsWith('delete-preview-')}
+          cancelButtonProps={{ disabled: Boolean(processingAction) }}
+          closable={!processingAction}
+          mask={{ closable: false }}
+          onCancel={() => { if (!deletionBusy.current) setDeletionTarget(undefined); }}
+          onOk={() => { void deleteAsset(); }}
+        >
+          <p>{deletionTarget?.impact.affectedStoryboardCount
+            ? `该资产被 ${deletionTarget.impact.affectedStoryboardCount} 个分镜引用。删除后，相关素材关联将解除，提示词引用转为普通文字，不再使用其参考图。`
+            : '该资产目前没有分镜引用，确定删除吗？'}</p>
+          <p>分镜文字描述和已有图片、视频将保留。</p>
+        </Modal>
         {notice}
         {activeExecution ? (
           <div
@@ -1685,7 +1735,7 @@ const ProductionWorkbenchSettings = () => {
                       type={section.type}
                       selected={selectedAssetIds.includes(item.id)}
                       visualActive={visualAsset?.type === section.type && visualAsset.item.id === item.id}
-                      readOnly={normalizationBlocked}
+                      readOnly={normalizationBlocked || Boolean(processingAction?.startsWith('delete-'))}
                       onSelectedChange={(selected) =>
                         setSelectedAssetIds((current) =>
                           selected
@@ -1693,7 +1743,7 @@ const ProductionWorkbenchSettings = () => {
                             : current.filter((id) => id !== item.id),
                         )
                       }
-                      onDelete={deleteAsset}
+                      onDelete={previewAssetDeletion}
                       onSave={saveAsset}
                       onManageVisual={(type, item) => {
                         void openVisualGallery(type, item);

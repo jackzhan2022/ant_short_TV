@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -1871,6 +1872,44 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             "select count(*) from ai_execution_task where tenant_id = ? and scene = 'storyboard_breakdown'",
             Integer.class, tenantId
         )).isEqualTo(2);
+    }
+
+    @Test
+    void deletingAssetRetainsStoryboardTextAndRejectsCrossProjectAccess() throws Exception {
+        String token = registerUser("13800013992", "Asset Deletion Owner");
+        Long tenant = createTenant(token, "删除资产测试团队");
+        Long owner = userIdByMobile("13800013992");
+        Long project = createProject(token, tenant, owner, "删除资产项目", "ASSET_DELETE");
+        Long otherProject = createProject(token, tenant, owner, "其他项目", "ASSET_DELETE_OTHER");
+        jdbcTemplate.update("insert into prop_asset(id,tenant_id,project_id,name,prop_type,status,created_by,created_at,updated_at) values(990001,?,?,'香烟','KEY_PROP','DRAFT',?,now(),now())",tenant,project,owner);
+        jdbcTemplate.update("insert into asset_visual_variant(id,tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,is_primary,created_by,created_at,updated_at) values(990002,?,?,'PROP',990001,'默认形态','MANUAL','NOT_STARTED',true,?,now(),now())",tenant,project,owner);
+        String document = """
+            {"version":2,"nodes":[{"type":"text","text":"手持"},{"type":"mention","mediaType":"IMAGE","sourceType":"ASSET_VISUAL_VARIANT","assetType":"PROP","assetId":990001,"sourceId":990002,"variantId":990002,"displayName":"香烟"}]}
+            """;
+        jdbcTemplate.update("insert into storyboard(id,tenant_id,project_id,episode_no,shot_no,visual_description,props,prompt_document_json,current_video_url,status,created_by,created_at,updated_at) values(990003,?,?,1,1,'手持香烟','香烟',?,'/existing.mp4','DRAFT',?,now(),now())",tenant,project,document,owner);
+        jdbcTemplate.update("insert into storyboard_asset_reference(tenant_id,project_id,storyboard_id,asset_type,asset_id,variant_id,reference_role,sort_order,resolution_status,source_type,source_name,locked_by_user,created_by,created_at,updated_at) values(?,?,990003,'PROP',990001,990002,'VISIBLE',0,'ASSET_PENDING','USER','香烟',false,?,now(),now())",tenant,project,owner);
+        String path = "/api/projects/" + project + "/script-elements/PROP/990001";
+        mockMvc.perform(get(path + "/deletion-impact")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(path + "/deletion-impact")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.affectedStoryboardCount",is(1)))
+            .andExpect(jsonPath("$.data.promptMentionCount",is(1)));
+        mockMvc.perform(delete("/api/projects/" + otherProject + "/script-elements/PROP/990001")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(delete(path)
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+            .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from storyboard_asset_reference where storyboard_id=990003 and retired_at is null",Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select current_video_url from storyboard where id=990003",String.class)).isEqualTo("/existing.mp4");
+        // An editor opened before deletion cannot reintroduce the invalid mention on save.
+        mockMvc.perform(put("/api/projects/" + project + "/storyboards/990003")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("visualDescription","手持香烟","promptDocument",objectMapper.readTree(document)))))
+            .andExpect(status().isOk());
+        var saved = objectMapper.readTree(jdbcTemplate.queryForObject("select prompt_document_json from storyboard where id=990003",String.class));
+        assertThat(saved.path("nodes").get(1)).isEqualTo(objectMapper.readTree("{\"type\":\"text\",\"text\":\"香烟\"}"));
     }
 
     private String registerUser(String mobile, String nickname) throws Exception {
