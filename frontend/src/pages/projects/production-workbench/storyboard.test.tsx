@@ -12,6 +12,8 @@ import { PointEstimateCancelledError } from '@/services/point-estimate';
 
 const mocks = vi.hoisted(() => ({
   locationSearch: '',
+  startUpload: vi.fn(),
+  bindImageUpload: vi.fn(),
   projectId: '1',
   outletContext: undefined as { project?: any } | undefined,
   queryProjectMetadata: vi.fn(),
@@ -67,6 +69,9 @@ vi.mock('@umijs/max', () => ({
   useOutletContext: () => mocks.outletContext,
   useLocation: () => ({ search: mocks.locationSearch }),
 }));
+
+vi.mock('@/services/mediaUpload', () => ({ startMediaUpload: mocks.startUpload }));
+vi.mock('./storyboard-image-upload', () => ({ bindStoryboardImageUpload: mocks.bindImageUpload }));
 
 vi.mock('@/services/point-estimate', async (original) => ({
   ...await original<typeof import('@/services/point-estimate')>(),
@@ -2424,6 +2429,12 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     const copyPrompt = await screen.findByRole('button', { name: '复制分镜1提示词' });
+    const toolbar = copyPrompt.parentElement as HTMLElement;
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))
+      .filter((label) => !label?.startsWith('引用素材 ')))
+      .toEqual(['上传分镜1参考图片', '添加提示词引用', '复制分镜1提示词']);
+    expect(within(toolbar).getByRole('button', { name: '添加提示词引用' })).toHaveTextContent('@');
+    expect(copyPrompt).toHaveTextContent('copy');
     expect(screen.queryByRole('button', { name: '分镜表' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '详情' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '更多角色操作' })).not.toBeInTheDocument();
@@ -2434,6 +2445,38 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(copyPrompt);
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('停车场')));
+  });
+
+  it('inserts uploaded images into the latest prompt and persists a reusable image reference', async () => {
+    mocks.outletContext = { project: { id: 1, capabilities: { canEdit: true } } };
+    mocks.startUpload.mockResolvedValue({ attempt: Promise.resolve({ sessionToken: 'token' }), cancel: vi.fn() });
+    mocks.bindImageUpload.mockResolvedValue({ success: true, data: { materialId: 550, name: '构图.png' } });
+    const view = render(<ProductionWorkbench />);
+    const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    editor.textContent = '上传时编辑的提示词';
+    fireEvent.input(editor);
+    fireEvent.change(screen.getByLabelText('选择分镜1本地图片'), {
+      target: { files: [new File(['image'], '构图.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(mocks.bindImageUpload).toHaveBeenCalledWith(1, 101, 'token', '构图.png'));
+    await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({
+      promptDocument: { version: 2, nodes: expect.arrayContaining([
+        { type: 'text', text: '上传时编辑的提示词' },
+        { type: 'text', text: ' ' },
+        { type: 'mention', mediaType: 'IMAGE', sourceType: 'IMAGE_MATERIAL', sourceId: 550, displayName: '构图.png' },
+      ]) },
+    })));
+    expect(within(editor).getByAltText('构图.png参考图')).toHaveAttribute('src', '/api/projects/1/image-materials/550/thumbnail');
+    fireEvent.click(screen.getAllByRole('button', { name: '添加提示词引用' })[0]);
+    expect(await screen.findAllByRole('button', { name: '引用素材 构图.png' })).not.toHaveLength(0);
+    const saved = mocks.updateStoryboard.mock.calls.at(-1)?.[2];
+    const response = await mocks.queryStoryboardEditorPage();
+    view.unmount();
+    setupWorkspaceResponse({ storyboards: [{ ...response.data.storyboards[0], ...saved }] });
+    render(<ProductionWorkbench />);
+    const restored = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    expect(within(restored).getByAltText('构图.png参考图')).toHaveAttribute('src', '/api/projects/1/image-materials/550/thumbnail');
+    expect(restored).toHaveTextContent('上传时编辑的提示词');
   });
 
   it('creates a real voice task from the storyboard dialogue', async () => {

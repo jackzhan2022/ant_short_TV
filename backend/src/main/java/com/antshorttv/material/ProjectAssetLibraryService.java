@@ -128,11 +128,13 @@ public class ProjectAssetLibraryService {
         return """
             select r.id, 'AI_IMAGE_RESULT' as resource_type,
                    case when r.target_type='VIDEO_FRAME' then 'VIDEO_FRAME'
+                        when r.target_type='STORYBOARD_REFERENCE' then 'IMAGE'
                         when r.target_type='VISUAL_VARIANT' then v.asset_type
                         when r.target_type in ('CHARACTER','SCENE','PROP') then r.target_type else 'OTHER' end as category,
                    case when r.target_type='VIDEO_FRAME' then concat('EP',s.episode_no,' · 分镜 ',s.shot_no,
                         ' · 视频版本 #',f.source_video_result_id,' · ',f.frame_time_seconds,'s')
                         when r.target_type='VIDEO_COVER' then concat('EP',s.episode_no,' · 镜头 ',s.shot_no,' · 视频封面 ',r.target_id)
+                        when r.target_type='STORYBOARD_REFERENCE' then m.name
                         else coalesce(c.name,sc.name,p.name,concat('分镜 ',s.shot_no)) end as asset_name,
                    coalesce(v.name,'') as variant_name,
                    case when r.target_type in ('VIDEO_FRAME','VIDEO_COVER') then '视频截帧'
@@ -142,6 +144,8 @@ public class ProjectAssetLibraryService {
                         then true else false end as current_image,
                    s.episode_no, s.shot_no, null as duration_seconds, r.updated_at
               from ai_image_result r
+              left join material m on m.id=r.material_id and m.tenant_id=r.tenant_id and m.project_id=r.project_id
+                   and m.status='ACTIVE' and m.deleted_at is null
               left join ai_image_task t on t.id=r.task_id and t.tenant_id=r.tenant_id and t.project_id=r.project_id
               left join asset_visual_variant v on r.target_type='VISUAL_VARIANT' and v.id=r.target_id
                    and v.tenant_id=r.tenant_id and v.project_id=r.project_id and v.deleted_at is null
@@ -158,7 +162,7 @@ public class ProjectAssetLibraryService {
                    and f.tenant_id=r.tenant_id and f.project_id=r.project_id
               left join ai_video_task cover_task on r.target_type='VIDEO_COVER' and cover_task.id=r.target_id
                    and cover_task.tenant_id=r.tenant_id and cover_task.project_id=r.project_id and cover_task.deleted_at is null
-              left join storyboard s on s.id=case when r.target_type='STORYBOARD' then r.target_id
+              left join storyboard s on s.id=case when r.target_type in ('STORYBOARD','STORYBOARD_REFERENCE') then r.target_id
                    when r.target_type='VIDEO_FRAME' then f.storyboard_id
                    when r.target_type='VIDEO_COVER' then cover_task.storyboard_id else null end
                    and s.tenant_id=r.tenant_id and s.project_id=r.project_id and s.deleted_at is null
@@ -166,6 +170,7 @@ public class ProjectAssetLibraryService {
                and r.display_path is not null and r.display_path<>''
                and (r.task_id is null or t.id is not null and t.deleted_at is null)
                and (c.id is not null or sc.id is not null or p.id is not null or s.id is not null)
+               and (r.target_type<>'STORYBOARD_REFERENCE' or m.id is not null)
             """;
     }
 

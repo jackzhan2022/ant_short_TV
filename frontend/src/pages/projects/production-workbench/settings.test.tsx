@@ -140,7 +140,8 @@ vi.mock('@ant-design/icons', () => ({
   UploadOutlined: () => <span>upload</span>,
 }));
 
-vi.mock('antd', () => ({
+vi.mock('antd', async (importOriginal) => ({
+  Image: (await importOriginal<typeof import('antd')>()).Image,
   Tooltip: ({ children }: any) => <>{children}</>,
   App: {
     useApp: () => ({

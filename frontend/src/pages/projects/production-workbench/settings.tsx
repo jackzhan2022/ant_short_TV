@@ -2073,6 +2073,10 @@ const ProductionWorkbenchSettings = () => {
                           <div data-testid="视觉形象主图预览" className={styles.visualPreview}>
                             <StableImage
                               src={selectedVariant.currentImageThumbnailUrl}
+                              preview={{
+                                src: selectedVariant.currentImageUrl || selectedVariant.currentImageThumbnailUrl || undefined,
+                                cover: '点击放大',
+                              }}
                               alt={`${selectedVariant.name}预览图`}
                               fallback={<AssetImagePlaceholder />}
                               loading="eager"

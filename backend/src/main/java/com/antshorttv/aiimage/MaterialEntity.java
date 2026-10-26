@@ -13,6 +13,7 @@ public class MaterialEntity {
     private Long projectId;
     private String materialType;
     private String sourceType;
+    private String status;
     private Long sourceTaskId;
     private String name;
     private String url;
@@ -35,6 +36,8 @@ public class MaterialEntity {
     public void setMaterialType(String materialType) { this.materialType = materialType; }
     public String getSourceType() { return sourceType; }
     public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public Long getSourceTaskId() { return sourceTaskId; }
     public void setSourceTaskId(Long sourceTaskId) { this.sourceTaskId = sourceTaskId; }
     public String getName() { return name; }

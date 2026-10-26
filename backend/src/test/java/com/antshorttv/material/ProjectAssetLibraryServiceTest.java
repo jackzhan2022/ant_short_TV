@@ -106,6 +106,25 @@ class ProjectAssetLibraryServiceTest {
     }
 
     @Test
+    void uploadedStoryboardReferencesBelongToImagesAndKeepTheirFileNames() {
+        jdbc.update("""
+            insert into material (id,tenant_id,project_id,material_type,source_type,status,name,url,created_by,created_at)
+            values (91950,91001,91002,'IMAGE','LOCAL_UPLOAD','ACTIVE','参考构图.png','/image',99,now())
+            """);
+        image(91951,91001,91002,"STORYBOARD_REFERENCE",91401,"ACTIVE");
+        jdbc.update("update ai_image_result set material_id=91950 where id=91951");
+        var result = service.list(91001L,91002L,"IMAGE","ALL",null,"参考构图",1,24);
+        assertThat(result.items().data()).singleElement().satisfies(item -> {
+            assertThat(item.category()).isEqualTo("IMAGE");
+            assertThat(item.name()).isEqualTo("参考构图.png");
+            assertThat(item.sourceType()).isEqualTo("本地上传");
+            assertThat(item.current()).isFalse();
+        });
+        assertThat(service.list(91001L,91003L,"IMAGE","ALL",null,"参考构图",1,24).items().total()).isZero();
+        assertThat(service.list(91001L,91002L,"VIDEO",null,null,"参考构图",1,24).items().total()).isZero();
+    }
+
+    @Test
     void includesGeneratedVideoCoversInOtherImagesWithTheirShotAndVersion() {
         image(91901, 91001, 91002, "VIDEO_COVER", 91501, "ACTIVE");
         var covers = service.list(91001L, 91002L, "IMAGE", "OTHER", 1, "视频封面", 1, 24);

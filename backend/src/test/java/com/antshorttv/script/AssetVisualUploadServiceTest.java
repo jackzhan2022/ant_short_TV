@@ -22,8 +22,8 @@ class AssetVisualUploadServiceTest {
     private final ObjectStorageService storage = mock(ObjectStorageService.class);
     private final ImageDisplayRenditionService renditions = mock(ImageDisplayRenditionService.class);
     private final AiImageResultMapper images = mock(AiImageResultMapper.class);
-    private final AssetVisualUploadService service = new AssetVisualUploadService(variants, normalization, uploads,
-        storage, new ObjectStorageKeyFactory(), new ObjectStorageProperties(), renditions, images);
+    private final AssetVisualUploadService service = new AssetVisualUploadService(variants, normalization, new LocalImageUploadService(uploads,
+        storage, new ObjectStorageKeyFactory(), new ObjectStorageProperties(), renditions, images));
     private byte[] png;
 
     @BeforeEach

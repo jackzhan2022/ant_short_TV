@@ -10,6 +10,7 @@ import { type AssetLibraryItem, queryProjectAssetLibrary } from './service';
 import styles from './index.module.css';
 
 const categories = [
+  { key: 'ALL', label: '全部' },
   { key: 'CHARACTER', label: '角色' }, { key: 'SCENE', label: '场景' },
   { key: 'PROP', label: '道具' }, { key: 'VIDEO_FRAME', label: '视频帧' }, { key: 'OTHER', label: '其他' },
 ];
@@ -29,7 +30,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const location = useLocation();
   const search = new URLSearchParams(location.search);
   const mediaType = search.get('type') === 'VIDEO' ? 'VIDEO' : search.get('type') === 'AUDIO' ? 'AUDIO' : 'IMAGE';
-  const category = categories.some((item) => item.key === search.get('category')) ? search.get('category') || 'CHARACTER' : 'CHARACTER';
+  const category = categories.some((item) => item.key === search.get('category')) ? search.get('category') || 'ALL' : 'ALL';
   const keyword = search.get('keyword') || '';
   const pageValue = Number(search.get('page'));
   const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1;

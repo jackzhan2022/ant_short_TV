@@ -50,7 +50,7 @@ it('opens the selected project folder and previews its image without loading eve
   view.rerender(<AssetLibrary />);
   fireEvent.click(await screen.findByRole('button', { name: '预览林夏 · 主形象' }));
   expect(mocks.library).toHaveBeenCalledWith(1,
-    { mediaType: 'IMAGE', category: 'CHARACTER', episodeNo: undefined, keyword: undefined, current: 1, pageSize: 24 }, expect.any(AbortSignal));
+    { mediaType: 'IMAGE', category: 'ALL', episodeNo: undefined, keyword: undefined, current: 1, pageSize: 24 }, expect.any(AbortSignal));
   expect(screen.getByAltText('林夏 · 主形象大图')).toHaveAttribute('src', '/image-display');
   expect(screen.getByRole('link', { name: '下载原文件' })).toHaveAttribute('href', '/download');
 });

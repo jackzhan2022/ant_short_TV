@@ -16,13 +16,14 @@ const variantsFor = (asset: CharacterAsset | SceneAsset | PropAsset) => [...new 
   .map((variant) => [variant.id, variant])).values()];
 
 export default function StoryboardPromptReferencePicker({
-  storyboardNo, characters, scenes, props, references, onSelect, onLoadVariants,
+  storyboardNo, characters, scenes, props, references, thumbnails, onSelect, onLoadVariants,
 }: {
   storyboardNo: number;
   characters: CharacterAsset[];
   scenes: SceneAsset[];
   props: PropAsset[];
   references: Record<'IMAGE' | 'VIDEO' | 'AUDIO', Reference[]>;
+  thumbnails?: ReadonlyMap<string, string>;
   onSelect: (reference: Reference) => void;
   onLoadVariants: (
     assetType: AssetType, assetId: number, selectedVariantId?: number | null,
@@ -68,7 +69,7 @@ export default function StoryboardPromptReferencePicker({
         reference: entry && variant ? {
           ...reference, displayName: labelFor(entry.asset.name, variant.name),
         } : reference,
-        thumbnail: variant?.currentImageThumbnailUrl,
+        thumbnail: variant?.currentImageThumbnailUrl || thumbnails?.get(`${reference.sourceType}:${reference.sourceId}`),
       };
     });
   const visual = selected?.asset.visual;

@@ -1,7 +1,6 @@
 import PointEstimateButton from '@/components/PointEstimateButton';
 import type { PointEstimateOperation } from '@/services/point-estimate';
 import {
-  AppstoreOutlined,
   BarsOutlined,
   CloseOutlined,
   CopyOutlined,
@@ -65,6 +64,7 @@ import {
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
 import { useStoryboardVideoSettings, type VideoGenerationSettings, type VideoSettingsSaveStatus } from './useStoryboardVideoSettings';
 import StoryboardPromptReferencePicker from './StoryboardPromptReferencePicker';
+import StoryboardImageUpload from './StoryboardImageUpload';
 import BatchVideoGenerationModal from './BatchVideoGenerationModal';
 import StoryboardVideoStrip from './StoryboardVideoStrip';
 import StoryboardPositionRail from './StoryboardPositionRail';
@@ -782,6 +782,7 @@ const PreviewPoster = ({ src, title }: { src?: string; title: string }) =>
   );
 
 const StoryboardCard = ({
+  onImageUploaded,
   canCaptureVideo,
   onCaptureVideo,
   item,
@@ -828,6 +829,7 @@ const StoryboardCard = ({
   onCopyStoryboard,
   onDelete,
 }: {
+  onImageUploaded: (reference: PromptReferenceOption) => void;
   canCaptureVideo: boolean;
   onCaptureVideo: (resultId: number, storyboardNo: number) => void;
   item: StoryboardShot;
@@ -1002,6 +1004,7 @@ const StoryboardCard = ({
       scenes={scenes}
       props={props}
       references={referenceOptions}
+      thumbnails={referenceThumbnails}
       onSelect={onSelect}
       onLoadVariants={onLoadVariants}
     />
@@ -1527,12 +1530,28 @@ const StoryboardCard = ({
               gap={10}
               style={{ color: '#b5bdcc', marginBottom: 12 }}
             >
+              <StoryboardImageUpload
+                key={`${projectId}:${item.id}`}
+                projectId={projectId}
+                storyboardId={item.id}
+                storyboardNo={index + 1}
+                disabled={!canCaptureVideo}
+                onUploaded={(image) => {
+                  const reference: PromptReferenceOption = {
+                    type: 'mention', mediaType: 'IMAGE', sourceType: 'IMAGE_MATERIAL',
+                    sourceId: image.materialId, displayName: image.name,
+                  };
+                  onImageUploaded(reference);
+                  insertReference(reference);
+                }}
+              />
               <Popover content={referencePicker} trigger="click" placement="bottomLeft">
-                <Button aria-label="添加提示词引用" icon={<PlusOutlined />} />
+                <Button aria-label="添加提示词引用" title="引用资产" icon={<span aria-hidden="true">@</span>} />
               </Popover>
               <Button
                 aria-label={`复制分镜${index + 1}提示词`}
-                icon={<AppstoreOutlined />}
+                title="复制提示词"
+                icon={<CopyOutlined />}
                 onClick={() => void copyPrompt()}
               />
               <span>
@@ -1919,6 +1938,8 @@ const ProductionWorkbenchStoryboard = () => {
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
   const [voiceTasks, setVoiceTasks] = useState<AiVoiceTask[]>([]);
+  const [uploadedImageReferences, setUploadedImageReferences] = useState<PromptReferenceOption[]>([]);
+  useEffect(() => setUploadedImageReferences([]), [projectId]);
   const [activeEpisode, setActiveEpisode] = useState(1);
   const [storyboardPage, setStoryboardPage] = useState(1);
   const [storyboardTotal, setStoryboardTotal] = useState(0);
@@ -2422,11 +2443,22 @@ const ProductionWorkbenchStoryboard = () => {
           displayName: `${task.speakerName || '分镜旁白'}音频`,
         })),
     );
-    return { IMAGE: [...images, ...firstFrames], VIDEO: videos, AUDIO: audio };
-  }, [characters, scenes, props, imageTasks, videoTasks, voiceTasks, workspace.storyboards]);
+    const uploadedImages = [...new Map([
+      ...workspace.storyboards.flatMap((shot) => (drafts[shot.id]?.promptDocument || shot.promptDocument)?.nodes || [])
+        .filter((node): node is PromptReferenceOption => node.type === 'mention' && node.sourceType === 'IMAGE_MATERIAL'),
+      ...uploadedImageReferences,
+    ].map((reference) => [reference.sourceId, reference])).values()];
+    return { IMAGE: [...images, ...firstFrames, ...uploadedImages], VIDEO: videos, AUDIO: audio };
+  }, [characters, scenes, props, imageTasks, videoTasks, voiceTasks, workspace.storyboards, drafts, uploadedImageReferences]);
 
   const referenceThumbnails = useMemo(() => {
     const thumbnails = new Map<string, string>();
+    for (const reference of referenceOptions.IMAGE) {
+      if (reference.sourceType === 'IMAGE_MATERIAL') {
+        thumbnails.set(`IMAGE_MATERIAL:${reference.sourceId}`,
+          `/api/projects/${projectId}/image-materials/${reference.sourceId}/thumbnail`);
+      }
+    }
     for (const storyboard of workspace.storyboards) {
       const thumbnail = storyboard.firstFrameThumbnailUrl || selectedFirstFrame(storyboard.id)?.thumbnailUrl;
       if (thumbnail) thumbnails.set(`STORYBOARD_FIRST_FRAME:${storyboard.id}`, thumbnail);
@@ -2444,7 +2476,7 @@ const ProductionWorkbenchStoryboard = () => {
       }
     }
     return thumbnails;
-  }, [characters, scenes, props, imageTasks, workspace.storyboards]);
+  }, [characters, scenes, props, imageTasks, workspace.storyboards, projectId, referenceOptions.IMAGE]);
 
   const promptFor = (storyboard: StoryboardShot) => {
     const draft = drafts[storyboard.id];
@@ -4049,6 +4081,7 @@ const ProductionWorkbenchStoryboard = () => {
               >
                 <StoryboardCard
                   canCaptureVideo={project?.capabilities?.canEdit === true}
+                  onImageUploaded={(reference) => setUploadedImageReferences((previous) => [...previous, reference])}
                   onCaptureVideo={(resultId, storyboardNo) => { stopActiveVideo(); setFrameCapture({ resultId, storyboardNo }); }}
                   projectId={projectId}
                   videoEstimateOperations={previewVideoOperations([item])}
