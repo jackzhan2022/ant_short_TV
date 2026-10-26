@@ -58,6 +58,7 @@ const types: Record<string, string> = {
   IMAGE: '图片生成',
   VIDEO: '视频生成',
   FREE_CREATION: '自由创作',
+  VIRTUAL_AVATAR: '虚拟人像',
 };
 const actions: Record<string, string> = {
   CANCEL: '取消任务',

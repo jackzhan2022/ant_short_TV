@@ -23,6 +23,7 @@ import {
   Radio,
   Skeleton,
   Spin,
+  Tag,
   Typography,
 } from 'antd';
 import {
@@ -50,6 +51,7 @@ import {
   queryProjectAiModels,
 } from './ai-config/service';
 import StableImage from './StableImage';
+import VirtualAvatarPanel from './VirtualAvatarPanel';
 import styles from './settings.module.css';
 import {
   type AssetImageBatch,
@@ -203,6 +205,10 @@ const getDescription = (type: ElementType, item: AssetRecord) => {
   const prop = item as PropAsset;
   return prop.appearance || prop.plotFunction || prop.prompt;
 };
+
+const isVirtualAvatarVariant = (variant?: VisualVariant | null) => Boolean(
+  variant?.virtualAvatar || variant?.virtualAvatarAssetId?.trim(),
+);
 
 const assetSections = [
   { type: 'CHARACTER' as const, title: '角色设定' },
@@ -1399,6 +1405,9 @@ const ProductionWorkbenchSettings = () => {
         }} onRefresh={reload} />
         <fieldset disabled={normalizationBlocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
+        <div style={{ marginBottom: 16 }}>
+          <VirtualAvatarPanel projectId={projectId} onChanged={() => mutateVariant(async () => undefined, '虚拟人像状态已更新')} />
+        </div>
         <PointEstimateModal operations={reextractionPreflight ? [{ url: `/api/projects/${projectId}/asset-reextraction`, data: { targetType: reextractionPreflight.targetType, promptPolicy: reextractionPolicy } }] : undefined}
           title={`确认重新提取${reextractionPreflight ? scopeLabels[reextractionPreflight.targetType] : ''}`}
           open={Boolean(reextractionPreflight)}
@@ -1937,6 +1946,11 @@ const ProductionWorkbenchSettings = () => {
                                           fallback={<AssetImagePlaceholder compact />}
                                           imageStyle={{ objectFit: 'contain' }}
                                         />
+                                        {visualAsset.type === 'CHARACTER' && isVirtualAvatarVariant(variant) ? (
+                                          <Tag color="green" style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, margin: 0 }}>
+                                            虚拟
+                                          </Tag>
+                                        ) : null}
                                         <GenerationStatusOverlay
                                           compact
                                           status={variant.generationStatus}
@@ -2055,6 +2069,15 @@ const ProductionWorkbenchSettings = () => {
                       ) : null}
                       {selectedVariant ? (
                         <section aria-label="视觉形象操作" aria-describedby={selectedEditBlockReason ? 'visual-edit-block-reason' : undefined} className={styles.visualActions}>
+                          {visualAsset.type === 'CHARACTER' ? (
+                            <VirtualAvatarPanel
+                              key={selectedVariant.id}
+                              projectId={projectId}
+                              disabled={Boolean(selectedEditBlockReason)}
+                              variant={selectedVariant}
+                              onChanged={() => mutateVariant(async () => undefined, '虚拟人像状态已更新')}
+                            />
+                          ) : null}
                           <Button
                             icon={<EditOutlined />}
                             disabled={Boolean(selectedEditBlockReason)}

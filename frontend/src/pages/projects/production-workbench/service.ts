@@ -64,6 +64,8 @@ export type VisualVariant = {
   currentImageResultId?: number | null;
   currentImageUrl?: string | null;
   currentImageThumbnailUrl?: string | null;
+  virtualAvatarAssetId?: string | null;
+  virtualAvatar?: boolean;
   errorCode?: string | null;
   errorMessage?: string | null;
   primary: boolean;

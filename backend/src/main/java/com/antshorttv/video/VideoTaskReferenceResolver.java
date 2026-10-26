@@ -46,8 +46,10 @@ public class VideoTaskReferenceResolver {
         };
         String storagePath = string(row.get("storage_path"));
         String rawUrl = string(row.get("media_url"));
-        String providerUrl = accessibleUrlResolver.resolve(notBlank(storagePath) ? storagePath : rawUrl);
-        if (!notBlank(providerUrl)) {
+        String providerAssetId = string(row.get("virtual_avatar_asset_id"));
+        String providerUrl = notBlank(storagePath) || notBlank(rawUrl)
+            ? accessibleUrlResolver.resolve(notBlank(storagePath) ? storagePath : rawUrl) : null;
+        if (!notBlank(providerUrl) && !notBlank(providerAssetId)) {
             throw invalid(reference, "素材文件地址不可用。");
         }
         return new ResolvedReference(
@@ -61,13 +63,15 @@ public class VideoTaskReferenceResolver {
             intNumber(row.get("height")),
             decimal(row.get("duration_seconds")),
             decimal(row.get("fps")),
-            rawUrl
+            rawUrl,
+            providerAssetId
         );
     }
 
     private Map<String, Object> imageVariant(Long tenantId, Long projectId, Long variantId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             select v.name display_name, r.storage_path, coalesce(r.image_url, v.current_image_url) media_url,
+                   v.virtual_avatar_asset_id,
                    r.mime_type, r.file_size, r.width, r.height, null duration_seconds, null fps,
                    null media_format
               from asset_visual_variant v
@@ -175,7 +179,8 @@ public class VideoTaskReferenceResolver {
         Integer height,
         BigDecimal durationSeconds,
         BigDecimal fps,
-        String browserDisplayUrl
+        String browserDisplayUrl,
+        String providerAssetId
     ) {
         public ResolvedReference(
             StoryboardPromptCompiler.Reference reference, String displayName,
@@ -183,7 +188,17 @@ public class VideoTaskReferenceResolver {
             Integer width, Integer height, BigDecimal durationSeconds, BigDecimal fps
         ) {
             this(reference, displayName, objectStoragePath, providerUrl, format,
-                fileSize, width, height, durationSeconds, fps, null);
+                fileSize, width, height, durationSeconds, fps, null, null);
+        }
+
+        public ResolvedReference(
+            StoryboardPromptCompiler.Reference reference, String displayName,
+            String objectStoragePath, String providerUrl, String format, Long fileSize,
+            Integer width, Integer height, BigDecimal durationSeconds, BigDecimal fps,
+            String browserDisplayUrl
+        ) {
+            this(reference, displayName, objectStoragePath, providerUrl, format,
+                fileSize, width, height, durationSeconds, fps, browserDisplayUrl, null);
         }
     }
 }

@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.*;
 public class ProductionTaskController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.freecreation.FreeCreationService freeCreations;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.avatar.VirtualAvatarService avatars;
     private final ProductionTaskService service;
     private final AiImageTaskService images;
     private final AiVideoTaskService videos;
@@ -92,6 +94,7 @@ public class ProductionTaskController {
                 if(action.equals("cancel")) executions.cancel(executionId);else executions.retry(executionId);
             }
             case "VIDEO_EPISODE" -> decomposition.retry(tenantId,id,null);
+            case "VIRTUAL_AVATAR" -> avatars.retry(tenantId,project,id);
             default -> throw ProductionTaskService.denied();
         }
         return ApiResponse.success(service.detail(tenantId,taskKey));

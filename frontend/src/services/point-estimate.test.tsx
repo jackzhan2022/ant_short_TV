@@ -275,3 +275,10 @@ describe('point estimates before submission', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(mocks.request).toHaveBeenCalledTimes(1);
   });});
+
+
+it('does not send virtual-avatar ingestion retries to inference point estimation', () => {
+  expect(requiresPointEstimate('/api/tenants/7/production-tasks/VIRTUAL_AVATAR%3A12/retry', { method: 'POST' })).toBe(false);
+  expect(requiresPointEstimate('/api/tenants/7/production-tasks/VIRTUAL_AVATAR:12/retry', { method: 'POST' })).toBe(false);
+  expect(requiresPointEstimate('/api/tenants/7/production-tasks/IMAGE%3A12/regenerate', { method: 'POST' })).toBe(true);
+});

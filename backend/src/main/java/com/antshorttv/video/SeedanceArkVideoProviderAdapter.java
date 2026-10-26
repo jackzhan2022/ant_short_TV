@@ -236,7 +236,10 @@ public class SeedanceArkVideoProviderAdapter extends AiProviderAdapter {
                     String field = mediaType + "_url";
                     Map<String, Object> media = new LinkedHashMap<>();
                     media.put("type", field);
-                    media.put(field, Map.of("url", item.path("providerUrl").asText()));
+                    String providerAssetId = item.path("providerAssetId").asText("");
+                    String providerReference = providerAssetId.isBlank()
+                        ? item.path("providerUrl").asText() : providerAssetId.startsWith("asset://") ? providerAssetId : "asset://" + providerAssetId;
+                    media.put(field, Map.of("url", providerReference));
                     media.put("role", reference.path("providerRole").asText());
                     content.add(media);
                 }

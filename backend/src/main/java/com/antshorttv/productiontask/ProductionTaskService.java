@@ -260,6 +260,7 @@ public class ProductionTaskService {
         if(project==null) return Objects.equals(number(row,"created_by"),a.context.userId());
         Set<String> codes=projectPermissions(a,project);
         String type=String.valueOf(row.get("type"));
+        if(type.equals("VIRTUAL_AVATAR")) return MenuAuthorization.allows(codes, "ELEMENT:VIEW");
         if(type.equals("IMAGE")) return MenuAuthorization.allows(codes, "AI_IMAGE_TASK:VIEW");
         if(type.equals("VIDEO")) return MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW");
         if(type.equals("SCRIPT_ANALYSIS")) return MenuAuthorization.allows(codes, "SCRIPT:VIEW");
@@ -284,6 +285,7 @@ public class ProductionTaskService {
             return text(revision.get("revision"));
         }
         String table=switch(String.valueOf(row.get("type"))) {
+            case "VIRTUAL_AVATAR" -> "virtual_avatar_task";
             case "IMAGE" -> "ai_image_task";
             case "VIDEO" -> "ai_video_task";
             case "SCRIPT_ANALYSIS" -> "script_analysis_task";
@@ -319,6 +321,7 @@ public class ProductionTaskService {
         long tenant=a.context.tenantId(), id=Objects.requireNonNull(number(row,"id"));
         return switch(String.valueOf(row.get("type"))) {
             case "FREE_CREATION" -> freeCreationSections(a.context,row);
+            case "VIRTUAL_AVATAR" -> avatarSections(tenant,id);
             case "IMAGE" -> imageSections(tenant,id);
             case "VIDEO" -> videoSections(tenant,id);
             case "SCRIPT_ANALYSIS" -> analysisSections(tenant,id);
@@ -364,6 +367,16 @@ public class ProductionTaskService {
             result.put("downloadUrl",freeCreationMedia.grant(context,item,false));
             return result;
         }).toList();
+    }
+
+    private List<Map<String,Object>> avatarSections(long tenant,long id) {
+        var task=one("select title,variant_id,source_image_result_id,provider_group_id,provider_asset_id,provider_project,status,phase,result_storage_path,error_code,error_message from virtual_avatar_task where tenant_id=? and id=?",tenant,id);
+        return List.of(section("submission","角色形态图","FIELDS","AVAILABLE",null,
+                fields("角色与形态",task.get("title"),"形态编号",task.get("variant_id"),"原图编号",task.get("source_image_result_id")),List.of(),false),
+            section("results","私域虚拟人像入库结果","FIELDS","AVAILABLE",null,
+                fields("处理阶段",task.get("phase"),"状态",task.get("status"),"素材库项目",task.get("provider_project"),"素材组 ID",task.get("provider_group_id"),
+                    "资产 ID",task.get("provider_asset_id"),"已保存",text(task.get("result_storage_path")).isBlank()?"否":"是",
+                    "错误代码",task.get("error_code"),"失败原因",task.get("error_message")),List.of(),false));
     }
 
     private List<Map<String,Object>> imageSections(long tenant,long id) {
@@ -635,6 +648,7 @@ public class ProductionTaskService {
             if(type.equals("IMAGE") && (!MenuAuthorization.allows(effective, "AI_IMAGE_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
             if(type.equals("VIDEO") && (!MenuAuthorization.allows(effective, "AI_VIDEO_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
             if(List.of("STORYBOARD_BATCH","STORYBOARD_ITEM").contains(type) && !MenuAuthorization.allows(effective, "STORYBOARD:VIEW")) destination=null;
+            if(type.equals("VIRTUAL_AVATAR") && !MenuAuthorization.allows(effective, "ELEMENT:VIEW")) destination=null;
             boolean ownReviewProject=String.valueOf(a.context.userId()).equals(row.get("subtype"));
             if(project==null && "REVIEW".equals(type) && !ownReviewProject && !wide) destination=null;
             item.put("destination",destination);
@@ -647,6 +661,8 @@ public class ProductionTaskService {
                 if(type.equals("FREE_CREATION")) actions.addAll(com.antshorttv.freecreation.FreeCreationService.controlActions(
                     "QUEUED".equals(state)?"PENDING":String.valueOf(row.get("domain_status"))));
                 boolean active=List.of("QUEUED","RUNNING").contains(state);
+                if(type.equals("VIRTUAL_AVATAR") && state.equals("FAILED") && truth(row.get("retryable"))
+                    && Set.of("ELEMENT:VIEW","ELEMENT:EDIT","AI_SERVICE:USE").stream().allMatch(code->MenuAuthorization.allows(effective,code))) actions.add("RETRY");
                 if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("VIDEO") && active && MenuAuthorization.allows(effective, "AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("IMAGE") && state.equals("SUCCEEDED") && number(row,"execution_id")!=null
@@ -716,6 +732,7 @@ public class ProductionTaskService {
         if(project==null) return null;
         String section=List.of("SCRIPT_ANALYSIS","SCRIPT_OPERATION").contains(type)?"script":"storyboard";
         if(type.equals("VIDEO")) section="video";
+        if(type.equals("VIRTUAL_AVATAR")) section="settings";
         if(type.equals("IMAGE") && !"STORYBOARD".equals(subtype)) section="settings";
         if(type.equals("SCRIPT_OPERATION") && "STORYBOARD_BREAKDOWN".equals(subtype)) section="storyboard";
         return "/projects/"+project+"/production-workbench/"+section;
