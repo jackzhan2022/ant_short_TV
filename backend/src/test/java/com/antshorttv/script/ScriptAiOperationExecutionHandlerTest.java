@@ -100,6 +100,47 @@ class ScriptAiOperationExecutionHandlerTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void similarityTimeoutStopsAfterOneAttemptAndKeepsUnknownUsageUnderReview(boolean hasCallLog) {
+        var operations=mock(ScriptAiOperationMapper.class);
+        var similarity=mock(CharacterPromptSimilarityService.class);
+        var attempts=mock(AiExecutionAttemptMapper.class);
+        var reservations=mock(AiPointReservationMapper.class);
+        var settlements=mock(AiPointSettlementService.class);
+        var executions=mock(AiExecutionService.class);
+        var operation=new ScriptAiOperationEntity();
+        operation.id=41L; operation.operationType="CHARACTER_PROMPT_SIMILARITY";
+        when(operations.selectById(41L)).thenReturn(operation);
+        var task=new AiExecutionTaskEntity();
+        task.id=51L;task.tenantId=61L;task.businessId=41L;task.executionVersion=1;
+        var attempt=new AiExecutionAttemptEntity();attempt.id=71L;attempt.retryCount=0;
+        when(attempts.selectById(71L)).thenReturn(attempt);
+        when(attempts.selectCount(any())).thenReturn(0L);
+        var reservation=new AiPointReservationEntity();reservation.id=111L;reservation.status="RESERVED";
+        when(reservations.selectByExecutionId(51L)).thenReturn(reservation);
+        var reviewed=new AiPointReservationEntity();reviewed.status="SETTLEMENT_REVIEW_REQUIRED";
+        when(settlements.finalizeCumulativeOutcome(eq(111L),eq(AiSettlementOutcome.TRANSPORT_UNKNOWN),
+            any(),eq(71L),any(),any())).thenReturn(reviewed);
+        var handler=new ScriptAiOperationExecutionHandler(operations,mock(ScriptWorkflowService.class),attempts,
+            reservations,settlements,executions,mock(AiUsageAccountingService.class),
+            mock(AiExecutionTaskMapper.class),new ObjectMapper(),mock(WorkflowAgentRunRepository.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(handler,"characterSimilarity",similarity);
+        var failure=new CharacterSimilarityTimeoutException(
+            new AiGatewayException(ErrorCode.AI_PROVIDER_TIMEOUT,"timeout",hasCallLog ? 81L : null),
+            com.antshorttv.ai.AiInvocationRequest.text().businessSceneCode("prompt_generate")
+                .executionId(51L).attemptId(71L).build());
+        when(similarity.analyze(eq(operation),any())).thenThrow(failure);
+        assertThat(handler.retryPolicy(failure)).isEqualTo(com.antshorttv.execution.AiExecutionRetryPolicy.none());
+        assertThatThrownBy(() -> handler.execute(
+            new AiExecutionContext(task,new AiExecutionClaim(51L,71L,"claim",1,"SUBMIT")))).isSameAs(failure);
+        verify(similarity,times(1)).analyze(eq(operation),any());
+        verify(settlements).finalizeCumulativeOutcome(eq(111L),eq(AiSettlementOutcome.TRANSPORT_UNKNOWN),
+            any(),eq(71L),any(),any());
+        verify(executions).updateSettlementSummary(reviewed);
+        assertThat(operation.status).isEqualTo("FAILED");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"STORYBOARD_BREAKDOWN","SCOPED_ASSET_REEXTRACTION",
         "SCRIPT_EPISODE_SPLIT","SCRIPT_EPISODE_SUMMARY","SCRIPT_EPISODE_ASSETS"})
     void recoversWorkflowCallsWhenFormalValidationFailsOnFinalAttempt(String operationType) {

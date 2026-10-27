@@ -101,6 +101,8 @@ commercial:
 
 ai:
   secret-key: ${AI_SECRET_KEY:}
+  character-similarity:
+    timeout-seconds: ${AI_CHARACTER_SIMILARITY_TIMEOUT_SECONDS:600}
   provider:
     max-concurrency: ${AI_PROVIDER_MAX_CONCURRENCY:4}
   workflow-agent:

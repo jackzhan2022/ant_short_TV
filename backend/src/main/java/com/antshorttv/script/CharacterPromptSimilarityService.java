@@ -42,6 +42,8 @@ public class CharacterPromptSimilarityService {
     private final AiExecutionResponseMapper responses;
     private final AiInvocationService invocation;
     private final TransactionTemplate transactions;
+    @org.springframework.beans.factory.annotation.Value("${ai.character-similarity.timeout-seconds:600}")
+    private int timeoutSeconds = 600;
 
     public CharacterPromptSimilarityService(JdbcTemplate jdbc, ObjectMapper json, ProjectPermissionGuard permissions,
         ScriptAiOperationService operations, AssetNormalizationGuard normalization, AiExecutionService executions,
@@ -125,13 +127,23 @@ public class CharacterPromptSimilarityService {
         if (snapshot.get("result_json") != null) return new ScriptAiOperationExecutionResult(OPERATION, id, List.of());
         JsonNode input = read(snapshot.get("input_json"));
         var task = context.task();
-        var call = invocation.invokeText(AiInvocationRequest.text().tenantId(task.tenantId).userId(task.userId)
+        var request = AiInvocationRequest.text().tenantId(task.tenantId).userId(task.userId)
             .projectId(task.projectId).taskId(operation.id).modelId(task.requestedModelId)
             .businessSceneCode("prompt_generate").traceId(task.traceId).executionId(task.id)
             .attemptId(context.claim().attemptId()).executionVersion(task.executionVersion).phase(context.claim().phase())
             .idempotencyKey("character-similarity:%d:%d:%d".formatted(task.id, task.executionVersion, context.claim().attemptId()))
             .textRequest(new AiTextRequest(CharacterPromptSimilarityAnalysis.INSTRUCTIONS, input.toString(), 0.1,
-                CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS, null, true, CharacterPromptSimilarityAnalysis.schema(json), 180, 0)).build());
+                CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS, null, true, CharacterPromptSimilarityAnalysis.schema(json),
+                Math.max(1, timeoutSeconds), 0)).build();
+        com.antshorttv.ai.AiInvocationResult<com.antshorttv.ai.AiTextResponse> call;
+        try {
+            call = invocation.invokeText(request);
+        } catch (com.antshorttv.ai.AiGatewayException failure) {
+            if (failure.getErrorCode() == ErrorCode.AI_PROVIDER_TIMEOUT) {
+                throw new CharacterSimilarityTimeoutException(failure, request);
+            }
+            throw failure;
+        }
         if (call.response() == null || call.response().truncated()) throw new CharacterPromptSimilarityAnalysis.InvalidResult();
         JsonNode analysis;
         try { analysis = json.readTree(call.content()); }

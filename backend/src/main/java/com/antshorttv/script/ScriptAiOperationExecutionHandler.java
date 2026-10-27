@@ -113,6 +113,7 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             return AiExecutionRetryPolicy.none();
         return failure instanceof NonRetryableStoryboardException || failure instanceof NonRetryableAssetNormalizationException || failure instanceof NonRetryablePropSimplificationException
             || failure instanceof CharacterPromptSimilarityAnalysis.InvalidResult
+            || failure instanceof CharacterSimilarityTimeoutException
             ? AiExecutionRetryPolicy.none()
             : retryPolicy();
     }
@@ -159,7 +160,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
                 : executionAgentCalls.size();
             markExecutionDiagnostics(context, executionCallCount);
             settleTerminalFailure(context, settlementAgentCall, callLogId,
-                executionCallCount, retryPolicy(exception).maxAttempts(), executionAgentCalls);
+                executionCallCount, retryPolicy(exception).maxAttempts(), executionAgentCalls,
+                exception instanceof CharacterSimilarityTimeoutException);
             return null;
             });
             throw exception;
@@ -387,7 +389,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
         Long callLogId,
         int providerCallCount,
         int maxAttempts,
-        List<WorkflowAgentModelCall> calls
+        List<WorkflowAgentModelCall> calls,
+        boolean transportUnknown
     ) {
         AiExecutionAttemptEntity attempt = attemptMapper.selectById(context.claim().attemptId());
         Long failures = attemptMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<AiExecutionAttemptEntity>()
@@ -397,7 +400,8 @@ public class ScriptAiOperationExecutionHandler extends AiExecutionHandler {
             return;
         }
         settle(context, null, agentCall,
-            providerCallCount == 0 ? AiSettlementOutcome.PROVIDER_REJECTION
+            transportUnknown ? AiSettlementOutcome.TRANSPORT_UNKNOWN
+                : providerCallCount == 0 ? AiSettlementOutcome.PROVIDER_REJECTION
                 : AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
             providerCallCount, calls);
     }

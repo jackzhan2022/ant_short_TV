@@ -88,6 +88,8 @@ abstract class AbstractCompatibleProviderAdapter extends AiProviderAdapter {
             );
         } catch (AiGatewayException exception) {
             throw exception;
+        } catch (java.net.http.HttpTimeoutException exception) {
+            throw new AiGatewayException(ErrorCode.AI_PROVIDER_TIMEOUT, "AI 文本调用超时，尚未收到服务商结果。");
         } catch (Exception exception) {
             throw new AiGatewayException(ErrorCode.AI_PROVIDER_ERROR, "AI 文本调用失败：" + exception.getMessage());
         }

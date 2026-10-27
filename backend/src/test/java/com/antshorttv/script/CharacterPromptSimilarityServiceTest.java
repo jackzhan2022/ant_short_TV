@@ -168,6 +168,37 @@ class CharacterPromptSimilarityServiceTest {
         verify(invocation,times(1)).invokeText(any());
     }
 
+    @Test void allowsLongRunningChecksAndHonorsTheConfiguredRequestTimeout() {
+        service.submit(1,3,"key");
+        modelReturns(result());
+        var request = org.mockito.ArgumentCaptor.forClass(AiInvocationRequest.class);
+        service.analyze(operation(),context());
+        verify(invocation).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().timeoutSeconds()).isEqualTo(600);
+        assertThat(request.getValue().textRequest().retryCount()).isZero();
+
+        jdbc.update("update character_prompt_similarity_check set result_json=null,completed_at=null");
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"timeoutSeconds",720);
+        service.analyze(operation(),context());
+        verify(invocation,times(2)).invokeText(request.capture());
+        assertThat(request.getValue().textRequest().timeoutSeconds()).isEqualTo(720);
+    }
+
+    @Test void timedOutCheckPreservesCallCorrelationAndDoesNotPublishAResult() {
+        service.submit(1,3,"key");
+        when(invocation.invokeText(any())).thenThrow(
+            new AiGatewayException(com.antshorttv.common.ErrorCode.AI_PROVIDER_TIMEOUT,"timeout",99L));
+        assertThatThrownBy(() -> service.analyze(operation(),context()))
+            .isInstanceOfSatisfying(CharacterSimilarityTimeoutException.class, failure -> {
+                assertThat(failure.getAiCallLogId()).isEqualTo(99L);
+                assertThat(failure.getExecutionId()).isEqualTo(900L);
+                assertThat(failure.getAttemptId()).isEqualTo(901L);
+                assertThat(failure.getMessage()).contains("停止自动重试");
+            });
+        assertThat(jdbc.queryForObject("select result_json from character_prompt_similarity_check",String.class)).isNull();
+        verify(invocation,times(1)).invokeText(any());
+    }
+
     @Test void canceledOrSupersededExecutionCannotPublishAReport() {
         service.submit(1,3,"key");
         modelReturns(result());

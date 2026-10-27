@@ -26,6 +26,37 @@ class OpenAiAdapterTest {
     private final OpenAiAdapter adapter = new OpenAiAdapter(aiSecretCodec, new ObjectMapper());
 
     @Test
+    void preservesHttpTimeoutClassificationAfterTheProviderReceivesTheRequest() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        var release = new java.util.concurrent.CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            attempts.incrementAndGet();
+            try {
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        try {
+            assertThatThrownBy(() -> adapter.text(provider(),
+                config("http://127.0.0.1:%d/v1".formatted(server.getAddress().getPort()), "sk-test"),
+                model("gpt-6-astra", "TEXT"),
+                new AiTextRequest(null, "check", 0.1, 256, null, true, null, 1, 0)))
+                .isInstanceOfSatisfying(AiGatewayException.class,
+                    failure -> assertThat(failure.getErrorCode()).isEqualTo(ErrorCode.AI_PROVIDER_TIMEOUT));
+            assertThat(attempts).hasValue(1);
+        } finally {
+            release.countDown();
+            server.stop(0);
+        }
+    }
+
+    @Test
     void exposesDeepSeekAfterTheOpenAiGatewayIsReassignedToImageModels() {
         assertThat(adapter.providerCode()).isEqualTo("DeepSeek");
     }
