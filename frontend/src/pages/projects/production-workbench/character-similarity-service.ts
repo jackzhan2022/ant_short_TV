@@ -1,6 +1,57 @@
 import { pointEstimatedRequest as request } from '@/services/point-estimate';
 
-export type SimilarityCharacter = { id: number; name: string; prompt: string };
+export type SimilarityVariant = {
+  id: number;
+  name: string;
+  appearance: string;
+  prompt: string;
+  isPrimary?: boolean;
+};
+export type SimilarityCharacter = {
+  id: number;
+  name: string;
+  prompt: string;
+  variants?: SimilarityVariant[];
+};
+export type VariantResolutionDecision = 'MERGED' | 'DISTINCT';
+export type ResolutionVariant = SimilarityVariant & {
+  currentImageUrl?: string;
+  generationStatus: string;
+  episodeNumbers: number[];
+};
+export type CharacterVariantResolution = {
+  fingerprint: string;
+  characterId: number;
+  characterName: string;
+  left: ResolutionVariant;
+  right: ResolutionVariant;
+  mergedEpisodeNumbers: number[];
+  affectedStoryboardCount: number;
+  voiceConflictCount: number;
+  recommendedKeptVariantId: number;
+  canMerge: boolean;
+  disabledReason?: string;
+};
+export type VariantResolutionResult = {
+  decision: VariantResolutionDecision;
+  keptVariantId?: number;
+  characterId: number;
+  leftVariantId: number;
+  rightVariantId: number;
+};
+export type CharacterVariantSimilarityPair = {
+  resolution?: VariantResolutionDecision;
+  keptVariantId?: number;
+  canResolve?: boolean;
+  canInspect?: boolean;
+  characterId: number;
+  leftVariantId: number;
+  rightVariantId: number;
+  score: number;
+  sharedFeatures: string[];
+  differences: string[];
+  suggestions: string[];
+};
 export type CharacterSimilarityPair = {
   leftId: number;
   rightId: number;
@@ -30,6 +81,8 @@ export type CharacterSimilarityStatus = {
     insufficient: { characterId: number; reason: string }[];
     hasMore: boolean;
     revisions?: CharacterPromptRevision[];
+    variantPairs?: CharacterVariantSimilarityPair[];
+    variantsHasMore?: boolean;
   };
 };
 
@@ -56,4 +109,32 @@ export const applyCharacterSimilarityPrompt = (
   request<{ data: { characterId: number; prompt: string } }>(
     `/api/projects/${projectId}/character-prompt-similarity/${checkId}/characters/${characterId}/prompt`,
     { method: 'PUT', data: { prompt } },
+  );
+
+export const queryCharacterVariantResolution = (
+  projectId: number,
+  checkId: number,
+  characterId: number,
+  params: { leftVariantId: number; rightVariantId: number },
+) =>
+  request<{ data: CharacterVariantResolution }>(
+    `/api/projects/${projectId}/character-prompt-similarity/${checkId}/characters/${characterId}/variant-resolution`,
+    { params },
+  );
+
+export const resolveCharacterVariants = (
+  projectId: number,
+  checkId: number,
+  characterId: number,
+  data: {
+    leftVariantId: number;
+    rightVariantId: number;
+    decision: VariantResolutionDecision;
+    keptVariantId?: number;
+    fingerprint: string;
+  },
+) =>
+  request<{ data: VariantResolutionResult }>(
+    `/api/projects/${projectId}/character-prompt-similarity/${checkId}/characters/${characterId}/variant-resolution`,
+    { method: 'POST', data },
   );

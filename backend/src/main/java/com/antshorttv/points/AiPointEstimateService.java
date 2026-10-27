@@ -312,8 +312,10 @@ public class AiPointEstimateService {
               and c.script_id=(select s.id from script s where s.tenant_id=? and s.project_id=?
                 and s.deleted_at is null order by s.id desc limit 1) order by c.id
             """, tenant, project, tenant, project);
-        return textPlan(tenant, "角色提示词相似度检查", model,
-            com.antshorttv.script.CharacterPromptSimilarityAnalysis.INSTRUCTIONS + json.valueToTree(input)
+        com.fasterxml.jackson.databind.JsonNode snapshot = json.valueToTree(input);
+        com.antshorttv.script.CharacterVariantSimilarityAnalysis.capture(jdbc, json, tenant, project, snapshot);
+        return textPlan(tenant, "角色形态相似度检查", model,
+            com.antshorttv.script.CharacterPromptSimilarityAnalysis.INSTRUCTIONS + snapshot
                 + com.antshorttv.script.CharacterPromptSimilarityAnalysis.schema(json), null, 1, reservation,
             com.antshorttv.script.CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS);
     }
@@ -468,7 +470,7 @@ public class AiPointEstimateService {
                     tenant, task.projectId, task.id);
                 String corpus = com.antshorttv.script.CharacterPromptSimilarityAnalysis.INSTRUCTIONS
                     + text(snapshot, "input_json") + com.antshorttv.script.CharacterPromptSimilarityAnalysis.schema(json);
-                return List.of(textPlan(tenant, "角色提示词相似度检查", task.requestedModelId, corpus, null, 1, reservation,
+                return List.of(textPlan(tenant, "角色形态相似度检查", task.requestedModelId, corpus, null, 1, reservation,
                     com.antshorttv.script.CharacterPromptSimilarityAnalysis.OUTPUT_TOKENS).inProject(task.projectId));
             }
             String path = switch (text(op,"operation_type")) {

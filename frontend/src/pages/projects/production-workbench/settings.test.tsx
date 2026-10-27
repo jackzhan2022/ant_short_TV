@@ -1672,7 +1672,7 @@ describe('ProductionWorkbenchSettings', () => {
       await screen.findByText(/请确保需要独立制作的角色、场景及道具已生成。/),
     ).toBeInTheDocument();
     expect(screen.queryByText('正式资产库')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '提示词相似度检查' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '角色形态相似度检查' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /角色/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /角色/ })).toHaveAttribute(
       'style',

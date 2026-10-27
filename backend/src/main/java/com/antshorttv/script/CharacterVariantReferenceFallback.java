@@ -40,7 +40,8 @@ public final class CharacterVariantReferenceFallback {
             if ((node.hasNonNull("assetId") && node.path("assetId").asLong()!=origin.assetId())
                 || (node.hasNonNull("assetType") && !"CHARACTER".equals(node.path("assetType").asText())))
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR,"视觉形象不属于所选人物。");
-            var defaults=jdbc.query("""
+            var redirected=mergedVisual(jdbc,tenantId,projectId,origin.assetId(),node.path("sourceId").asLong());
+            var defaults=redirected!=null?java.util.List.of(redirected):jdbc.query("""
                 select v.id,v.name from asset_visual_variant v
                  where v.tenant_id=? and v.project_id=? and v.asset_type='CHARACTER' and v.asset_id=?
                    and v.deleted_at is null and v.is_primary=true order by v.id limit 1 for update
@@ -53,6 +54,29 @@ public final class CharacterVariantReferenceFallback {
             mention.remove(java.util.List.of("imageUrl","thumbnailUrl","previewUrl"));
         }
         return normalized;
+    }
+
+    private static DefaultVisual mergedVisual(JdbcTemplate jdbc,long tenant,long project,long asset,long deletedId) {
+        var seen=new java.util.HashSet<Long>();
+        long current=deletedId;
+        while (seen.add(current)) {
+            var redirects=jdbc.queryForList("""
+                select kept_variant_id from character_variant_similarity_resolution
+                 where tenant_id=? and project_id=? and character_id=? and decision='MERGED'
+                   and kept_variant_id<>? and (left_variant_id=? or right_variant_id=?) order by id desc limit 1
+                """,Long.class,tenant,project,asset,current,current,current);
+            if (redirects.isEmpty()) return null;
+            current=redirects.get(0);
+            var targets=jdbc.queryForList("""
+                select id,name,deleted_at from asset_visual_variant where id=? and tenant_id=? and project_id=?
+                  and asset_type='CHARACTER' and asset_id=? for update
+                """,current,tenant,project,asset);
+            if (targets.isEmpty()) return null;
+            var target=targets.get(0);
+            if (target.get("deleted_at")==null)
+                return new DefaultVisual(((Number)target.get("id")).longValue(),target.get("name").toString());
+        }
+        return null;
     }
 
     public static void replace(JdbcTemplate jdbc, long tenantId, long projectId, long assetId,
@@ -93,10 +117,10 @@ public final class CharacterVariantReferenceFallback {
                     update storyboard set prompt_document_json=?,updated_at=now()
                      where id=? and tenant_id=? and project_id=? and deleted_at is null and prompt_document_json=?
                     """, JSON.writeValueAsString(tree),document.id(),tenantId,projectId,document.json()) != 1) {
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR,"分镜已被其他操作更新，请刷新后重试删除。");
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR,"分镜已被其他操作更新，请刷新后重试。");
                 }
             } catch (com.fasterxml.jackson.core.JsonProcessingException invalidDocument) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR,"分镜提示词格式异常，请修复后再删除形态。");
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR,"分镜提示词格式异常，请修复后再处理形态。");
             }
         }
     }

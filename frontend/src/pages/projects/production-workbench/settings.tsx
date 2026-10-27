@@ -1233,7 +1233,7 @@ const ProductionWorkbenchSettings = () => {
     setVisualAsset(undefined);
   };
 
-  const openVisualGallery = async (type: ElementType, item: AssetRecord) => {
+  const openVisualGallery = async (type: ElementType, item: AssetRecord, selectedVariantId?: number) => {
     const requestId = visualRequestIdRef.current + 1;
     visualRequestIdRef.current = requestId;
     setVisualAsset({ type, item });
@@ -1250,7 +1250,7 @@ const ProductionWorkbenchSettings = () => {
         projectId,
         type,
         item.id,
-        { current: 1, pageSize: 20 },
+        { current: 1, pageSize: 20, selectedVariantId },
       );
       if (visualRequestIdRef.current !== requestId) return;
       setVisualAsset((current) =>
@@ -1873,7 +1873,11 @@ const ProductionWorkbenchSettings = () => {
               onRefresh={async () => { closeVisualGallery(); setSelectedAssetIds([]); setShowSceneProps(false); await reload(); }} />
             {activeType === 'CHARACTER' ? (
               <CharacterPromptSimilarity key={`character-similarity-${projectId}`} projectId={projectId} characterCount={workspace.characters.length}
-                disabled={normalizationBlocked || extractionBusy} onApplied={reload} />
+                disabled={normalizationBlocked || extractionBusy} canResolveVariants={canRename} onApplied={reload}
+                onInspectVariant={(characterId, variantId) => {
+                  const character = workspace.characters.find((item) => item.id === characterId);
+                  if (character) void openVisualGallery('CHARACTER', character, variantId);
+                }} />
             ) : null}
             <Dropdown
               trigger={['click']}

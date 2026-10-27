@@ -57,10 +57,12 @@ public class CharacterPromptSimilarityService {
             var script = script(tenant, project, true);
             normalization.requireReady(tenant, project);
             JsonNode input = capture(tenant, project, number(script, "id"));
-            long usable = input.findValuesAsText("prompt").stream().filter(p -> !p.isBlank()).count();
-            check(usable >= 2, "请先提取并填写至少两个角色的主体提示词。");
+            long usable = java.util.stream.StreamSupport.stream(input.spliterator(), false)
+                .filter(character -> !character.path("prompt").asText("").isBlank()).count();
+            check(usable >= 2 || CharacterVariantSimilarityAnalysis.hasComparableVariants(input),
+                "请先填写至少两个角色的主体提示词，或为同一角色添加至少两个有描述的形态。");
             check(input.size() <= 200 && input.toString().getBytes(StandardCharsets.UTF_8).length <= 600_000,
-                "角色数量或提示词内容超过单次检查上限（200个角色）。");
+                "角色形态或提示词内容超过单次检查上限（200个角色，内容总计600KB）。");
             String fingerprint = fingerprint(input);
             var active = jdbc.queryForList("""
                 select c.execution_id from character_prompt_similarity_check c
@@ -99,12 +101,17 @@ public class CharacterPromptSimilarityService {
         if (rows.isEmpty()) return result;
         var row = rows.get(0);
         JsonNode input = read(row.get("input_json"));
+        JsonNode current = capture(tenant, project, number(script, "id"));
+        boolean sameVersion = Objects.equals(script.get("current_version_id"), row.get("script_version_id"));
         result.put("id", number(row, "id")).put("executionId", number(row, "execution_id"))
             .put("status", Objects.toString(row.get("status"))).put("createdAt", Objects.toString(row.get("created_at")))
-            .put("stale", !Objects.equals(script.get("current_version_id"), row.get("script_version_id"))
-                || !fingerprint(capture(tenant, project, number(script, "id"))).equals(row.get("input_fingerprint")));
+            .put("stale", !sameVersion || !fingerprint(current).equals(row.get("input_fingerprint")));
         result.set("characters", input);
-        if (row.get("result_json") != null) result.set("analysis", read(row.get("result_json")));
+        if (row.get("result_json") != null) {
+            JsonNode analysis = read(row.get("result_json"));
+            CharacterVariantResolutionService.decorate(jdbc, tenant, project, number(row, "id"), input, current, analysis, sameVersion);
+            result.set("analysis", analysis);
+        }
         if (row.get("error_message") != null) result.put("errorMessage", Objects.toString(row.get("error_message")));
         return result;
     }
@@ -112,7 +119,7 @@ public class CharacterPromptSimilarityService {
     ScriptAiOperationExecutionResult analyze(ScriptAiOperationEntity operation, AiExecutionContext context) {
         var rows = jdbc.queryForList("select * from character_prompt_similarity_check where tenant_id=? and project_id=? and execution_id=?",
             operation.tenantId, operation.projectId, context.task().id);
-        check(rows.size() == 1, "角色相似度检查快照不存在。");
+        check(rows.size() == 1, "角色形态相似度检查快照不存在。");
         var snapshot = rows.get(0);
         long id = number(snapshot, "id");
         if (snapshot.get("result_json") != null) return new ScriptAiOperationExecutionResult(OPERATION, id, List.of());
@@ -130,6 +137,7 @@ public class CharacterPromptSimilarityService {
         try { analysis = json.readTree(call.content()); }
         catch (Exception exception) { throw new CharacterPromptSimilarityAnalysis.InvalidResult(); }
         CharacterPromptSimilarityAnalysis.validate(json, input, analysis);
+        CharacterVariantSimilarityAnalysis.addEquivalentOutfits(json, input, (ObjectNode) analysis);
         for (JsonNode revision : analysis.path("revisions")) {
             String original = CharacterPromptSimilarityAnalysis.character(input, revision.path("characterId").asLong())
                 .path("prompt").asText();
@@ -195,6 +203,7 @@ public class CharacterPromptSimilarityService {
             input.addObject().put("id", number(row, "id")).put("name", Objects.toString(row.get("name"), ""))
                 .put("prompt", Objects.toString(row.get("prompt"), ""));
         }
+        CharacterVariantSimilarityAnalysis.capture(jdbc, json, tenant, project, input);
         return input;
     }
 

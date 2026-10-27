@@ -33,7 +33,7 @@ public class ProductionTaskService {
         Map.entry("SCOPED_ASSET_REEXTRACTION","范围资产重提取"), Map.entry("STORYBOARD_BREAKDOWN","分镜生成"),
         Map.entry("PROMPT_GENERATE","提示词生成"), Map.entry("SCRIPT_EPISODE_SPLIT","剧集拆分"),
         Map.entry("SCRIPT_EPISODE_SUMMARY","剧集概要"), Map.entry("SCRIPT_EPISODE_ASSETS","剧集资产识别"),
-        Map.entry("CHARACTER_PROMPT_SIMILARITY","角色提示词相似度检查"));
+        Map.entry("CHARACTER_PROMPT_SIMILARITY","角色形态相似度检查"));
     private final JdbcTemplate jdbc;
     private final NamedParameterJdbcTemplate sql;
     private final TenantContextResolver tenants;

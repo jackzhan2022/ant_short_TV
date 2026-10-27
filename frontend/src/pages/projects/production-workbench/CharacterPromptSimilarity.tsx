@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import PointEstimateButton from '@/components/PointEstimateButton';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import styles from './CharacterPromptSimilarity.module.css';
+import CharacterVariantSimilarity from './CharacterVariantSimilarity';
 import {
   applyCharacterSimilarityPrompt,
   type CharacterSimilarityStatus,
@@ -15,12 +16,16 @@ export default function CharacterPromptSimilarity({
   projectId,
   characterCount,
   disabled = false,
+  canResolveVariants = true,
   onApplied,
+  onInspectVariant,
 }: {
   projectId: number;
   characterCount: number;
   disabled?: boolean;
+  canResolveVariants?: boolean;
   onApplied?: () => Promise<unknown>;
+  onInspectVariant?: (characterId: number, variantId: number) => void;
 }) {
   const { message } = App.useApp();
   const [open, setOpen] = useState(false);
@@ -36,6 +41,7 @@ export default function CharacterPromptSimilarity({
   const [applying, setApplying] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [selectedView, setSelectedView] = useState<'variants' | 'appearance'>();
   const submittingRef = useRef(false);
   const applyingRef = useRef(false);
   const reportId = useRef<number | undefined>(undefined);
@@ -53,6 +59,7 @@ export default function CharacterPromptSimilarity({
         if (response.data.id !== reportId.current) {
           reportId.current = response.data.id;
           setSelectedPair('');
+          setSelectedView(undefined);
           setSelectedCharacter(undefined);
           setDrafts({});
           setApplied([]);
@@ -108,6 +115,11 @@ export default function CharacterPromptSimilarity({
   const name = (id: number) => characters.get(id)?.name || `角色 #${id}`;
   const analysis = status?.analysis;
   const proposals = analysis?.revisions ?? [];
+  const view =
+    selectedView ??
+    (analysis?.pairs.length && !analysis.variantPairs?.length
+      ? 'appearance'
+      : 'variants');
   const pair =
     analysis?.pairs.find(
       (item) => `${item.leftId}-${item.rightId}` === selectedPair,
@@ -196,14 +208,14 @@ export default function CharacterPromptSimilarity({
   return (
     <>
       <Button
-        aria-label="提示词相似度检查"
+        aria-label="角色形态相似度检查"
         size="small"
         type="text"
         icon={<ScanOutlined />}
-        disabled={disabled || characterCount < 2}
+        disabled={disabled || characterCount < 1}
         onClick={() => setOpen(true)}
       >
-        提示词相似度检查
+        角色形态相似度检查
       </Button>
       <Modal
         open={open}
@@ -235,13 +247,17 @@ export default function CharacterPromptSimilarity({
               <ScanOutlined />
             </span>
             <div>
-              <div className={styles.title}>角色相似度检查</div>
+              <div className={styles.title}>角色形态相似度检查</div>
             </div>
           </div>
         }
         footer={
           <div className={styles.footer}>
-            <span>应用后需重新生成图片</span>
+            <span>
+              {view === 'variants'
+                ? '合并前可确认保留形态与影响范围'
+                : '应用后需重新生成图片'}
+            </span>
             <div>
               <Button onClick={() => setOpen(false)}>关闭</Button>
               <PointEstimateButton
@@ -254,7 +270,7 @@ export default function CharacterPromptSimilarity({
                 loading={submitting}
                 disabled={
                   disabled ||
-                  characterCount < 2 ||
+                  characterCount < 1 ||
                   busy ||
                   applying ||
                   loading ||
@@ -264,7 +280,7 @@ export default function CharacterPromptSimilarity({
               >
                 {busy ? '正在检查' : analysis ? '重新检查' : '开始检查'}
               </PointEstimateButton>
-              {applyButton}
+              {view === 'appearance' ? applyButton : null}
             </div>
           </div>
         }
@@ -286,7 +302,11 @@ export default function CharacterPromptSimilarity({
             type="warning"
             showIcon
             className={styles.notice}
-            title="设定已变化，请重新检查。"
+            title={
+              view === 'variants'
+                ? '部分设定已变化；未变化的形态组仍可处理，其余请重新检查。'
+                : '设定已变化，请重新检查。'
+            }
           />
         ) : null}
         {busy ? (
@@ -309,270 +329,358 @@ export default function CharacterPromptSimilarity({
         ) : null}
         {analysis ? (
           <>
+            <fieldset className={styles.viewTabs} aria-label="检查范围">
+              <button
+                type="button"
+                className={view === 'variants' ? styles.viewActive : ''}
+                aria-pressed={view === 'variants'}
+                onClick={() => setSelectedView('variants')}
+              >
+                同角色形态（{analysis.variantPairs?.length ?? '未检查'}）
+              </button>
+              <button
+                type="button"
+                className={view === 'appearance' ? styles.viewActive : ''}
+                aria-pressed={view === 'appearance'}
+                onClick={() => setSelectedView('appearance')}
+              >
+                角色外貌（{analysis.pairs.length}）
+              </button>
+            </fieldset>
             <div className={styles.overview}>
               <span>
-                角色 <b>{comparedCount}</b>
+                {view === 'variants' ? '形态' : '角色'}{' '}
+                <b>
+                  {view === 'variants'
+                    ? status?.characters?.reduce(
+                        (total, character) =>
+                          total + (character.variants?.length ?? 0),
+                        0,
+                      )
+                    : comparedCount}
+                </b>
               </span>
               <span>
-                相似 <b>{analysis.pairs.length}</b>
+                相似{' '}
+                <b>
+                  {view === 'variants'
+                    ? (analysis.variantPairs?.length ?? 0)
+                    : analysis.pairs.length}
+                </b>
               </span>
-              <span>
-                修改稿 <b>{proposals.length}</b>
-              </span>
-              <span>
-                待补全 <b>{analysis.insufficient.length}</b>
-              </span>
-              {analysis.hasMore ? (
+              {view === 'appearance' ? (
+                <span>
+                  修改稿 <b>{proposals.length}</b>
+                </span>
+              ) : null}
+              {view === 'appearance' ? (
+                <span>
+                  待补全 <b>{analysis.insufficient.length}</b>
+                </span>
+              ) : null}
+              {(
+                view === 'variants'
+                  ? analysis.variantsHasMore
+                  : analysis.hasMore
+              ) ? (
                 <span className={styles.moreHint}>展示前30组</span>
               ) : null}
             </div>
-            <div className={styles.workspace}>
-              <aside className={styles.sidebar} aria-label="相似角色列表">
-                <div className={styles.sectionLabel}>相似角色对</div>
-                <div className={styles.pairList}>
-                  {analysis.pairs.map((item) => {
-                    const key = `${item.leftId}-${item.rightId}`;
-                    const active =
-                      pair?.leftId === item.leftId &&
-                      pair?.rightId === item.rightId;
-                    return (
-                      <button
-                        type="button"
-                        key={key}
-                        className={`${styles.pairButton} ${active ? styles.active : ''}`}
-                        aria-pressed={active}
-                        onClick={() => {
-                          setSelectedPair(key);
-                          setSelectedCharacter(undefined);
-                          setShowOriginal(false);
-                          setShowReview(false);
-                        }}
-                      >
-                        <span className={styles.pairNames}>
-                          {name(item.leftId)} / {name(item.rightId)}
-                        </span>
-                        <span className={styles.score}>{item.score} 分</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
-              <section className={styles.detail} aria-label="角色提示词编辑">
-                {pair ? (
-                  <>
-                    <fieldset
-                      className={styles.roleBar}
-                      aria-label="选择要调整的角色"
-                    >
-                      <span className={styles.sectionLabel}>角色</span>
-                      <div className={styles.characterTabs}>
-                        {pairIds.map((id) => (
-                          <button
-                            type="button"
-                            key={id}
-                            aria-pressed={characterId === id}
-                            className={
-                              characterId === id ? styles.characterActive : ''
-                            }
-                            onClick={() => {
-                              setSelectedCharacter(id);
-                              setShowOriginal(false);
-                              setShowReview(false);
-                            }}
-                          >
-                            {name(id)}
-                          </button>
-                        ))}
-                      </div>
-                    </fieldset>
-                    {!proposal && !showReview ? (
-                      <div className={styles.noDraft}>
-                        {proposals.length
-                          ? '暂无修改稿，可保留原文。'
-                          : analysis.revisions === undefined
-                            ? '报告未含修改稿，请重新检查。'
-                            : '缺少脸型字段，请补全后重新检查。'}
-                      </div>
-                    ) : null}
-                    <div className={styles.viewToolbar}>
-                      <fieldset
-                        className={styles.viewTabs}
-                        aria-label="查看内容"
-                      >
-                        {proposal ? (
-                          <button
-                            type="button"
-                            className={
-                              !showReview && !showOriginal
-                                ? styles.viewActive
-                                : ''
-                            }
-                            aria-pressed={!showReview && !showOriginal}
-                            onClick={() => {
-                              setShowOriginal(false);
-                              setShowReview(false);
-                            }}
-                          >
-                            修改稿
-                          </button>
-                        ) : null}
+            {view === 'variants' && status ? (
+              <CharacterVariantSimilarity
+                key={status.id}
+                status={status}
+                projectId={projectId}
+                checkId={status.id}
+                disabled={
+                  disabled ||
+                  !canResolveVariants ||
+                  busy ||
+                  submitting ||
+                  loading ||
+                  Boolean(readError)
+                }
+                onResolved={async () => {
+                  const results = await Promise.allSettled([
+                    queryCharacterSimilarity(projectId).then((response) =>
+                      setStatus(response.data),
+                    ),
+                    onApplied?.(),
+                  ]);
+                  if (results.some((result) => result.status === 'rejected')) {
+                    throw new Error('页面刷新失败');
+                  }
+                }}
+                onInspect={
+                  onInspectVariant
+                    ? (owner, variant) => {
+                        setOpen(false);
+                        onInspectVariant(owner, variant);
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <div className={styles.workspace}>
+                <aside className={styles.sidebar} aria-label="相似角色列表">
+                  <div className={styles.sectionLabel}>相似角色对</div>
+                  <div className={styles.pairList}>
+                    {analysis.pairs.map((item) => {
+                      const key = `${item.leftId}-${item.rightId}`;
+                      const active =
+                        pair?.leftId === item.leftId &&
+                        pair?.rightId === item.rightId;
+                      return (
                         <button
                           type="button"
-                          className={
-                            !showReview && copyOriginal ? styles.viewActive : ''
-                          }
-                          aria-pressed={!showReview && copyOriginal}
+                          key={key}
+                          className={`${styles.pairButton} ${active ? styles.active : ''}`}
+                          aria-pressed={active}
                           onClick={() => {
-                            setShowOriginal(true);
+                            setSelectedPair(key);
+                            setSelectedCharacter(undefined);
+                            setShowOriginal(false);
                             setShowReview(false);
                           }}
                         >
-                          原文
+                          <span className={styles.pairNames}>
+                            {name(item.leftId)} / {name(item.rightId)}
+                          </span>
+                          <span className={styles.score}>{item.score} 分</span>
                         </button>
-                        <button
-                          type="button"
-                          className={showReview ? styles.viewActive : ''}
-                          aria-pressed={showReview}
-                          onClick={() => setShowReview(true)}
-                        >
-                          检查说明
-                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
+                <section className={styles.detail} aria-label="角色提示词编辑">
+                  {pair ? (
+                    <>
+                      <fieldset
+                        className={styles.roleBar}
+                        aria-label="选择要调整的角色"
+                      >
+                        <span className={styles.sectionLabel}>角色</span>
+                        <div className={styles.characterTabs}>
+                          {pairIds.map((id) => (
+                            <button
+                              type="button"
+                              key={id}
+                              aria-pressed={characterId === id}
+                              className={
+                                characterId === id ? styles.characterActive : ''
+                              }
+                              onClick={() => {
+                                setSelectedCharacter(id);
+                                setShowOriginal(false);
+                                setShowReview(false);
+                              }}
+                            >
+                              {name(id)}
+                            </button>
+                          ))}
+                        </div>
                       </fieldset>
-                      {!showReview ? (
-                        <Button
-                          size="small"
-                          type="text"
-                          icon={<CopyOutlined />}
-                          aria-label={copyOriginal ? '复制原文' : '复制修改稿'}
-                          onClick={() => void copy()}
-                        >
-                          复制
-                        </Button>
+                      {!proposal && !showReview ? (
+                        <div className={styles.noDraft}>
+                          {proposals.length
+                            ? '暂无修改稿，可保留原文。'
+                            : analysis.revisions === undefined
+                              ? '报告未含修改稿，请重新检查。'
+                              : '缺少脸型字段，请补全后重新检查。'}
+                        </div>
                       ) : null}
-                    </div>
-                    <div className={styles.promptEditor} hidden={showReview}>
-                      <Input.TextArea
-                        key={`${characterId}-${copyOriginal}`}
-                        aria-label={
-                          copyOriginal ? '原始角色提示词' : '修改后的角色提示词'
-                        }
-                        className={styles.prompt}
-                        value={copyOriginal ? original : draft}
-                        readOnly={copyOriginal || isApplied}
-                        rows={8}
-                        style={{ height: '100%', minHeight: 0, resize: 'none' }}
-                        maxLength={8000}
-                        onChange={(event) =>
-                          characterId &&
-                          setDrafts((current) => ({
-                            ...current,
-                            [characterId]: event.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <section
-                      className={styles.reviewPanel}
-                      hidden={!showReview}
-                      aria-label="角色差异说明"
-                    >
-                      <div className={styles.reviewHeader}>
-                        <h3>
-                          {name(pair.leftId)} 与 {name(pair.rightId)}
-                        </h3>
-                        <span className={styles.risk}>
-                          {pair.score} 分 ·{' '}
-                          {pair.score >= 80 ? '高度相似' : '部分相似'}
-                        </span>
+                      <div className={styles.viewToolbar}>
+                        <fieldset
+                          className={styles.viewTabs}
+                          aria-label="查看内容"
+                        >
+                          {proposal ? (
+                            <button
+                              type="button"
+                              className={
+                                !showReview && !showOriginal
+                                  ? styles.viewActive
+                                  : ''
+                              }
+                              aria-pressed={!showReview && !showOriginal}
+                              onClick={() => {
+                                setShowOriginal(false);
+                                setShowReview(false);
+                              }}
+                            >
+                              修改稿
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={
+                              !showReview && copyOriginal
+                                ? styles.viewActive
+                                : ''
+                            }
+                            aria-pressed={!showReview && copyOriginal}
+                            onClick={() => {
+                              setShowOriginal(true);
+                              setShowReview(false);
+                            }}
+                          >
+                            原文
+                          </button>
+                          <button
+                            type="button"
+                            className={showReview ? styles.viewActive : ''}
+                            aria-pressed={showReview}
+                            onClick={() => setShowReview(true)}
+                          >
+                            检查说明
+                          </button>
+                        </fieldset>
+                        {!showReview ? (
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<CopyOutlined />}
+                            aria-label={
+                              copyOriginal ? '复制原文' : '复制修改稿'
+                            }
+                            onClick={() => void copy()}
+                          >
+                            复制
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className={styles.reviewNote}>
-                        仅比较提示词设定，不代表图片相似度。
+                      <div className={styles.promptEditor} hidden={showReview}>
+                        <Input.TextArea
+                          key={`${characterId}-${copyOriginal}`}
+                          aria-label={
+                            copyOriginal
+                              ? '原始角色提示词'
+                              : '修改后的角色提示词'
+                          }
+                          className={styles.prompt}
+                          value={copyOriginal ? original : draft}
+                          readOnly={copyOriginal || isApplied}
+                          rows={8}
+                          style={{
+                            height: '100%',
+                            minHeight: 0,
+                            resize: 'none',
+                          }}
+                          maxLength={8000}
+                          onChange={(event) =>
+                            characterId &&
+                            setDrafts((current) => ({
+                              ...current,
+                              [characterId]: event.target.value,
+                            }))
+                          }
+                        />
                       </div>
-                      <div className={styles.findings}>
-                        <div>
-                          <h4>重合特征</h4>
+                      <section
+                        className={styles.reviewPanel}
+                        hidden={!showReview}
+                        aria-label="角色差异说明"
+                      >
+                        <div className={styles.reviewHeader}>
+                          <h3>
+                            {name(pair.leftId)} 与 {name(pair.rightId)}
+                          </h3>
+                          <span className={styles.risk}>
+                            {pair.score} 分 ·{' '}
+                            {pair.score >= 80 ? '高度相似' : '部分相似'}
+                          </span>
+                        </div>
+                        <div className={styles.reviewNote}>
+                          仅比较提示词设定，不代表图片相似度。
+                        </div>
+                        <div className={styles.findings}>
+                          <div>
+                            <h4>重合特征</h4>
+                            <ul>
+                              {pair.sharedFeatures.map((value) => (
+                                <li key={value}>{value}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4>已有差异</h4>
+                            {pair.differences.length ? (
+                              <ul>
+                                {pair.differences.map((value) => (
+                                  <li key={value}>{value}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>未报告明确差异</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className={styles.reviewSection}>
+                          <h4>调整建议</h4>
                           <ul>
-                            {pair.sharedFeatures.map((value) => (
+                            {pair.suggestions.map((value) => (
                               <li key={value}>{value}</li>
                             ))}
                           </ul>
                         </div>
-                        <div>
-                          <h4>已有差异</h4>
-                          {pair.differences.length ? (
-                            <ul>
-                              {pair.differences.map((value) => (
-                                <li key={value}>{value}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p>未报告明确差异</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.reviewSection}>
-                        <h4>调整建议</h4>
-                        <ul>
-                          {pair.suggestions.map((value) => (
-                            <li key={value}>{value}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      {proposal ? (
-                        <div className={styles.reviewSection}>
-                          <h4>{name(characterId ?? 0)} · 脸部对照</h4>
-                          <div className={styles.faceComparison}>
-                            <div>
-                              <span>调整前</span>
-                              <p>{proposal.originalFace}</p>
+                        {proposal ? (
+                          <div className={styles.reviewSection}>
+                            <h4>{name(characterId ?? 0)} · 脸部对照</h4>
+                            <div className={styles.faceComparison}>
+                              <div>
+                                <span>调整前</span>
+                                <p>{proposal.originalFace}</p>
+                              </div>
+                              <div>
+                                <span>调整后</span>
+                                <p>{proposal.face}</p>
+                              </div>
                             </div>
-                            <div>
-                              <span>调整后</span>
-                              <p>{proposal.face}</p>
-                            </div>
+                            {proposal.changes.length ? (
+                              <div className={styles.changes}>
+                                {proposal.changes.map((value) => (
+                                  <span key={value}>
+                                    <CheckOutlined /> {value}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
-                          {proposal.changes.length ? (
-                            <div className={styles.changes}>
-                              {proposal.changes.map((value) => (
-                                <span key={value}>
-                                  <CheckOutlined /> {value}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {analysis.insufficient.length ? (
-                        <div className={styles.reviewSection}>
-                          <h4>待补全 · {analysis.insufficient.length}</h4>
-                          {analysis.insufficient.map((issue) => (
-                            <div
-                              className={styles.issue}
-                              key={issue.characterId}
-                            >
-                              <span>{name(issue.characterId)}</span>
-                              <p>{issue.reason}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </section>
-                  </>
-                ) : (
-                  <div className={styles.empty}>
-                    <CheckOutlined />
-                    <h3>未发现相似角色</h3>
-                    <p>{analysis.summary}</p>
-                  </div>
-                )}
-              </section>
-            </div>
+                        ) : null}
+                        {analysis.insufficient.length ? (
+                          <div className={styles.reviewSection}>
+                            <h4>待补全 · {analysis.insufficient.length}</h4>
+                            {analysis.insufficient.map((issue) => (
+                              <div
+                                className={styles.issue}
+                                key={issue.characterId}
+                              >
+                                <span>{name(issue.characterId)}</span>
+                                <p>{issue.reason}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </section>
+                    </>
+                  ) : (
+                    <div className={styles.empty}>
+                      <CheckOutlined />
+                      <h3>未发现相似角色</h3>
+                      <p>{analysis.summary}</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
           </>
         ) : !busy && !readError ? (
           <div className={styles.empty}>
             <ScanOutlined />
             <h3>{loading ? '加载中…' : '暂无检查结果'}</h3>
-            <p>检查后生成相似结果与修改稿。</p>
+            <p>
+              检查同角色的服装与造型是否重复，同时检查不同角色的外貌相似度。
+            </p>
           </div>
         ) : null}
       </Modal>

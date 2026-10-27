@@ -51,14 +51,21 @@ const completed = {
     ],
   },
 } satisfies CharacterSimilarityStatus;
-const show = (count = 2, onApplied?: () => Promise<unknown>) =>
+const show = (
+  count = 2,
+  onApplied?: () => Promise<unknown>,
+  onInspectVariant?: (characterId: number, variantId: number) => void,
+  canResolveVariants = true,
+) =>
   render(
     <ConfigProvider theme={{ token: { motion: false } }}>
       <App>
         <CharacterPromptSimilarity
           projectId={56}
+          canResolveVariants={canResolveVariants}
           characterCount={count}
           onApplied={onApplied}
+          onInspectVariant={onInspectVariant}
         />
       </App>
     </ConfigProvider>,
@@ -78,10 +85,63 @@ describe('character prompt similarity', () => {
     });
   });
 
+  it('allows viewing results while variant edit permission is denied', async () => {
+    vi.mocked(queryCharacterSimilarity).mockResolvedValue({
+      data: {
+        ...completed,
+        characters: [
+          {
+            id: 11,
+            name: '马强',
+            prompt: '主体提示词',
+            variants: [
+              {
+                id: 21,
+                name: '墨蓝色工装外套',
+                appearance: '墨蓝色',
+                prompt: '工装',
+              },
+              {
+                id: 22,
+                name: '墨蓝工装外套',
+                appearance: '墨蓝色',
+                prompt: '工装',
+              },
+            ],
+          },
+        ],
+        analysis: {
+          ...completed.analysis,
+          variantPairs: [
+            {
+              characterId: 11,
+              leftVariantId: 21,
+              rightVariantId: 22,
+              score: 96,
+              sharedFeatures: [],
+              differences: [],
+              suggestions: [],
+              canResolve: true,
+            },
+          ],
+        },
+      },
+    });
+    show(1, undefined, undefined, false);
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
+    expect(
+      await screen.findByRole('region', { name: '角色形态对照' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: '合并形态' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '保留为不同形态' }),
+    ).toBeDisabled();
+  });
+
   it('only reads previous results when opened and waits for an explicit analysis request', async () => {
     show();
     expect(queryCharacterSimilarity).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '开始检查' })).toBeEnabled(),
     );
@@ -96,7 +156,7 @@ describe('character prompt similarity', () => {
   it('shows similar pairs, source-specific reasons and concrete suggestions', async () => {
     vi.mocked(queryCharacterSimilarity).mockResolvedValue({ data: completed });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(await screen.findByText('马强 / 李明')).toBeInTheDocument();
     expect(screen.getByText('88 分 · 高度相似')).toBeInTheDocument();
     expect(screen.getByText('长窄脸、细直眉')).toBeInTheDocument();
@@ -116,7 +176,7 @@ describe('character prompt similarity', () => {
       },
     });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(await screen.findByText(/设定已变化/)).toBeInTheDocument();
     expect(screen.getByText(/年龄未明确/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新检查' })).toBeEnabled();
@@ -127,7 +187,7 @@ describe('character prompt similarity', () => {
       .mockRejectedValueOnce(new Error('网络连接失败'))
       .mockResolvedValue({ data: completed });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(await screen.findByText('网络连接失败')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '开始检查' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
@@ -140,7 +200,7 @@ describe('character prompt similarity', () => {
       .mockResolvedValueOnce({ data: { status: 'RUNNING', executionId: 99 } })
       .mockResolvedValue({ data: completed });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(await screen.findByText(/关闭后仍会继续/)).toBeInTheDocument();
     await waitFor(
       () => expect(screen.getByText('马强 / 李明')).toBeInTheDocument(),
@@ -149,10 +209,87 @@ describe('character prompt similarity', () => {
     expect(submitCharacterSimilarity).not.toHaveBeenCalled();
   });
 
-  it('requires at least two characters before opening a comparison', () => {
+  it('allows checking multiple variants of a single character', async () => {
     show(1);
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(
-      screen.getByRole('button', { name: '提示词相似度检查' }),
+      await screen.findByRole('button', { name: '开始检查' }),
+    ).toBeEnabled();
+  });
+
+  it('shows duplicate outfits and their original descriptions even without images', async () => {
+    vi.mocked(queryCharacterSimilarity).mockResolvedValue({
+      data: {
+        ...completed,
+        characters: [
+          {
+            id: 11,
+            name: '马强',
+            prompt: '',
+            variants: [
+              {
+                id: 101,
+                name: '墨蓝色工装外套',
+                appearance: '墨蓝色外套搭配黑工装裤',
+                prompt: '',
+              },
+              {
+                id: 102,
+                name: '墨蓝工装外套',
+                appearance: '墨蓝外套搭配黑工装裤',
+                prompt: '',
+              },
+            ],
+          },
+        ],
+        analysis: {
+          ...completed.analysis,
+          pairs: [],
+          revisions: [],
+          variantPairs: [
+            {
+              characterId: 11,
+              leftVariantId: 101,
+              rightVariantId: 102,
+              score: 99,
+              sharedFeatures: ['同一套墨蓝工装，仅描述有一字差异'],
+              differences: [],
+              suggestions: ['核实后保留同一形态'],
+            },
+          ],
+          variantsHasMore: false,
+        },
+      },
+    });
+    const inspect = vi.fn();
+    show(1, undefined, inspect);
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
+    expect(await screen.findByText('墨蓝色工装外套')).toBeInTheDocument();
+    expect(screen.getByText('墨蓝工装外套')).toBeInTheDocument();
+    expect(
+      screen.getByText('同一套墨蓝工装，仅描述有一字差异'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('墨蓝色外套搭配黑工装裤')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: '查看此形态' })[0]);
+    expect(inspect).toHaveBeenCalledWith(11, 101);
+    expect(applyCharacterSimilarityPrompt).not.toHaveBeenCalled();
+  });
+
+  it('requires a new check before presenting a historical report as variant analysis', async () => {
+    vi.mocked(queryCharacterSimilarity).mockResolvedValue({ data: completed });
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: '同角色形态（未检查）' }),
+    );
+    expect(screen.getByText('旧报告未包含形态检查')).toBeInTheDocument();
+    expect(screen.queryByText('未发现疑似重复形态')).not.toBeInTheDocument();
+  });
+
+  it('disables the check when there are no characters', () => {
+    show(0);
+    expect(
+      screen.getByRole('button', { name: '角色形态相似度检查' }),
     ).toBeDisabled();
     expect(queryCharacterSimilarity).not.toHaveBeenCalled();
   });
@@ -160,7 +297,7 @@ describe('character prompt similarity', () => {
   it('provides a complete editable revision, original text and face comparison', async () => {
     vi.mocked(queryCharacterSimilarity).mockResolvedValue({ data: completed });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     const editor = await screen.findByRole('textbox', {
       name: '修改后的角色提示词',
     });
@@ -178,7 +315,7 @@ describe('character prompt similarity', () => {
     vi.mocked(queryCharacterSimilarity).mockResolvedValue({ data: completed });
     const onApplied = vi.fn().mockResolvedValue(undefined);
     show(2, onApplied);
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     const editor = await screen.findByRole('textbox', {
       name: '修改后的角色提示词',
     });
@@ -208,7 +345,7 @@ describe('character prompt similarity', () => {
     );
     const onApplied = vi.fn().mockResolvedValue(undefined);
     show(2, onApplied);
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     const editor = await screen.findByRole('textbox', {
       name: '修改后的角色提示词',
     });
@@ -228,7 +365,7 @@ describe('character prompt similarity', () => {
       },
     });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     expect(await screen.findByText(/报告未含修改稿/)).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '应用到马强' }),
@@ -238,7 +375,7 @@ describe('character prompt similarity', () => {
   it('opens directly in the draft and preserves edits while switching to a single explanation view', async () => {
     vi.mocked(queryCharacterSimilarity).mockResolvedValue({ data: completed });
     show();
-    fireEvent.click(screen.getByRole('button', { name: '提示词相似度检查' }));
+    fireEvent.click(screen.getByRole('button', { name: '角色形态相似度检查' }));
     const editor = await screen.findByRole('textbox', {
       name: '修改后的角色提示词',
     });

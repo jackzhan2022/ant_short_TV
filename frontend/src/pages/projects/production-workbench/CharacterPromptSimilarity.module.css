@@ -556,3 +556,223 @@
     padding-top: 0;
   }
 }
+
+.variantDetail {
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.variantComparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+.variantCard {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--app-color-border, #e7e9f0);
+  border-radius: 8px;
+  background: #fafaff;
+}
+.variantCard h4,
+.variantCard h5 {
+  margin: 0 0 8px;
+}
+.variantCard h5 {
+  margin-top: 16px;
+}
+.variantCard p,
+.variantCard pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.7;
+}
+@media (max-width: 760px) {
+  .variantComparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.variantPairButton {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.variantPairHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+}
+.variantPairNames {
+  font-size: 12px;
+  line-height: 20px;
+  color: #6e718c;
+  overflow-wrap: anywhere;
+}
+.resolutionCount {
+  padding: 4px 0;
+  font-size: 12px;
+  color: #6e718c;
+}
+.resolvedLabel {
+  color: #318165;
+  font-size: 11px;
+  font-weight: 400;
+}
+.variantDetailHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.variantDetailHeading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.similarityBadge {
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: #fff3ed;
+  color: #b76842;
+  font-size: 12px;
+}
+.variantActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 0 0;
+  border-top: 1px solid #edf0f5;
+}
+.resolutionResult {
+  padding: 10px 14px;
+  margin-top: 12px;
+  border-radius: 6px;
+  background: #eff9f3;
+  color: #318165;
+  font-size: 13px;
+}
+.resolutionError {
+  padding: 10px 12px;
+  margin: 12px 0;
+  background: #fff3f1;
+  color: #be493e;
+  border-radius: 6px;
+}
+.mergeCharacter {
+  margin: 18px 0 12px;
+  font-size: 14px;
+}
+.primaryNotice {
+  padding: 10px 12px;
+  background: #f5f3ff;
+  color: #6252bd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.retentionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+.retentionCard {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e4e5ee;
+  border-radius: 8px;
+}
+.retentionSelected {
+  border-color: #8274f5;
+  background: #faf9ff;
+  box-shadow: 0 0 0 1px #8274f5;
+}
+.retentionHint {
+  display: block;
+  min-height: 20px;
+  margin: 5px 0 10px 24px;
+  color: #7667c8;
+  font-size: 12px;
+}
+.retentionImage {
+  display: block;
+  width: 100%;
+  height: 132px;
+  object-fit: contain;
+  background: #f3f2f8;
+  border-radius: 6px;
+}
+.noVariantImage {
+  font-size: 13px;
+  line-height: 20px;
+  display: flex;
+  height: 132px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #f2f1f7;
+  border: 1px dashed #dedce9;
+  border-radius: 6px;
+  color: #9290a8;
+}
+.noVariantImage small {
+  font-size: 11px;
+}
+.retentionPrompt {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #828097;
+}
+.retentionPrompt p {
+  display: -webkit-box;
+  min-height: 44px;
+  margin: 5px 0 0;
+  color: #4e4b65;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.retentionEpisodes {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #6e718c;
+}
+.mergeImpact {
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: #f7f7fb;
+  border: 1px solid #edecf3;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 22px;
+  color: #646079;
+}
+.mergeImpact h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #353147;
+}
+.mergeImpact p {
+  margin: 4px 0;
+}
+.mergeImpact ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+@media (max-width: 640px) {
+  .retentionGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .variantDetailHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

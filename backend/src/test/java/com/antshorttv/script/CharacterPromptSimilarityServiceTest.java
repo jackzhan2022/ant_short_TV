@@ -39,8 +39,10 @@ class CharacterPromptSimilarityServiceTest {
         jdbc = new JdbcTemplate(data);
         jdbc.execute("create table script (id bigint primary key,tenant_id bigint,project_id bigint,current_version_id bigint,deleted_at timestamp)");
         jdbc.execute("create table character_asset (id bigint primary key,tenant_id bigint,project_id bigint,script_id bigint,name varchar(100),prompt text,source varchar(32),updated_at timestamp,merge_target_id bigint,deleted_at timestamp)");
+        jdbc.execute("create table asset_visual_variant (id bigint primary key,tenant_id bigint,project_id bigint,asset_type varchar(32),asset_id bigint,name varchar(100),appearance text,prompt text,is_primary boolean,deleted_at timestamp)");
         jdbc.execute("create table ai_execution_task (id bigint primary key,tenant_id bigint,status varchar(32),error_message text)");
-        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V154__character_prompt_similarity.sql")).execute(data);
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V154__character_prompt_similarity.sql"),
+            new ClassPathResource("db/migration/V165__character_variant_similarity_resolution.sql")).execute(data);
         jdbc.update("insert into script(id,tenant_id,project_id,current_version_id) values(4,1,3,9)");
         jdbc.update("insert into character_asset(id,tenant_id,project_id,script_id,name,prompt) values(11,1,3,4,'角色甲','脸型：长窄脸，细直眉'),(12,1,3,4,'角色乙','脸型：窄长脸，平直细眉')");
         jdbc.update("insert into ai_execution_task values(900,1,'PENDING',null)");
@@ -68,7 +70,7 @@ class CharacterPromptSimilarityServiceTest {
         return """
             {"summary":"两人面部设定接近","pairs":[{"leftId":11,"rightId":12,"score":88,
             "sharedFeatures":["长窄脸、细直眉"],"differences":[],"suggestions":["调整其中一人的下颌与眉眼结构"]}],
-            "insufficient":[],"hasMore":false,"revisions":[]}
+            "insufficient":[],"hasMore":false,"variantPairs":[],"variantsHasMore":false,"revisions":[]}
             """;
     }
     @SuppressWarnings("unchecked")
@@ -77,6 +79,52 @@ class CharacterPromptSimilarityServiceTest {
         when(call.content()).thenReturn(content);
         when(call.response()).thenReturn(new AiTextResponse(content,"request",10,20,30,1L,Map.of()));
         when(invocation.invokeText(any())).thenReturn(call);
+    }
+
+    @Test void checksDuplicateCostumesForASingleCharacterEvenWithoutImagesOrBodyPrompt() {
+        jdbc.update("delete from character_asset where id=12");
+        jdbc.update("update character_asset set prompt='' where id=11");
+        jdbc.update("insert into asset_visual_variant(id,tenant_id,project_id,asset_type,asset_id,name) values(101,1,3,'CHARACTER',11,'墨蓝色工装外套'),(102,1,3,'CHARACTER',11,'墨蓝工装外套')");
+        service.submit(1,3,"variants");
+        modelReturns("{\"summary\":\"检查完成\",\"pairs\":[],\"insufficient\":[],\"hasMore\":false,\"revisions\":[],\"variantPairs\":[],\"variantsHasMore\":false}");
+        service.analyze(operation(),context());
+        var report=service.status(1,3);
+        assertThat(report.path("characters").get(0).path("variants")).hasSize(2);
+        assertThat(report.path("analysis").path("variantPairs")).hasSize(1);
+        assertThat(report.path("analysis").path("variantPairs").get(0).path("characterId").asLong()).isEqualTo(11L);
+        assertThat(report.path("stale").asBoolean()).isFalse();
+        jdbc.update("update asset_visual_variant set name='炭灰工装外套' where id=102");
+        assertThat(service.status(1,3).path("stale").asBoolean()).isTrue();
+    }
+
+    @Test void neverTreatsMatchingClothesAcrossCharactersAsDuplicateVariants() {
+        jdbc.update("insert into asset_visual_variant(id,tenant_id,project_id,asset_type,asset_id,name) values(101,1,3,'CHARACTER',11,'墨蓝色工装外套'),(102,1,3,'CHARACTER',12,'墨蓝工装外套'),(103,2,3,'CHARACTER',11,'不应泄露'),(104,1,30,'CHARACTER',11,'不应泄露'),(105,1,3,'PROP',11,'不应泄露')");
+        service.submit(1,3,"variants");
+        var input=service.status(1,3).path("characters");
+        assertThat(input.get(0).path("variants")).hasSize(1);
+        assertThat(input.get(1).path("variants")).hasSize(1);
+        modelReturns(result());
+        service.analyze(operation(),context());
+        assertThat(service.status(1,3).path("analysis").path("variantPairs")).isEmpty();
+    }
+
+    @Test void includesPrimaryBodyPromptAndIgnoresDeletedVariants() {
+        jdbc.update("insert into asset_visual_variant(id,tenant_id,project_id,asset_type,asset_id,name,is_primary,deleted_at) values(101,1,3,'CHARACTER',11,'默认形态',true,null),(102,1,3,'CHARACTER',11,'旧形态',false,current_timestamp)");
+        service.submit(1,3,"variants");
+        var variants=service.status(1,3).path("characters").get(0).path("variants");
+        assertThat(variants).hasSize(1);
+        assertThat(variants.get(0).path("prompt").asText()).isEqualTo("脸型：长窄脸，细直眉");
+        assertThat(variants.get(0).path("isPrimary").asBoolean()).isTrue();
+        jdbc.update("update asset_visual_variant set deleted_at=current_timestamp where id=101");
+        assertThat(service.status(1,3).path("stale").asBoolean()).isTrue();
+    }
+
+    @Test void rejectsModelVariantPairsWhoseVariantsBelongToDifferentCharacters() {
+        jdbc.update("insert into asset_visual_variant(id,tenant_id,project_id,asset_type,asset_id,name) values(101,1,3,'CHARACTER',11,'墨蓝色工装外套'),(102,1,3,'CHARACTER',12,'墨蓝工装外套')");
+        service.submit(1,3,"variants");
+        modelReturns(result().replace("\"variantPairs\":[]", "\"variantPairs\":[{\"characterId\":11,\"leftVariantId\":101,\"rightVariantId\":102,\"score\":99,\"sharedFeatures\":[\"同套衣服\"],\"differences\":[],\"suggestions\":[\"核实重复\"]}]"));
+        assertThatThrownBy(() -> service.analyze(operation(),context())).isInstanceOf(CharacterPromptSimilarityAnalysis.InvalidResult.class);
+        assertThat(jdbc.queryForObject("select result_json from character_prompt_similarity_check",String.class)).isNull();
     }
 
     @Test void freezesOnlyCurrentProjectCanonicalCharactersAndDetectsLaterEdits() {

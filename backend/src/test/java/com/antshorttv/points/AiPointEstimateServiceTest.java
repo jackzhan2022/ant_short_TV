@@ -131,7 +131,7 @@ class AiPointEstimateServiceTest {
     }
 
     @Test
-    void characterSimilarityQuotesCanonicalPromptsWithoutStartingAnExecution() {
+    void characterSimilarityQuotesPromptsAndVariantsWithoutStartingAnExecution() {
         var configs = (ProjectAiConfigService) org.springframework.test.util.ReflectionTestUtils.getField(service,"configs");
         when(configs.resolveModelId(7L,3L,"TEXT")).thenReturn(9L);
         var router = (AiModelRouter) org.springframework.test.util.ReflectionTestUtils.getField(service,"router");
@@ -149,7 +149,8 @@ class AiPointEstimateServiceTest {
         var result=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects/3/character-prompt-similarity",null)));
 
         assertThat(result.lines()).hasSize(1);
-        assertThat(result.lines().get(0).label()).isEqualTo("角色提示词相似度检查");
+        assertThat(result.lines().get(0).label()).isEqualTo("角色形态相似度检查");
+        verify(jdbc).queryForList(contains("select v.id,v.asset_id,v.name,v.appearance,v.prompt,v.is_primary"),eq(7L),eq(3L));
         var captured=org.mockito.ArgumentCaptor.forClass(AiPointEstimatePlan.class);
         verify(calculator).calculate(eq(7L),captured.capture(),any(AiPointEstimateCalculator.Context.class));
         assertThat(captured.getValue().usage().get(AiUsageMetric.OUTPUT_TOKEN)).isEqualByComparingTo("16384");
