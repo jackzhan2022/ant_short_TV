@@ -29,10 +29,12 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.*;
 
-@SpringBootTest(properties={"ai.execution.dispatcher.fixed-delay-ms=3600000","ai.execution.free-creation-reconcile-ms=3600000","media.free-creation-thumbnail.initial-delay-ms=3600000"})
+@SpringBootTest(properties={"ai.execution.dispatcher.fixed-delay-ms=3600000","ai.execution.free-creation-reconcile-ms=3600000","media.free-creation-thumbnail.initial-delay-ms=3600000","ark.avatar.free-creation-max-attempts=2"})
 @AutoConfigureMockMvc
 class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired MockMvc mvc;
+    @Autowired FreeCreationAvatarRecoveryService avatarRecovery;
+    @Test void appliesConfiguredAutomaticRecoveryLimit() {assertThat(avatarRecovery.maxAttempts()).isEqualTo(2);}
     @Autowired com.antshorttv.rbac.RbacService rbac;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;

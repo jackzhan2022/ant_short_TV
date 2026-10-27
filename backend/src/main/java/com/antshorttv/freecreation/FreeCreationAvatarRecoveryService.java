@@ -8,6 +8,7 @@ import com.antshorttv.execution.AiExecutionService;
 import com.antshorttv.rbac.RbacPermissionService;
 import com.antshorttv.video.SeedanceRealPersonRejection;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.time.*;
 import java.util.*;
@@ -23,6 +24,13 @@ import org.springframework.transaction.annotation.Transactional;
 /** Free creation binding for the shared Seedance ingestion and recovery queue. */
 @Service
 public class FreeCreationAvatarRecoveryService {
+    public static final int HARD_MAX_ATTEMPTS=5;
+    public static final int DEFAULT_MAX_ATTEMPTS=3;
+    private final ObjectMapper snapshots=new ObjectMapper();
+    private int maxAttempts=DEFAULT_MAX_ATTEMPTS;
+    @Value("${ark.avatar.free-creation-max-attempts:3}")
+    public void setMaxAttempts(int value) {maxAttempts=Math.max(1,Math.min(HARD_MAX_ATTEMPTS,value));}
+    public int maxAttempts() {return maxAttempts;}
     private final JdbcTemplate jdbc;
     private final FreeCreationMapper creations;
     private final AiExecutionService executions;
@@ -36,24 +44,56 @@ public class FreeCreationAvatarRecoveryService {
         this.permissions=permissions;this.enabled=enabled;
     }
     public void enqueue(FreeCreationEntity source,String error) {
-        if(!enabled || source.avatarRecoverySourceCreationId!=null || !"VIDEO".equals(source.mediaType)
+        if(!enabled || !"VIDEO".equals(source.mediaType)
             || !VolcengineProviderCodes.isArk(source.providerCode) || !SeedanceRealPersonRejection.matches(error)
             || source.videoRequestSnapshotJson==null) return;
+        int attempt=nextAttempt(source);
+        if(attempt<1 || attempt>maxAttempts || !canPrepareNewImage(source.videoRequestSnapshotJson,error))return;
         try {
             jdbc.update("insert into seedance_avatar_recovery(source_creation_id,tenant_id,created_by,prepared_snapshot_json,source_error_message,next_poll_at,deadline_at) values(?,?,?,?,?,now(),?)",
                 source.id,source.tenantId,source.creatorId,source.videoRequestSnapshotJson,safe(error,2000),LocalDateTime.now().plusDays(1));
-        } catch(DuplicateKeyException duplicate) { /* One automatic child per original creation. */ }
+        } catch(DuplicateKeyException duplicate) { /* At most one automatic child per failed attempt. */ }
     }
     public FreeCreationEntity requireSource(Map<String,Object> job) {
         var source=creations.selectById(((Number)job.get("source_creation_id")).longValue());
         if(source==null || !source.tenantId.equals(((Number)job.get("tenant_id")).longValue())
             || !source.creatorId.equals(((Number)job.get("created_by")).longValue())
-            || source.avatarRecoverySourceCreationId!=null || !"VIDEO".equals(source.mediaType)
+            || !"VIDEO".equals(source.mediaType)
             || !VolcengineProviderCodes.isArk(source.providerCode)) throw new IllegalStateException("原自由创作视频不存在或不支持自动恢复。");
+        requireRecoveryBudget(source);
         String status=executions.requireTask(source.executionId).status;
         if(Set.of("PENDING","RUNNING").contains(status)) throw new ArkAssetPool.Waiting("正在确认原视频任务结果，请稍候。");
         if(!"FAILED".equals(status)) throw new IllegalStateException("原视频状态已变化，自动恢复已停止。");
         return source;
+    }
+    public void requireRecoveryBudget(FreeCreationEntity source) {
+        int attempt=nextAttempt(source);
+        if(attempt<1)throw new IllegalStateException("原任务关联链不可用，自动恢复已停止。");
+        if(attempt>maxAttempts)throw new BusinessException(ErrorCode.VALIDATION_ERROR,"已达到自动恢复上限 "+maxAttempts+" 轮。");
+    }
+    private int nextAttempt(FreeCreationEntity source) {
+        if(source==null || source.id==null || source.tenantId==null || source.creatorId==null)return 0;
+        var seen=new HashSet<Long>();var current=source;int attempt=1;
+        while(true) {
+            if(!seen.add(current.id) || !"VIDEO".equals(current.mediaType) || !VolcengineProviderCodes.isArk(current.providerCode))return 0;
+            if(current.avatarRecoverySourceCreationId==null)return attempt;
+            if(attempt>HARD_MAX_ATTEMPTS)return 0;
+            Long parentId=current.avatarRecoverySourceCreationId;var parent=creations.selectById(parentId);
+            if(parent==null || !parentId.equals(parent.id) || !source.tenantId.equals(parent.tenantId) || !source.creatorId.equals(parent.creatorId))return 0;
+            current=parent;attempt++;
+        }
+    }
+    private boolean canPrepareNewImage(String snapshot,String error) {
+        try {
+            Set<Integer> rejected=SeedanceRealPersonRejection.rejectedContentIndices(error);int index=0;
+            for(JsonNode item:snapshots.readTree(snapshot).path("references")) {
+                index++;var reference=item.path("reference");
+                if(!"IMAGE".equalsIgnoreCase(reference.path("mediaType").asText()) || item.path("avatarPrepared").asBoolean())continue;
+                String type=reference.path("assetType").asText("");
+                if(rejected.isEmpty()?(type.isBlank() || "CHARACTER".equalsIgnoreCase(type)):rejected.contains(index))return true;
+            }
+        } catch(Exception invalidSnapshot) {return false;}
+        return false;
     }
     @Transactional
     public Long createRetry(long id,String token,JsonNode snapshot) {
@@ -84,6 +124,8 @@ public class FreeCreationAvatarRecoveryService {
         for(String key:List.of("id","status","phase"))result.put(key,row.get(key));
         result.put("retryCreationId",row.get("retry_creation_id"));result.put("errorMessage",row.get("error_message"));
         String status=(String)row.get("retry_status");
+        var sourceCreation=creations.selectById(source);
+        result.put("attempt",Math.max(1,nextAttempt(sourceCreation)));result.put("maxAttempts",maxAttempts);
         result.put("retryStatus",status==null?null:"PENDING".equals(status)?"QUEUED":"TIMED_OUT".equals(status)?"FAILED":status);
         return result;
     }

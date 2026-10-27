@@ -1182,3 +1182,8 @@
 	font: inherit;
 	cursor: pointer;
 }
+
+.recoveryRound {
+  color: var(--app-color-text-tertiary);
+  font-size: 10px;
+}

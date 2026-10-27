@@ -45,7 +45,7 @@ class FreeCreationLogicalStateTest {
     @AfterEach void close() {jdbc.execute("shutdown");}
     FreeCreationEntity record(long id,long execution,Long parent) {
         var row=new FreeCreationEntity();row.id=id;row.tenantId=1L;row.creatorId=2L;row.executionId=execution;row.mediaType="VIDEO";
-        row.avatarRecoverySourceCreationId=parent;row.parametersJson="{}";row.prompt="视频";row.createdAt=LocalDateTime.now();records.put(id,row);
+        row.avatarRecoverySourceCreationId=parent;row.providerCode="VOLCENGINE_ARK";row.parametersJson="{}";row.prompt="视频";row.createdAt=LocalDateTime.now();records.put(id,row);
         jdbc.update("insert into free_creation values(?,1,2,?,'VIDEO','视频',null,?,?)",id,execution,row.createdAt,parent);return row;
     }
     void task(long id,String status,String phase) {
@@ -55,6 +55,21 @@ class FreeCreationLogicalStateTest {
     void recovered(String childStatus) {
         jdbc.update("update seedance_avatar_recovery set status='SUCCEEDED',retry_creation_id=4,phase='已创建关联重试视频' where id=1");task(11,childStatus,"QUERY");
     }
+    @Test void followsASecondPreparationAndItsResultInTheSameRootCardAndFilters() {
+        recovered("FAILED");var next=record(5,12,4L);task(12,"PENDING","SUBMIT");
+        jdbc.update("insert into seedance_avatar_recovery values(2,4,1,'PENDING','第二轮准备',null,null)");
+        assertThat(service.present(context,root)).containsEntry("status","RUNNING").containsEntry("phase","AVATAR_PREPARING");
+        assertThat(service.list(1L,"mine","VIDEO","RUNNING",null,1,20)).containsEntry("total",1L);
+        jdbc.update("update seedance_avatar_recovery set status='SUCCEEDED',retry_creation_id=5 where id=2");task(12,"SUCCEEDED","STORE");
+        output.creationId=5L;when(media.items(4L,"OUTPUT")).thenReturn(List.of());when(media.items(5L,"OUTPUT")).thenReturn(List.of(output));
+        var done=service.present(context,root);
+        assertThat(done).containsEntry("id",3L).containsEntry("status","SUCCEEDED").containsEntry("taskKey","FREE_CREATION:5");
+        assertThat(((Map<?,?>)done.get("avatarRecovery")).get("attempt")).isEqualTo(2);
+        assertThat(service.list(1L,"mine","VIDEO","SUCCEEDED",null,1,20)).containsEntry("total",1L);
+        assertThat(service.list(1L,"mine",null,null,null,1,20)).containsEntry("total",1L);
+        assertThat(service.download(1L,3L,30L)).containsEntry("url","/download.mp4");
+    }
+
     @Test void preservesTheOriginalCardAcrossPreparationRetryAndCompletion() {
         var preparing=service.present(context,root);
         assertThat(preparing).containsEntry("id",3L).containsEntry("status","RUNNING").containsEntry("phase","AVATAR_PREPARING").containsEntry("errorMessage",null);

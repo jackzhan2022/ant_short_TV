@@ -109,9 +109,7 @@ public class SeedanceAvatarRecoveryService {
         }
     }
     private List<JsonNode> eligibleImages(JsonNode snapshot,String error) {
-        Set<Integer> rejected=new HashSet<>();
-        var matcher=java.util.regex.Pattern.compile("content\\[(\\d{1,9})\\]").matcher(error==null?"":error);
-        while(matcher.find())rejected.add(Integer.parseInt(matcher.group(1)));
+        Set<Integer> rejected=SeedanceRealPersonRejection.rejectedContentIndices(error);
         var result=new ArrayList<JsonNode>();int contentIndex=0;
         for(JsonNode item:snapshot.path("references")) {
             contentIndex++;

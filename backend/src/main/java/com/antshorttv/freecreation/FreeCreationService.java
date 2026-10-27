@@ -127,10 +127,12 @@ public class FreeCreationService {
     @Transactional
     public Long createAvatarRecovery(Long tenantId,Long sourceId,String requestId,JsonNode snapshot) {
         var context=authorize(tenantId);var source=requireControl(context,sourceId);
-        if(!"VIDEO".equals(source.mediaType) || source.avatarRecoverySourceCreationId!=null
+        if(!"VIDEO".equals(source.mediaType)
             || !"FAILED".equals(executions.requireTask(source.executionId).status)
             || !VolcengineProviderCodes.isArk(router.route(source.modelId,"VIDEO").provider().getCode()))
             throw invalid("原视频状态或模型已变化，无法自动恢复。");
+        if(avatarRecovery==null)throw invalid("自动恢复服务不可用。");
+        avatarRecovery.requireRecoveryBudget(source);
         return ((Number)create(context,resubmission(source,requestId),sourceId,snapshot).get("id")).longValue();
     }
 
@@ -307,10 +309,7 @@ public class FreeCreationService {
         if(status!=null && !Set.of("QUEUED","RUNNING","SUCCEEDED","FAILED","CANCELED").contains(status)) throw invalid("任务状态无效。");
         if(current<1 || pageSize<1 || pageSize>100 || current>100000) throw invalid("分页参数无效。");
         String base=" from free_creation f join ai_execution_task e on e.id=f.execution_id left join app_user u on u.id=f.creator_id"
-            +" left join seedance_avatar_recovery ar on ar.source_creation_id=f.id and ar.tenant_id=f.tenant_id"
-            +" left join free_creation rf on rf.id=ar.retry_creation_id and rf.tenant_id=f.tenant_id and rf.creator_id=f.creator_id and rf.avatar_recovery_source_creation_id=f.id and rf.media_type='VIDEO'"
-            +" left join ai_execution_task re on re.id=rf.execution_id and re.tenant_id=f.tenant_id"
-            +" where f.tenant_id=? and f.avatar_recovery_source_creation_id is null";
+            +RECOVERY_JOINS+" where f.tenant_id=? and f.avatar_recovery_source_creation_id is null";
         List<Object> args=new ArrayList<>(List.of(tenantId));
         if("mine".equals(scope)) { base+=" and f.creator_id=?"; args.add(context.userId()); }
         if(type!=null) {base+=" and f.media_type=?";args.add(type);}
@@ -328,8 +327,10 @@ public class FreeCreationService {
     }
     public Map<String,Object> download(Long tenantId,Long id,Long outputId) {
         var context=authorize(tenantId); var creation=require(context,id);
-        var recovery=avatarRecovery==null?null:avatarRecovery.get(tenantId,id);
-        if(recovery!=null && "SUCCEEDED".equals(recovery.get("status"))) {
+        for(int depth=0;avatarRecovery!=null;depth++) {
+            var recovery=avatarRecovery.get(tenantId,creation.id);
+            if(recovery==null || !"SUCCEEDED".equals(recovery.get("status")))break;
+            if(depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS)throw new BusinessException(ErrorCode.NOT_FOUND,"关联视频链超过安全上限。");
             creation=linkedCreation(context,creation,recovery);
             if(creation==null)throw new BusinessException(ErrorCode.NOT_FOUND,"关联视频不可用。");
         }
@@ -338,7 +339,8 @@ public class FreeCreationService {
         if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !tenantId.equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
         return Map.of("url",media.grant(context,output,false),"fileName",output.fileName);
     }
-    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {
+    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0);}
+    private Map<String,Object> present(TenantContext context,FreeCreationEntity item,int depth) {
         var task=executions.requireTask(item.executionId); Map<String,Object> result=new LinkedHashMap<>();
         result.put("id",item.id); result.put("executionId",item.executionId); result.put("mediaType",item.mediaType);
         result.put("status",status(task,item));result.put("phase",task.phase);result.put("prompt",item.prompt);result.put("creatorId",item.creatorId);
@@ -361,11 +363,12 @@ public class FreeCreationService {
                 result.put("errorMessage",null);result.put("allowedActions",List.of());
             } else if("SUCCEEDED".equals(recovery.get("status"))) {
                 var linked=linkedCreation(context,item,recovery);
-                if(linked==null) {
+                if(linked==null || depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS) {
                     result.put("status","FAILED");result.put("errorMessage","关联视频不可用，请查看任务记录。");result.put("allowedActions",List.of());
                 } else {
-                    var current=present(context,linked);
+                    var current=present(context,linked,depth+1);
                     for(String key:List.of("executionId","phase","taskKey","allowedActions","outputs","errorMessage"))result.put(key,current.get(key));
+                    if(current.get("avatarRecovery")!=null)result.put("avatarRecovery",current.get("avatarRecovery"));
                     result.put("status","QUEUED".equals(current.get("status"))?"RUNNING":current.get("status"));
                 }
             } else if("FAILED".equals(recovery.get("status"))) {
@@ -405,10 +408,27 @@ public class FreeCreationService {
         if("PENDING".equals(task.status)) return item.providerStartedAt==null?"QUEUED":"RUNNING";
         return "TIMED_OUT".equals(task.status)?"FAILED":task.status;
     }
-    private static final String BASE_STATUS_SQL="case when e.status='PENDING' then case when f.provider_started_at is null then 'QUEUED' else 'RUNNING' end when e.status='TIMED_OUT' then 'FAILED' else e.status end";
-    private static final String STATUS_SQL="case when ar.status in ('PENDING','RUNNING') then 'RUNNING' when ar.status='FAILED' then 'FAILED'"
-        +" when ar.status='SUCCEEDED' then case when re.id is null then 'FAILED' when re.status in ('PENDING','RUNNING') then 'RUNNING' when re.status='TIMED_OUT' then 'FAILED' else re.status end"
-        +" else "+BASE_STATUS_SQL+" end";
+    private static final String RECOVERY_JOINS=recoveryJoins();
+    private static final String STATUS_SQL=logicalStatusSql(0);
+    private static String recoveryJoins() {
+        var sql=new StringBuilder();
+        for(int depth=0;depth<FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS;depth++) {
+            String source=depth==0?"f":"rf"+depth;String recovery="ar"+depth;String child="rf"+(depth+1);String execution="re"+(depth+1);
+            sql.append(" left join seedance_avatar_recovery ").append(recovery).append(" on ").append(recovery).append(".source_creation_id=").append(source).append(".id and ").append(recovery).append(".tenant_id=f.tenant_id");
+            sql.append(" left join free_creation ").append(child).append(" on ").append(child).append(".id=").append(recovery).append(".retry_creation_id and ").append(child).append(".tenant_id=f.tenant_id and ").append(child).append(".creator_id=f.creator_id and ").append(child).append(".avatar_recovery_source_creation_id=").append(source).append(".id and ").append(child).append(".media_type='VIDEO'");
+            sql.append(" left join ai_execution_task ").append(execution).append(" on ").append(execution).append(".id=").append(child).append(".execution_id and ").append(execution).append(".tenant_id=f.tenant_id");
+        }
+        return sql.toString();
+    }
+    private static String logicalStatusSql(int depth) {
+        String creation=depth==0?"f":"rf"+depth;String execution=depth==0?"e":"re"+depth;
+        String pending=depth==0?"case when "+creation+".provider_started_at is null then 'QUEUED' else 'RUNNING' end":"'RUNNING'";
+        String base="case when "+execution+".status='PENDING' then "+pending+" when "+execution+".status='TIMED_OUT' then 'FAILED' else "+execution+".status end";
+        if(depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS)return base;
+        String recovery="ar"+depth;String childExecution="re"+(depth+1);
+        return "case when "+recovery+".status in ('PENDING','RUNNING') then 'RUNNING' when "+recovery+".status='FAILED' then 'FAILED'"
+            +" when "+recovery+".status='SUCCEEDED' then case when "+childExecution+".id is null then 'FAILED' else "+logicalStatusSql(depth+1)+" end else "+base+" end";
+    }
     public JsonNode read(String value) { try {return value==null?json.createObjectNode():json.readTree(value);}catch(Exception ex){throw invalid("模型或任务参数无法读取。");} }
     private void defaultValue(ObjectNode node,String key,Object value) { if(!node.hasNonNull(key)) node.set(key,json.valueToTree(value)); }
     private void allow(ObjectNode params,Set<String> allowed) { params.fieldNames().forEachRemaining(key->{if(!allowed.contains(key))throw invalid("不支持的生成参数："+key);}); }

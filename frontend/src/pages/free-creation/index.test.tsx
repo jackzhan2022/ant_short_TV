@@ -119,6 +119,15 @@ beforeEach(() => {
 });
 
 describe('自由创作页面', () => {
+  it('shows the current automatic recovery round on the original generating card', async () => {
+    const item = { id: 9, mediaType: 'VIDEO', status: 'RUNNING', phase: 'AVATAR_PREPARING', prompt: '第二轮补充图片', creatorId: 1, creatorName: '作者',
+      createdAt: '2026-10-27T19:08:13', modelId: 2, modelName: '视频模型', parameters: {}, references: [], outputs: [],
+      avatarRecovery: { status: 'RUNNING', phase: '等待新参考图处理', attempt: 2, maxAttempts: 3 } };
+    mocks.list.mockResolvedValue({ records: [item], total: 1, current: 1, pageSize: 10 });
+    render(<FreeCreationPage />);
+    expect(await screen.findByRole('status', { name: '智能虚拟化中：第二轮补充图片' })).toHaveTextContent('自动恢复第 2 / 3 轮');
+  });
+
   it('shows avatar preparation in the original card and details without a failure or cancel action', async () => {
     const record = { id: 9, mediaType: 'VIDEO', status: 'RUNNING', phase: 'AVATAR_PREPARING', prompt: '连续视频流程', creatorId: 1, creatorName: '作者',
       createdAt: '2026-10-27T10:00:00', modelId: 2, modelName: '视频模型', parameters: {}, references: [], outputs: [], allowedActions: [],

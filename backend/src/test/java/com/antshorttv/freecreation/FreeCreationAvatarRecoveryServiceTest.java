@@ -60,12 +60,63 @@ class FreeCreationAvatarRecoveryServiceTest {
         recovery.enqueue(source,"InputImageSensitiveContentDetected: content[1] image may contain real person");
         return jdbc.queryForObject("select id from seedance_avatar_recovery where source_creation_id=11",Long.class);
     }
+    FreeCreationEntity child(long id,FreeCreationEntity parent,String snapshot) {
+        var next=new FreeCreationEntity();next.id=id;next.tenantId=parent.tenantId;next.creatorId=parent.creatorId;
+        next.executionId=id+1000;next.mediaType="VIDEO";next.providerCode="VOLCENGINE_ARK";
+        next.avatarRecoverySourceCreationId=parent.id;next.videoRequestSnapshotJson=snapshot;
+        when(creations.selectById(id)).thenReturn(next);
+        var task=new AiExecutionTaskEntity();task.status="FAILED";when(executions.requireTask(next.executionId)).thenReturn(task);return next;
+    }
+    @Test void continuesNewlyRejectedImagesInASecondRoundAndRetainsAlreadyPreparedImages() throws Exception {
+        long first=enqueue();
+        var second=child(31L,source,"{\"references\":[{\"reference\":{\"mediaType\":\"IMAGE\"},\"objectStoragePath\":\"newly-rejected.png\"},{\"reference\":{\"mediaType\":\"IMAGE\"},\"providerAssetId\":\"asset-previous\",\"avatarPrepared\":true}]}");
+        recovery.enqueue(second,"InputImageSensitiveContentDetected: content[1] image may contain real person");
+        recovery.enqueue(second,"InputImageSensitiveContentDetected: content[1] image may contain real person");
+        long id=jdbc.queryForObject("select id from seedance_avatar_recovery where source_creation_id=31",Long.class);
+        assertThat(recovery.get(12L,31L)).containsEntry("attempt",2).containsEntry("maxAttempts",3);
+        when(pool.prepareFreeCreationImage(eq(id),eq(12L),any(),eq("newly-rejected.png"),any(),any())).thenReturn(new ArkAssetPool.PreparedAsset(2L,"asset-next","Active"));
+        when(free.createAvatarRecovery(eq(12L),eq(31L),anyString(),any())).thenAnswer(call->{assertThat(call.getArgument(3).toString()).contains("asset-previous","asset-next");return 32L;});
+        worker.process(id);worker.process(id);
+        verify(pool,times(1)).prepareFreeCreationImage(eq(id),eq(12L),any(),eq("newly-rejected.png"),any(),any());
+        verify(free,times(1)).createAvatarRecovery(eq(12L),eq(31L),anyString(),any());
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery where source_creation_id=31",Integer.class)).isEqualTo(1);
+    }
+    @Test void stopsAtConfiguredLimitAndNeverRepeatsAnAlreadyPreparedRejection() {
+        var first=child(31L,source,source.videoRequestSnapshotJson);
+        var second=child(32L,first,source.videoRequestSnapshotJson);
+        var third=child(33L,second,source.videoRequestSnapshotJson);
+        recovery.enqueue(first,"content[1] image may contain realperson");recovery.enqueue(second,"content[1] image may contain realperson");
+        recovery.enqueue(third,"content[1] image may contain realperson");
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isEqualTo(2);
+        first.videoRequestSnapshotJson="{\"references\":[{\"reference\":{\"mediaType\":\"IMAGE\"},\"providerAssetId\":\"asset-done\",\"avatarPrepared\":true}]}";
+        var noProgress=child(34L,source,first.videoRequestSnapshotJson);recovery.enqueue(noProgress,"content[1] image may contain realperson");
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isEqualTo(2);
+    }
+    @Test void configuredBudgetAppliesToTheWholeChainAndHasAHardSafetyCeiling() {
+        recovery.setMaxAttempts(1);enqueue();
+        var child=child(31L,source,source.videoRequestSnapshotJson);recovery.enqueue(child,"content[1] image may contain realperson");
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isEqualTo(1);
+        assertThat(recovery.get(12L,11L)).containsEntry("maxAttempts",1);
+        recovery.setMaxAttempts(99);assertThat(recovery.maxAttempts()).isEqualTo(5);
+        var cursor=child;for(long id=32;id<=35;id++)cursor=child(id,cursor,source.videoRequestSnapshotJson);
+        recovery.enqueue(cursor,"content[1] image may contain realperson");
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isEqualTo(1);
+        assertThatThrownBy(()->recovery.requireRecoveryBudget(creations.selectById(35L))).hasMessageContaining("5 轮");
+    }
+
+    @Test void rejectsCrossTenantParentsAndCyclesInsteadOfAdmittingMoreRounds() {
+        var invalid=child(31L,source,source.videoRequestSnapshotJson);invalid.tenantId=99L;
+        recovery.enqueue(invalid,"content[1] image may contain realperson");
+        invalid.tenantId=12L;invalid.avatarRecoverySourceCreationId=31L;recovery.enqueue(invalid,"content[1] image may contain realperson");
+        assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isZero();
+    }
+
     @Test void admissionIsIdempotentAndOnlyExplicitArkImageRejectionsQualify() {
         long id=enqueue();enqueue();
         assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery",Integer.class)).isEqualTo(1);
         assertThat(recovery.get(99L,11L)).isNull();
         assertThat(jdbc.queryForObject("select prepared_snapshot_json from seedance_avatar_recovery where id=?",String.class,id)).contains("original.png");
-        source.id=21L;source.avatarRecoverySourceCreationId=11L;recovery.enqueue(source,"image may contain realperson");
+        source.id=21L;source.avatarRecoverySourceCreationId=99999L;recovery.enqueue(source,"image may contain realperson");
         source.avatarRecoverySourceCreationId=null;recovery.enqueue(source,"input image rejected");
         recovery.enqueue(source,"InputVideoSensitiveContentDetected: input video may contain realperson");
         recovery.enqueue(source,"OutputVideoSensitiveContentDetected: output may contain realperson");
@@ -113,10 +164,13 @@ class FreeCreationAvatarRecoveryServiceTest {
         when(videoService.videoAuthorizedUsage(any(),eq(5))).thenReturn(Map.of(com.antshorttv.accounting.AiUsageMetric.OUTPUT_TOKEN,java.math.BigDecimal.TEN));
         when(videoService.videoDimensions(any())).thenReturn(Map.of("resolution","720p"));
         var saved=new java.util.concurrent.atomic.AtomicReference<FreeCreationEntity>();
-        doAnswer(call->{var row=call.getArgument(0,FreeCreationEntity.class);row.id=31L;saved.set(row);return 1;}).when(creations).insert(any(FreeCreationEntity.class));
+        var creationIds=new java.util.concurrent.atomic.AtomicLong(31L);
+        doAnswer(call->{var row=call.getArgument(0,FreeCreationEntity.class);row.id=creationIds.getAndIncrement();saved.set(row);return 1;}).when(creations).insert(any(FreeCreationEntity.class));
         var execution=new AiExecutionTaskEntity();execution.id=41L;execution.status="PENDING";when(executions.requireTask(41L)).thenReturn(execution);
         when(executions.createWithReservation(any(),anyMap(),anyMap())).thenAnswer(call->{
-            var command=call.getArgument(0,AiExecutionCreateCommand.class);assertThat(command.projectId()).isNull();assertThat(command.scene()).isEqualTo("free_creation_video");return execution;
+            var command=call.getArgument(0,AiExecutionCreateCommand.class);assertThat(command.projectId()).isNull();assertThat(command.scene()).isEqualTo("free_creation_video");
+            if(saved.get().id==31L)return execution;
+            var next=new AiExecutionTaskEntity();next.id=42L;next.status="PENDING";when(executions.requireTask(42L)).thenReturn(next);return next;
         });
         var urls=mock(ModelAccessibleVideoUrlResolver.class);when(urls.refreshSnapshotUrls(any())).thenAnswer(call->call.getArgument(0));
         try(var factory=jakarta.validation.Validation.buildDefaultValidatorFactory()) {
@@ -129,6 +183,11 @@ class FreeCreationAvatarRecoveryServiceTest {
             assertThat(saved.get().executionId).isEqualTo(41L);
             assertThat(actual.videoTask(saved.get(),true).requestSnapshotJson).contains("asset-1","original.png");
             verify(pool).pinFreeCreation(31L,snapshot);assertThat(executions.requireTask(14L).status).isEqualTo("FAILED");
+            var firstChild=saved.get();when(creations.selectById(31L)).thenReturn(firstChild);when(media.items(31L,"REFERENCE")).thenReturn(List.of(image));execution.status="FAILED";
+            assertThat(actual.createAvatarRecovery(12L,31L,"avatar-recovery-2",snapshot)).isEqualTo(32L);
+            assertThat(saved.get().avatarRecoverySourceCreationId).isEqualTo(31L);assertThat(saved.get().executionId).isEqualTo(42L);
+            verify(pool).pinFreeCreation(32L,snapshot);verify(executions,times(2)).createWithReservation(any(),anyMap(),anyMap());
+            assertThat(executions.requireTask(41L).status).isEqualTo("FAILED");
         }
     }
 

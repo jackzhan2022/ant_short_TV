@@ -363,6 +363,9 @@ export default function Records({
                     >
                       <Spin />
                       <span>{virtualizing(record) ? '智能虚拟化中' : record.status === 'QUEUED' ? '排队等待中' : `${record.mediaType === 'IMAGE' ? '图片' : '视频'}生成中`}</span>
+                      {record.avatarRecovery?.attempt && record.avatarRecovery.maxAttempts ? (
+                        <span className={styles.recoveryRound}>自动恢复第 {record.avatarRecovery.attempt} / {record.avatarRecovery.maxAttempts} 轮</span>
+                      ) : null}
                     </span>
                   ) : preparingThumbnail(record) && !record.outputs[0]?.thumbnailUrl ? (
                     <span className={styles.generatingPreview} role="status" aria-label={`缩略图准备中：${record.prompt}`}>

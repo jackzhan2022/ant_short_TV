@@ -24,6 +24,7 @@ export default function AvatarRecoveryNotice({
       data-pending={avatarRecoveryPending(recovery)}
     >
       <span>
+        {recovery.attempt && recovery.maxAttempts ? `自动恢复第 ${recovery.attempt} / ${recovery.maxAttempts} 轮 · ` : ''}
         {recovery.status === 'FAILED'
           ? `虚拟人像自动处理未完成：${recovery.errorMessage || recovery.phase}`
           : `${recovery.phase}${recovery.retryStatus ? ` · ${labels[recovery.retryStatus]}` : ''}`}
