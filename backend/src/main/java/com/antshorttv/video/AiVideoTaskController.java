@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/projects/{projectId}")
 public class AiVideoTaskController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private SeedanceAvatarRecoveryService avatarRecovery;
     private final AiVideoTaskService aiVideoTaskService;
 
     public AiVideoTaskController(AiVideoTaskService aiVideoTaskService) {
@@ -55,6 +57,13 @@ public class AiVideoTaskController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(aiVideoTaskService.detail(tenantId(request), projectId, taskId));
+    }
+
+    @GetMapping("/ai-video-tasks/{taskId}/avatar-recovery")
+    @RequireProjectPermission("AI_VIDEO_TASK:VIEW")
+    public ApiResponse<java.util.Map<String,Object>> avatarRecovery(@PathVariable Long projectId,@PathVariable Long taskId,HttpServletRequest request) {
+        aiVideoTaskService.detail(tenantId(request),projectId,taskId);
+        return ApiResponse.success(avatarRecovery.get(tenantId(request),projectId,taskId));
     }
 
     @PostMapping("/ai-video-tasks/{taskId}/poll")

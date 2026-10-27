@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 @TableName("ai_video_task")
 public class AiVideoTaskEntity {
     public Long executionId;
+    public Long avatarRecoverySourceTaskId;
     @TableId(type = IdType.AUTO)
     public Long id;
     public Long tenantId;

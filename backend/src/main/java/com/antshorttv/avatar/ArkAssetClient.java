@@ -36,6 +36,43 @@ public class ArkAssetClient {
             "请配置素材库 ARK_ASSET_ACCESS_KEY 和 ARK_ASSET_SECRET_KEY（AK/SK），推理 API Key 不能用于素材入库。");
     }
     public String project() { return project; }
+    public boolean configured() { return !ak.isBlank() && !sk.isBlank(); }
+    public List<JsonNode> listAssets(String projectName) throws Exception { return list("ListAssets", projectName); }
+    public List<JsonNode> listGroups(String projectName) throws Exception { return list("ListAssetGroups", projectName); }
+    private List<JsonNode> list(String action, String projectName) throws Exception {
+        var result = new LinkedHashMap<String,JsonNode>();
+        for(String groupType:List.of("AIGC","LivenessFace")) {
+            int received=0;
+            boolean complete=false;
+            for (int page = 1; page <= 100; page++) {
+                JsonNode body = call(action, Map.of("ProjectName", projectName, "PageNumber", page, "PageSize", 100,
+                    "Filter", Map.of("GroupType", groupType)));
+                JsonNode items = body.path("Items");
+                if (!items.isArray() || !body.path("TotalCount").canConvertToInt())
+                    throw new ProviderException("INVALID_INVENTORY", false);
+                int total=body.path("TotalCount").intValue();
+                if(total<0)throw new ProviderException("INVALID_INVENTORY_COUNT",false);
+                for(JsonNode item:items) {
+                    if(item.path("Id").asText().isBlank())throw new ProviderException("INVALID_INVENTORY_ID",false);
+                    result.put(item.path("Id").asText(),item);
+                }
+                received+=items.size();
+                if(received>=total) {complete=true;break;}
+                if(items.isEmpty())throw new ProviderException("INCOMPLETE_INVENTORY",false);
+            }
+            if(!complete)throw new ProviderException("INVENTORY_PAGE_LIMIT",false);
+        }
+        return new ArrayList<>(result.values());
+    }
+    public void deleteAsset(String projectName, String id) throws Exception {
+        call("DeleteAsset", Map.of("ProjectName", projectName, "Id", id));
+    }
+    public void deleteGroup(String projectName, String id) throws Exception {
+        call("DeleteAssetGroup", Map.of("ProjectName", projectName, "Id", id));
+    }
+    public Asset getAsset(String projectName, String id) throws Exception {
+        return asset(call("GetAsset", Map.of("ProjectName", projectName, "Id", id)));
+    }
     public String createGroup(String name) throws Exception {
         return id(call("CreateAssetGroup",Map.of("Name",limit(name,64),"GroupType","AIGC")));
     }
@@ -59,7 +96,7 @@ public class ArkAssetClient {
     }
     private JsonNode call(String action,Map<String,Object> fields) throws Exception {
         requireConfigured();
-        var payload=new LinkedHashMap<>(fields);payload.put("ProjectName",project);
+        var payload=new LinkedHashMap<>(fields);payload.putIfAbsent("ProjectName",project);
         byte[] body=json.writeValueAsBytes(payload);
         String query="Action="+action+"&Version=2024-01-01";
         String date=DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC).format(Instant.now());
@@ -76,7 +113,7 @@ public class ArkAssetClient {
         var response=http.send(request,HttpResponse.BodyHandlers.ofString());
         JsonNode root;
         try { root=json.readTree(response.body()); } catch(Exception e) {throw new ProviderException("INVALID_RESPONSE_"+response.statusCode(),false);}
-        if(root==null) throw new ProviderException("EMPTY_RESPONSE",false);
+        if(root==null || !root.isObject()) throw new ProviderException("INVALID_RESPONSE",false);
         var error=root.path("ResponseMetadata").path("Error");
         if(response.statusCode()!=200 || !error.isMissingNode() && !error.isNull())
             throw new ProviderException(safeCode(error.path("Code").asText("HTTP_"+response.statusCode())),response.statusCode()<500 && !error.path("Code").asText().isBlank());

@@ -99,4 +99,21 @@ class VirtualAvatarServiceTest {
         assertThat(service.due()).containsSubsequence(second,first);
     }
 
+    @Test void explicitProviderFailureRetryUsesTheNextManagedIngestionAttempt() throws Exception {
+        var pool=mock(ArkAssetPool.class);service.setAssetPool(pool);
+        when(pool.groupUsable(anyString())).thenReturn(true);
+        when(pool.createManualGroup(anyLong(),anyString())).thenReturn("group-1");
+        when(pool.createManualAsset(anyLong(),eq(0),anyString(),anyString(),anyString())).thenReturn("failed-asset");
+        when(pool.createManualAsset(anyLong(),eq(1),anyString(),anyString(),anyString())).thenReturn("fresh-asset");
+        when(client.getAsset("failed-asset")).thenReturn(new ArkAssetClient.Asset("Failed","","DownloadFailed","download failed"));
+        when(client.getAsset("fresh-asset")).thenReturn(new ArkAssetClient.Asset("Active","https://example.com/fresh.png","",""));
+        long id=((Number)service.create(9901,9902,List.of(9920L)).get(0).get("id")).longValue();
+        service.process(id);service.process(id);
+        verify(pool).failed("failed-asset");
+        service.retry(9901,9902,id);service.process(id);service.process(id);
+        verify(pool).createManualAsset(eq(id),eq(1),eq("group-1"),anyString(),anyString());
+        assertThat(jdbc.queryForObject("select status from virtual_avatar_task where id=?",String.class,id)).isEqualTo("SUCCEEDED");
+        assertThat(jdbc.queryForObject("select virtual_avatar_asset_id from asset_visual_variant where id=9920",String.class)).isEqualTo("fresh-asset");
+    }
+
 }

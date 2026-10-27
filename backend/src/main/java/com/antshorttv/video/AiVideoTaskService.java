@@ -90,6 +90,16 @@ public class AiVideoTaskService {
     private static final List<Integer> SUPPORTED_DURATIONS = List.of(5, 8, 10);
     private static final List<String> SUPPORTED_ASPECT_RATIOS = List.of("9:16", "16:9", "1:1");
 
+    private SeedanceAvatarRecoveryService avatarRecovery;
+    private com.antshorttv.avatar.ArkAssetPool avatarAssets;
+    private org.springframework.jdbc.core.JdbcTemplate avatarJdbc;
+    private com.antshorttv.rbac.RbacPermissionService avatarPermissions;
+    private ModelAccessibleVideoUrlResolver avatarUrls;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAvatarRecovery(SeedanceAvatarRecoveryService recovery, com.antshorttv.avatar.ArkAssetPool assets,
+        org.springframework.jdbc.core.JdbcTemplate jdbc, com.antshorttv.rbac.RbacPermissionService permissions,ModelAccessibleVideoUrlResolver urls) {
+        this.avatarRecovery=recovery;this.avatarAssets=assets;this.avatarJdbc=jdbc;this.avatarPermissions=permissions;this.avatarUrls=urls;
+    }
     private final ProjectAccessResolver projectAccessResolver;
     private final StoryboardMapper storyboardMapper;
     private final AiVideoTaskMapper aiVideoTaskMapper;
@@ -329,6 +339,7 @@ public class AiVideoTaskService {
         task.nextPollAt = now;
         aiVideoTaskMapper.insert(task);
         persistReferences(task, prepared.references(), now);
+        if(avatarAssets!=null)avatarAssets.pinVideo(task.id,videoSnapshot(task));
 
         AiExecutionTaskEntity execution = executionService.createWithReservation(
             new AiExecutionCreateCommand(
@@ -620,6 +631,14 @@ public class AiVideoTaskService {
     @Transactional
     public AiVideoTaskResponse regenerate(Long tenantId, Long projectId, Long taskId, HttpServletRequest servletRequest) {
         AiVideoTaskEntity source = requireTask(tenantId, projectId, taskId);
+        if(avatarRecovery!=null) {
+            var recovering=avatarRecovery.get(tenantId,projectId,taskId);
+            if(recovering!=null) {
+                if(recovering.get("retryTaskId") instanceof Number child) return response(requireTask(tenantId,projectId,child.longValue()));
+                if(java.util.Set.of("PENDING","RUNNING").contains(recovering.get("status")))
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR,"当前分镜正在自动准备虚拟人像素材，请等待恢复完成。");
+            }
+        }
         JsonNode sourceSnapshot = videoSnapshot(source);
         CreateAiVideoTaskRequest request = new CreateAiVideoTaskRequest(
             source.storyboardId,
@@ -646,6 +665,65 @@ public class AiVideoTaskService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         recordProjectLog(context, projectId, "AI_VIDEO_TASK_REGENERATE", "AI_VIDEO_TASK", response.id(), String.valueOf(taskId), response.status(), servletRequest);
         return response;
+    }
+
+    /** Creates a separate billed attempt from frozen inputs; never recompiles the current storyboard. */
+    @Transactional
+    public Long createAvatarRecoveryTask(long recoveryId,String token,JsonNode snapshot) {
+        var job=avatarJdbc.queryForMap("select * from seedance_avatar_recovery where id=? for update",recoveryId);
+        if(job.get("retry_task_id") instanceof Number existing)return existing.longValue();
+        if(!token.equals(job.get("claim_token")) || !"RUNNING".equals(job.get("status"))
+            || ((java.sql.Timestamp)job.get("claim_until")).toLocalDateTime().isBefore(LocalDateTime.now()))
+            throw new com.antshorttv.avatar.ArkAssetPool.Waiting("恢复任务执行租约已失效。");
+        AiVideoTaskEntity source=requireTask(((Number)job.get("tenant_id")).longValue(),((Number)job.get("project_id")).longValue(),((Number)job.get("source_task_id")).longValue());
+        var previous=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var security=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        security.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            new com.antshorttv.authsession.AuthenticatedUser(source.createdBy,"","avatar-recovery:"+recoveryId,LocalDateTime.now().plusMinutes(1)),null,java.util.List.of()));
+        org.springframework.security.core.context.SecurityContextHolder.setContext(security);
+        try {
+            TenantContext context=tenantContextResolver.requireActiveMember(source.tenantId);
+            requireProjectAccess(context,source.projectId);
+            if(!avatarPermissions.hasProjectPermission(context,source.projectId,"AI_VIDEO_TASK:CREATE")
+                || !avatarPermissions.hasProjectPermission(context,source.projectId,"AI_SERVICE:USE"))
+                throw new BusinessException(ErrorCode.FORBIDDEN,"原任务发起人已无视频生成权限。");
+            requireStoryboard(source.tenantId,source.projectId,source.storyboardId);
+            resolveVideoModel(source.tenantId,source.projectId,source.modelId);
+            LocalDateTime now=LocalDateTime.now();
+            snapshot=avatarUrls.refreshSnapshotUrls(snapshot);
+            var task=objectMapper.convertValue(source,AiVideoTaskEntity.class);
+            task.id=null;task.executionId=null;task.avatarRecoverySourceTaskId=source.id;
+            task.externalTaskId=null;task.externalStatus=null;task.status="PENDING";task.errorMessage=null;
+            task.providerResultMetadataJson=null;task.requestSnapshotJson=snapshot.toString();task.requestHash=hash(task.requestSnapshotJson);
+            task.executionToken=null;task.executionPhase=null;task.executionVersion=0;task.claimedAt=null;
+            task.heartbeatAt=null;task.executionTimeoutAt=null;task.retryable=null;
+            task.submittedAt=null;task.startedAt=null;task.completedAt=null;task.lastPollAt=null;task.pollRetryCount=0;
+            task.createdAt=now;task.updatedAt=now;task.nextPollAt=now;task.deletedAt=null;
+            aiVideoTaskMapper.insert(task);
+            avatarAssets.pinVideo(task.id,snapshot);
+            for(var original:referenceMapper.selectList(new QueryWrapper<AiVideoTaskReferenceEntity>().eq("task_id",source.id).orderByAsc("sort_order","id"))) {
+                var ref=objectMapper.convertValue(original,AiVideoTaskReferenceEntity.class);
+                ref.id=null;ref.taskId=task.id;ref.createdAt=now;
+                for(JsonNode prepared:snapshot.path("references")) {
+                    if(ref.mediaIndex!=null && ref.mediaType.equalsIgnoreCase(prepared.path("reference").path("mediaType").asText())
+                        && prepared.path("reference").path("mediaIndex").asInt(-1)==ref.mediaIndex) {
+                        String asset=prepared.path("providerAssetId").asText("");
+                        ref.providerUrl=asset.isBlank()?prepared.path("providerUrl").asText(ref.providerUrl):"asset://"+asset.replaceFirst("^asset://", "");
+                    }
+                }
+                referenceMapper.insert(ref);
+            }
+            int maximum=snapshot.path("billingDurationSeconds").asInt(source.durationSeconds==null?5:source.durationSeconds);
+            AiExecutionTaskEntity execution=executionService.createWithReservation(new AiExecutionCreateCommand(
+                task.tenantId,task.createdBy,task.projectId,"ai_video_generate","VIDEO","AI_VIDEO_TASK",task.id,task.modelId,
+                "VIDEO_SUBMIT","avatar-recovery:"+source.id,UUID.randomUUID().toString(),true,
+                "{\"storyboardId\":%d,\"recoverySourceTaskId\":%d}".formatted(task.storyboardId,source.id)),
+                videoAuthorizedUsage(task,maximum),videoDimensions(task));
+            task.executionId=execution.id;aiVideoTaskMapper.updateById(task);
+            avatarJdbc.update("update seedance_avatar_recovery set status='SUCCEEDED',phase='已创建关联重试视频',retry_task_id=?,error_message=null,updated_at=now() where id=? and claim_token=?",task.id,recoveryId,token);
+            recordProjectLog(context,task.projectId,"AI_VIDEO_AVATAR_RECOVERY","AI_VIDEO_TASK",task.id,String.valueOf(source.id),task.status,null);
+            return task.id;
+        } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(previous);}
     }
 
     @Transactional
@@ -1085,6 +1163,11 @@ public class AiVideoTaskService {
                 settleExecution(task, rejected ? AiSettlementOutcome.PROVIDER_REJECTION
                     : AiSettlementOutcome.TRANSPORT_UNKNOWN, attempt.id, callLogId, "FAILED");
                 clearDomainClaim(task);
+                if(rejected && avatarRecovery!=null) {
+                    task.externalStatus="REJECTED";
+                    aiVideoTaskMapper.update(null,new UpdateWrapper<AiVideoTaskEntity>().set("external_status","REJECTED").eq("id",task.id));
+                    if(exception instanceof AiGatewayException gateway && SeedanceRealPersonRejection.matches(gateway.getErrorCode(),task.errorMessage))avatarRecovery.enqueue(task);
+                }
             });
         }
     }
@@ -1095,6 +1178,7 @@ public class AiVideoTaskService {
         if (isTimedOut(task, now)) {
             transactions.executeWithoutResult(status -> {
                 failTask(task, "视频生成超时。", userId, now);
+                protectUnknownQuery(task);
                 finishExecutionAttempt(attempt, null, "TIMED_OUT", false, "AI_PROVIDER_TIMEOUT", "视频生成超时。");
                 settleExecution(task, AiSettlementOutcome.TIMED_OUT, attempt.id, null, "TIMED_OUT");
             });
@@ -1143,6 +1227,7 @@ public class AiVideoTaskService {
                     finishExecutionAttempt(attempt, observed, "FAILED", false, "AI_PROVIDER_ERROR", task.errorMessage);
                     settleExecution(task, AiSettlementOutcome.PROVIDER_BILLED_FAILURE,
                         attempt.id, observed.aiCallLogId(), "FAILED");
+                    if(avatarRecovery!=null)avatarRecovery.enqueue(task);
                 } else {
                     task.externalStatus = "RUNNING";
                     task.nextPollAt = now.plusSeconds(10);
@@ -1159,6 +1244,7 @@ public class AiVideoTaskService {
                 task.updatedAt = now;
                 if (nextRetryCount >= pollRetryLimit) {
                     failTask(task, "外部任务查询失败：" + exception.getMessage(), userId, now);
+                    protectUnknownQuery(task);
                     finishExecutionAttempt(attempt, exception, "FAILED", false);
                     settleExecution(task, AiSettlementOutcome.TRANSPORT_UNKNOWN,
                         attempt.id, exception.getAiCallLogId(), "FAILED");
@@ -1181,6 +1267,7 @@ public class AiVideoTaskService {
                 task.updatedAt = now;
                 if (nextRetryCount >= pollRetryLimit) {
                     failTask(task, "视频结果处理失败：" + exception.getMessage(), userId, now);
+                    if(observed==null || observed.response()==null || !java.util.Set.of("SUCCEEDED","FAILED").contains(observed.response().status()))protectUnknownQuery(task);
                     settleExecution(task, AiSettlementOutcome.BUSINESS_FAILURE, attempt.id,
                         observed == null ? null : observed.aiCallLogId(), "FAILED");
                 } else {
@@ -1233,6 +1320,12 @@ public class AiVideoTaskService {
             return seedanceArkProviderAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
         }
         return providerAdapter.poll(route.providerConfig(), route.model(), externalTaskId, idempotencyKey);
+    }
+
+    private void protectUnknownQuery(AiVideoTaskEntity task) {
+        if(com.antshorttv.ai.VolcengineProviderCodes.isArk(task.providerCode) && task.externalTaskId!=null) {
+            task.externalStatus="QUERY_UNKNOWN";saveOwnedTask(task);
+        }
     }
 
     private void failTask(AiVideoTaskEntity task, String errorMessage, Long userId, LocalDateTime now) {

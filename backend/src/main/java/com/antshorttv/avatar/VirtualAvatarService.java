@@ -15,6 +15,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class VirtualAvatarService {
+    private ArkAssetPool assetPool;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAssetPool(ArkAssetPool pool) { this.assetPool=pool; }
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final TenantContextResolver tenants;
@@ -98,8 +101,8 @@ public class VirtualAvatarService {
             if(!sourceCurrent(task)) throw invalid("原图已更换，请为新图创建入库任务。");
             if(jdbc.queryForObject("select count(*) from virtual_avatar_task where tenant_id=? and project_id=? and variant_id=? and status in ('QUEUED','RUNNING')",Long.class,tenant,project,task.get("variant_id"))>0) throw invalid("该形态图已有进行中的任务。");
             boolean keep=Set.of("STORAGE_FAILED","QUERY_FAILED","POLL_TIMEOUT").contains(text(task,"error_code"));
-            jdbc.update("update virtual_avatar_task set status='QUEUED',phase=?,provider_asset_id=?,error_code=null,error_message=null,retryable=false,completed_at=null,claim_token=null,claimed_at=null,next_poll_at=now(),poll_deadline_at=?,updated_at=now() where id=?",
-                keep?"查询素材状态":"等待提交",keep?task.get("provider_asset_id"):null,LocalDateTime.now().plusDays(1),id);
+            jdbc.update("update virtual_avatar_task set status='QUEUED',phase=?,provider_asset_id=?,ingestion_attempt=ingestion_attempt+?,error_code=null,error_message=null,retryable=false,completed_at=null,claim_token=null,claimed_at=null,next_poll_at=now(),poll_deadline_at=?,updated_at=now() where id=?",
+                keep?"查询素材状态":"等待提交",keep?task.get("provider_asset_id"):null,keep?0:1,LocalDateTime.now().plusDays(1),id);
             return present(require(tenant,project,id));});
     }
     public List<Long> due() {
@@ -115,17 +118,20 @@ public class VirtualAvatarService {
             if(!sourceCurrent(task)) {fail(id,token,"SOURCE_CHANGED","源形态图已更换或删除，请为当前图片重新提交。",false);return;}
             String asset=text(task,"provider_asset_id"),group=text(task,"provider_group_id");
             if(asset.isBlank()) {
+                if(assetPool!=null && !group.isBlank() && !assetPool.groupUsable(group)) {
+                    group="";jdbc.update("update virtual_avatar_task set provider_group_id=null where id=? and claim_token=?",id,token);
+                }
                 if("提交素材".equals(phase) || "创建素材组".equals(phase) && group.isBlank()) {fail(id,token,"SUBMISSION_UNKNOWN","提交结果尚未确认，请先在火山控制台核实。",false);return;}
                 if(group.isBlank()) {
                     var groups=jdbc.queryForList("select provider_group_id from virtual_avatar_task where tenant_id=? and project_id=? and character_id=? and provider_project=? and provider_group_id is not null order by id desc limit 1",task.get("tenant_id"),task.get("project_id"),task.get("character_id"),client.project());
-                    if(!groups.isEmpty())group=text(groups.get(0),"provider_group_id");
-                    else {phase="创建素材组";stage(id,token,phase,10);group=client.createGroup(text(task,"title"));}
+                    if(!groups.isEmpty() && (assetPool==null || assetPool.groupUsable(text(groups.get(0),"provider_group_id"))))group=text(groups.get(0),"provider_group_id");
+                    else {phase="创建素材组";stage(id,token,phase,10);group=assetPool==null?client.createGroup(text(task,"title")):assetPool.createManualGroup(id,text(task,"title"));}
                     jdbc.update("update virtual_avatar_task set provider_group_id=? where id=? and claim_token=?",group,id,token);
                 }
                 phase="准备素材";stage(id,token,phase,15);
                 String url=storage.sourceUrl(text(task,"source_storage_path"),text(task,"source_image_url"));
                 phase="提交素材";stage(id,token,phase,20);
-                asset=client.createAsset(group,text(task,"title"),url);
+                asset=assetPool==null?client.createAsset(group,text(task,"title"),url):assetPool.createManualAsset(id,((Number)task.get("ingestion_attempt")).intValue(),group,text(task,"title"),url);
                 jdbc.update("update virtual_avatar_task set provider_asset_id=?,phase='查询素材状态',progress=40,updated_at=now() where id=? and claim_token=?",asset,id,token);
                 return;
             }
@@ -137,8 +143,10 @@ public class VirtualAvatarService {
                 return;
             }
             if("Failed".equals(result.status())) {
+                if(assetPool!=null)assetPool.failed(asset);
                 fail(id,token,ArkAssetClient.safeCode(result.errorCode()),"火山素材处理失败（"+ArkAssetClient.safeCode(result.errorCode())+"），请检查原图后重试。",true);return;
             }
+            if(assetPool!=null)assetPool.active(asset);
             phase="保存素材结果";stage(id,token,phase,80);
             String path=storage.save(number(task,"tenant_id"),number(task,"project_id"),id,result.url());
             String completedAsset=asset;
@@ -150,6 +158,7 @@ public class VirtualAvatarService {
                 cache.invalidateProjectAfterCommit(number(task,"tenant_id"),number(task,"project_id"),QueryResultCache.Region.SCRIPT);
             });
         } catch(Exception e) {
+            if(e instanceof ArkAssetPool.Waiting wait) {stage(id,token,"等待容量："+wait.getMessage(),10);return;}
             if(e instanceof InterruptedException)Thread.currentThread().interrupt();
             boolean submitting=Set.of("创建素材组","提交素材").contains(phase);
             String code=submitting ? e instanceof ArkAssetClient.ProviderException p && p.definitive() ? p.code() : "SUBMISSION_UNKNOWN"

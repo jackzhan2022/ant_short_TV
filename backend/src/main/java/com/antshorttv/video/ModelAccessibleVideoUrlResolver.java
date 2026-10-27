@@ -31,6 +31,16 @@ public class ModelAccessibleVideoUrlResolver {
         return objectStorageService.modelAccessUrl(key, validity);
     }
 
+    public com.fasterxml.jackson.databind.JsonNode refreshSnapshotUrls(com.fasterxml.jackson.databind.JsonNode original) {
+        com.fasterxml.jackson.databind.JsonNode snapshot=original.deepCopy();
+        for(var item:snapshot.path("references")) {
+            String path=item.path("objectStoragePath").asText("");
+            if(!path.isBlank() && item.path("providerAssetId").asText("").isBlank())
+                ((com.fasterxml.jackson.databind.node.ObjectNode)item).put("providerUrl",resolve(path));
+        }
+        return snapshot;
+    }
+
     private URI parse(String value) {
         try {
             return URI.create(value);

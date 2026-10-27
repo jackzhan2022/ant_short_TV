@@ -42,7 +42,8 @@ import org.springframework.test.annotation.DirtiesContext;
 @SpringBootTest(properties = {
     "ai.video.max-concurrent-per-tenant=1",
     "ai.video.task-timeout-minutes=20",
-    "app.public-base-url=https://app.example"
+    "app.public-base-url=https://app.example",
+    "ark.avatar.worker-enabled=false"
 })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
@@ -66,6 +67,10 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     @MockBean
     private AiExecutionPools executionPools;
 
+    @MockBean
+    private com.antshorttv.avatar.ArkAssetPool avatarAssets;
+    @Autowired
+    private SeedanceAvatarRecoveryService avatarRecovery;
     @SpyBean
     private AiVideoProviderAdapter providerAdapter;
 
@@ -1474,6 +1479,91 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void recoversRealPersonRejectionFromFrozenImagesOnceAndCreatesOneBilledChild() throws Exception {
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        AtomicInteger submissions=new AtomicInteger();
+        var requests=new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+        HttpServer server=HttpServer.create(new InetSocketAddress(0),0);
+        server.createContext("/api/v3/contents/generations/tasks",exchange -> {
+            if("POST".equals(exchange.getRequestMethod())) {
+                requests.add(json.readTree(exchange.getRequestBody()));
+                if(submissions.incrementAndGet()==1) writeJson(exchange,400,"{\"error\":{\"code\":\"InputImageSensitiveContentDetected\",\"message\":\"The image may contain real person.\"}}");
+                else writeJson(exchange,200,"{\"id\":\"recovered-video\",\"status\":\"queued\"}");
+            } else writeJson(exchange,200,"{\"id\":\"recovered-video\",\"status\":\"failed\",\"error\":{\"message\":\"The image may contain realperson.\"}}");
+        });
+        server.start();
+        try {
+            String token=registerUser("13800016071","Avatar Recovery Owner");
+            Long tenant=createTenant(token,"自动素材恢复团队");Long owner=userIdByMobile("13800016071");
+            Long project=createProject(token,tenant,owner,"自动素材恢复项目","AVATAR_RECOVERY");
+            Long model=enableSeedanceMini("http://127.0.0.1:%d/api/v3".formatted(server.getAddress().getPort()));
+            Long storyboard=createStoryboard(tenant,project,owner);
+            seedStoryboardImageReference(tenant,project,storyboard,owner);grantTeamPoints(tenant,20);
+            when(avatarAssets.configured()).thenReturn(true);
+            when(avatarAssets.prepareImage(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyLong(),any(),any(),any(),any()))
+                .thenReturn(new com.antshorttv.avatar.ArkAssetPool.PreparedAsset(null,"asset-recovered","Processing"))
+                .thenReturn(new com.antshorttv.avatar.ArkAssetPool.PreparedAsset(null,"asset-recovered","Active"));
+            var created=mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(project))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"storyboardId\":%d,\"modelId\":%d,\"prompt\":\"冻结的提示词\",\"durationSeconds\":5,\"aspectRatio\":\"9:16\",\"resolution\":\"720p\"}".formatted(storyboard,model)))
+                .andExpect(status().isOk()).andReturn();
+            Long source=readLong(created,"$.data.id");
+            String frozen=jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?",String.class,source);
+            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("FAILED")));
+            long recovery=jdbc.queryForObject("select id from seedance_avatar_recovery where source_task_id=?",Long.class,source);
+            mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d/avatar-recovery".formatted(project,source))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.sourceTaskId",is(source.intValue())));
+            jdbc.update("update ai_image_result set image_url='https://example.com/replaced-after-failure.png' where tenant_id=? and project_id=?",tenant,project);
+            avatarRecovery.process(recovery);
+            assertThat(jdbc.queryForObject("select retry_task_id from seedance_avatar_recovery where id=?",Long.class,recovery)).isNull();
+            avatarRecovery.process(recovery);avatarRecovery.process(recovery);
+            Long child=jdbc.queryForObject("select retry_task_id from seedance_avatar_recovery where id=?",Long.class,recovery);
+            assertThat(child).withFailMessage("Recovery row: %s",jdbc.queryForMap("select * from seedance_avatar_recovery where id=?",recovery)).isNotNull().isNotEqualTo(source);
+            assertThat(jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?",String.class,source)).isEqualTo(frozen);
+            String prepared=jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?",String.class,child);
+            assertThat(prepared).contains("asset-recovered").doesNotContain("replaced-after-failure");
+            assertThat(json.readTree(prepared).path("compiledPrompt")).isEqualTo(json.readTree(frozen).path("compiledPrompt"));
+            avatarRecovery.process(recovery);
+            assertThat(jdbc.queryForObject("select count(*) from ai_video_task where avatar_recovery_source_task_id=?",Long.class,source)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from ai_point_reservation where execution_id in (select execution_id from ai_video_task where id in (?,?))",Long.class,source,child)).isEqualTo(2);
+            mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/regenerate".formatted(project,source))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id",is(child.intValue())));
+            pollVideoTask(token,tenant,project,child).andExpect(jsonPath("$.data.status",is("GENERATING")));
+            assertThat(requests.get(1).path("content").toString()).contains("asset://asset-recovered");
+            jdbc.update("update ai_video_task set next_poll_at=now() where id=?",child);
+            pollVideoTask(token,tenant,project,child).andExpect(jsonPath("$.data.status",is("FAILED")));
+            assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery where tenant_id=?",Long.class,tenant)).isEqualTo(1);
+        } finally {server.stop(0);}
+    }
+
+    @Test
+    void startsRecoveryWhenSeedanceAsynchronouslyRejectsTheOriginalVideo() throws Exception {
+        HttpServer server=HttpServer.create(new InetSocketAddress(0),0);
+        server.createContext("/api/v3/contents/generations/tasks",exchange -> {
+            if("POST".equals(exchange.getRequestMethod()))writeJson(exchange,200,"{\"id\":\"async-original\",\"status\":\"queued\"}");
+            else writeJson(exchange,200,"{\"id\":\"async-original\",\"status\":\"failed\",\"error\":{\"code\":\"InputImageSensitiveContentDetected\",\"message\":\"The image may contain real person.\"}}");
+        });
+        server.start();
+        try {
+            String token=registerUser("13800016072","Async Avatar Owner");Long tenant=createTenant(token,"异步素材团队");Long owner=userIdByMobile("13800016072");
+            Long project=createProject(token,tenant,owner,"异步恢复项目","ASYNC_AVATAR_RECOVERY");Long storyboard=createStoryboard(tenant,project,owner);
+            Long model=enableSeedanceMini("http://127.0.0.1:%d/api/v3".formatted(server.getAddress().getPort()));
+            seedStoryboardImageReference(tenant,project,storyboard,owner);grantTeamPoints(tenant,20);
+            var created=mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(project))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"storyboardId\":%d,\"modelId\":%d,\"prompt\":\"异步拒绝\",\"durationSeconds\":5,\"aspectRatio\":\"9:16\",\"resolution\":\"720p\"}".formatted(storyboard,model)))
+                .andExpect(status().isOk()).andReturn();
+            Long source=readLong(created,"$.data.id");
+            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("GENERATING")));
+            jdbc.update("update ai_video_task set next_poll_at=now() where id=?",source);
+            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("FAILED")));
+            assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery where source_task_id=?",Long.class,source)).isEqualTo(1);
+        } finally {server.stop(0);}
     }
 
     private Long enableSeedanceMini() {

@@ -43,4 +43,34 @@ class ArkAssetClientTest {
             .hasMessageContaining("ARK_ASSET_ACCESS_KEY").hasMessageContaining("ARK_ASSET_SECRET_KEY");
     }
 
+    @Test void listsAllPagesInTheRequestedProjectAndDeletesWithThatScope() throws Exception {
+        var mapper = new ObjectMapper();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        var calls = new java.util.ArrayList<String>();
+        server.createContext("/", exchange -> {
+            var body = mapper.readTree(exchange.getRequestBody());
+            assertThat(body.path("ProjectName").asText()).isEqualTo("another-project");
+            String action = exchange.getRequestURI().getQuery();
+            calls.add(action);
+            String response;
+            if (action.contains("Action=ListAssets&")) {
+                assertThat(body.path("Filter").path("GroupType").asText()).isIn("AIGC","LivenessFace");
+                int page = body.path("PageNumber").asInt();
+                response = "LivenessFace".equals(body.path("Filter").path("GroupType").asText())
+                    ? "{\"Result\":{\"Items\":[{\"Id\":\"face-asset\"}],\"TotalCount\":1}}"
+                    : "{\"Result\":{\"Items\":[{\"Id\":\"asset-"+page+"\"}],\"TotalCount\":2}}";
+            } else response = "{\"Result\":{}}";
+            byte[] bytes=response.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+        });
+        server.start();
+        try {
+            var client=new ArkAssetClient(mapper,"test-ak","test-sk","cn-beijing","default","http://127.0.0.1:"+server.getAddress().getPort());
+            assertThat(client.listAssets("another-project")).extracting(n -> n.path("Id").asText()).containsExactly("asset-1","asset-2","face-asset");
+            client.deleteAsset("another-project","asset-1");
+            client.deleteGroup("another-project","group-1");
+            assertThat(calls).hasSize(5);
+        } finally {server.stop(0);}
+    }
+
 }
