@@ -152,6 +152,7 @@ class ProjectAssetLibraryServiceTest {
             assertThat(item.current()).isTrue();
             assertThat(item.sourceType()).isEqualTo("本地上传");
             assertThat(item.previewUrl()).isEqualTo("/api/projects/91002/ai-image-results/91301/display");
+            assertThat(item.downloadUrl()).isEqualTo("/api/projects/91002/ai-image-results/91301/download-file");
         });
         assertThat(service.list(91001L,91003L,"IMAGE","ALL",null,null,1,24).items().total()).isZero();
         assertThat(service.list(91001L,91002L,"IMAGE","ALL",null,"%",1,24).items().total()).isZero();

@@ -206,7 +206,7 @@ public class ProjectAssetLibraryService {
         String name = row.getString("asset_name");
         String variant = row.getString("variant_name");
         if (variant != null && !variant.isBlank()) name += " · " + variant;
-        String download = image ? base + "/download"
+        String download = image ? base + "/download-file"
             : "AI_VIDEO_RESULT".equals(kind) && MenuAuthorization.allows(permissions, "AI_VIDEO_RESULT:DOWNLOAD") ? base + "/download-file" : null;
         return new LibraryItem(id, kind, name, row.getString("category"), row.getString("source_type"),
             audio ? "" : base + (image ? "/thumbnail" : "/cover"), base + (image ? "/display" : "/playback"), download,

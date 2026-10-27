@@ -1,12 +1,12 @@
-import { AudioOutlined, FolderFilled, PlayCircleFilled } from '@ant-design/icons';
+import { AudioOutlined, DownloadOutlined, FolderFilled, PlayCircleFilled } from '@ant-design/icons';
 import { history, useLocation, useModel, useParams } from '@umijs/max';
-import { Button, Empty, Input, Modal, Pagination, Tabs } from 'antd';
+import { Alert, Button, Checkbox, Empty, Input, Modal, Pagination, Tabs } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import LazyMediaImage from '@/components/LazyMediaImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryProjectMetadata, queryProjects } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
-import { type AssetLibraryItem, queryProjectAssetLibrary } from './service';
+import { type AssetLibraryItem, downloadAssetImage, downloadAssetImages, queryProjectAssetLibrary } from './service';
 import styles from './index.module.css';
 
 const categories = [
@@ -48,11 +48,42 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState<AssetLibraryItem>();
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string>();
+  const downloadController = useRef<AbortController | null>(null);
   const playingAudio = useRef<HTMLAudioElement | null>(null);
   const canViewImages = Boolean(project?.effectivePermissions.includes('MENU:ASSET_LIBRARY'));
   const canViewVideos = canViewImages;
   const denied = Boolean(project && !(mediaType === 'IMAGE' ? canViewImages : canViewVideos));
   const invalidProject = routeProjectId !== undefined && (!Number.isSafeInteger(projectId) || !projectId || projectId < 1);
+
+  const pageImageIds = items.filter((item) => item.resourceType === 'AI_IMAGE_RESULT' && item.downloadUrl).map((item) => item.id);
+  const selectedOnPage = pageImageIds.filter((id) => selectedIds.includes(id)).length;
+  const selectImages = (ids: number[], checked: boolean) => {
+    const next = checked ? [...new Set([...selectedIds, ...ids])] : selectedIds.filter((id) => !ids.includes(id));
+    if (next.length > 100) { setDownloadError('单次最多选择 100 张图片。'); return; }
+    setSelectedIds(next);
+    setDownloadError(undefined);
+  };
+  const download = async (resultId?: number) => {
+    if (!projectId || downloadController.current || (!resultId && !selectedIds.length)) return;
+    const controller = new AbortController();
+    downloadController.current = controller;
+    setDownloading(true);
+    setDownloadError(undefined);
+    try {
+      if (resultId) await downloadAssetImage(projectId, resultId, controller.signal);
+      else await downloadAssetImages(projectId, selectedIds, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) setDownloadError(error instanceof Error ? error.message : '下载失败，请重试。');
+    } finally {
+      if (downloadController.current === controller) {
+        downloadController.current = null;
+        setDownloading(false);
+      }
+    }
+  };
 
   const navigate = (values: Record<string, string | number | undefined>, destination = projectId) => {
     const params = new URLSearchParams(location.search);
@@ -64,6 +95,12 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
     history.push(`${path}${params.size ? `?${params}` : ''}`);
   };
 
+  useEffect(() => {
+    setSelectedIds([]);
+    setDownloadError(undefined);
+    setDownloading(false);
+    return () => { downloadController.current?.abort(); downloadController.current = null; };
+  }, [tenantId, projectId, mediaType, category, keyword]);
   useEffect(() => { setInputKeyword(keyword); }, [keyword, projectId, mediaType, category]);
   useEffect(() => { setPreview(undefined); }, [tenantId, projectId, mediaType, category, keyword, page, episodeNo]);
   useEffect(() => {
@@ -174,6 +211,20 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
         <span>{projectId ? `${mediaLabels[mediaType]}素材` : '项目文件夹'}</span>
         <span className={styles.total}>共 {total} {projectId ? '项资产' : '个项目'}</span>
       </div>
+      {projectId && mediaType === 'IMAGE' && canViewImages && !metadataFailed && !denied ? (
+        <div className={styles.batchActions}>
+          <Checkbox checked={pageImageIds.length > 0 && selectedOnPage === pageImageIds.length}
+            indeterminate={selectedOnPage > 0 && selectedOnPage < pageImageIds.length}
+            disabled={loading || downloading || !pageImageIds.length}
+            onChange={(event) => selectImages(pageImageIds, event.target.checked)}>全选当前页</Checkbox>
+          <span aria-live="polite">已选 {selectedIds.length} 张</span>
+          <Button type="text" disabled={!selectedIds.length || downloading} onClick={() => setSelectedIds([])}>清空选择</Button>
+          <Button aria-label="批量下载" icon={<DownloadOutlined aria-hidden="true" />} loading={downloading} disabled={!selectedIds.length || downloading}
+            onClick={() => void download()}>批量下载</Button>
+          <span className={styles.total}>支持跨页选择，单次最多 100 张</span>
+        </div>
+      ) : null}
+      {downloadError && !preview ? <Alert type="error" showIcon title={downloadError} className={styles.downloadError} /> : null}
       {!tenantId ? <Empty description="请先选择当前团队" />
         : invalidProject || metadataFailed || failed ? <div className={styles.empty}><Empty description={metadataFailed ? '项目不存在或无权访问' : '资产加载失败'} /><Button aria-label="重试" onClick={() => setRetry((value) => value + 1)}>重试</Button></div>
         : denied ? <Empty description="暂无查看此类资产的权限" />
@@ -192,7 +243,11 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
         </div> : projectId ? (
           <div className={`${styles.mediaGrid} ${mediaType === 'VIDEO' ? styles.videoGrid : ''}`}>
             {items.map((item) => (
-              <article key={`${item.resourceType}-${item.id}`} className={styles.card}>
+              <article key={`${item.resourceType}-${item.id}`} className={`${styles.card} ${selectedIds.includes(item.id) ? styles.selectedCard : ''}`}>
+                {mediaType === 'IMAGE' && item.resourceType === 'AI_IMAGE_RESULT' && item.downloadUrl ? (
+                  <Checkbox className={styles.imageCheckbox} aria-label={`选择${item.name}`} checked={selectedIds.includes(item.id)}
+                    disabled={downloading} onChange={(event) => selectImages([item.id], event.target.checked)} />
+                ) : null}
                 <button type="button" className={styles.cardEntry} aria-label={`预览${item.name}`} onClick={() => setPreview(item)}>
                   <div className={styles.cover}>
                     <LazyMediaImage native src={item.thumbnailUrl} alt={item.name} height="100%" imageStyle={{ objectFit: mediaType === 'IMAGE' ? 'contain' : 'cover' }}
@@ -227,7 +282,11 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
       {total > 24 ? <Pagination className={styles.pagination} current={page} pageSize={24} total={total} showSizeChanger={false} onChange={(next) => navigate({ page: next })} /> : null}
       {preview ? <Modal open title={preview.name} width="min(1100px, calc(100vw - 32px))"
         onCancel={() => setPreview(undefined)}
-        footer={preview?.downloadUrl ? <Button href={preview.downloadUrl} target="_blank" rel="noopener noreferrer">下载原文件</Button> : null}>
+        footer={preview?.downloadUrl ? preview.resourceType === 'AI_IMAGE_RESULT' ? (
+          <Button aria-label="下载原文件" icon={<DownloadOutlined aria-hidden="true" />} loading={downloading} disabled={downloading}
+            onClick={() => void download(preview.id)}>下载原文件</Button>
+        ) : <Button href={preview.downloadUrl} target="_blank" rel="noopener">下载原文件</Button> : null}>
+        {downloadError ? <Alert type="error" showIcon title={downloadError} className={styles.downloadError} /> : null}
         {preview ? <div className={styles.preview}>
           {preview.resourceType === 'AI_IMAGE_RESULT' ? (
             <LazyMediaImage native src={preview.previewUrl} alt={`${preview.name}大图`} height="min(66vh, 720px)" imageStyle={{ objectFit: 'contain' }} />

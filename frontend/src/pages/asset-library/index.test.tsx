@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AssetLibrary from './index';
 
 const mocks = vi.hoisted(() => ({
-  push: vi.fn(), projects: vi.fn(), metadata: vi.fn(), library: vi.fn(), tenant: 10,
+  push: vi.fn(), projects: vi.fn(), metadata: vi.fn(), library: vi.fn(), downloadImage: vi.fn(), downloadArchive: vi.fn(), tenant: 10,
   location: { pathname: '/asset-library', search: '' },
 }));
 vi.mock('@umijs/max', () => ({
@@ -14,7 +14,7 @@ vi.mock('@umijs/max', () => ({
 }));
 vi.mock('@/services/account-team/auth', () => ({ getCurrentTenantId: () => mocks.tenant }));
 vi.mock('@/services/account-team/project', () => ({ queryProjects: mocks.projects, queryProjectMetadata: mocks.metadata }));
-vi.mock('./service', () => ({ queryProjectAssetLibrary: mocks.library }));
+vi.mock('./service', () => ({ queryProjectAssetLibrary: mocks.library, downloadAssetImage: mocks.downloadImage, downloadAssetImages: mocks.downloadArchive }));
 
 const project = { id: 1, tenantId: 10, name: '长夜未央', updatedAt: '2026-10-22T01:00:00',
   effectivePermissions: ['MENU:ASSET_LIBRARY'] };
@@ -39,6 +39,8 @@ beforeEach(() => {
   mocks.metadata.mockResolvedValue({ success: true, data: project });
   mocks.library.mockReset();
   mocks.library.mockResolvedValue(response());
+  mocks.downloadImage.mockReset().mockResolvedValue(undefined);
+  mocks.downloadArchive.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -52,7 +54,9 @@ it('opens the selected project folder and previews its image without loading eve
   expect(mocks.library).toHaveBeenCalledWith(1,
     { mediaType: 'IMAGE', category: 'ALL', episodeNo: undefined, keyword: undefined, current: 1, pageSize: 24 }, expect.any(AbortSignal));
   expect(screen.getByAltText('林夏 · 主形象大图')).toHaveAttribute('src', '/image-display');
-  expect(screen.getByRole('link', { name: '下载原文件' })).toHaveAttribute('href', '/download');
+  fireEvent.click(screen.getByRole('button', { name: '下载原文件' }));
+  await waitFor(() => expect(mocks.downloadImage).toHaveBeenCalledWith(1, 51, expect.any(AbortSignal)));
+  expect(screen.queryByRole('link', { name: '下载原文件' })).not.toBeInTheDocument();
 });
 
 it('filters project videos by episode and stops playback when the preview closes', async () => {
@@ -105,7 +109,7 @@ it('ignores a late response after changing image categories', async () => {
   const view = render(<AssetLibrary />);
   await waitFor(() => expect(mocks.library).toHaveBeenCalledOnce());
   mocks.library.mockResolvedValue(response([{ ...image, id: 53, name: '地下停车场', category: 'SCENE' }]));
-  fireEvent.click(screen.getByRole('button', { name: '场景' }));
+  fireEvent.click(screen.getByRole('button', { name: /^场景/ }));
   view.rerender(<AssetLibrary />);
   await screen.findByRole('button', { name: '预览地下停车场' });
   await act(async () => finish(response()));
@@ -147,4 +151,82 @@ it('opens captured frames in the dedicated project image category', async () => 
   await screen.findByRole('button', { name: '预览分镜 3 · 视频 22 · 1.240s' });
   expect(screen.getByRole('button', { name: '视频帧' })).toBeInTheDocument();
   expect(mocks.library).toHaveBeenCalledWith(1, expect.objectContaining({ category: 'VIDEO_FRAME' }), expect.any(AbortSignal));
+});
+
+
+it('selects images without opening previews and downloads one ZIP for the selected IDs', async () => {
+  route('/asset-library/projects/1');
+  mocks.library.mockResolvedValue(response([image, { ...image, id: 53, name: '林夏 · 礼服' }]));
+  render(<AssetLibrary />);
+  const first = await screen.findByRole('checkbox', { name: '选择林夏 · 主形象' });
+  expect(screen.getByRole('button', { name: '批量下载' })).toBeDisabled();
+  fireEvent.click(first);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByText('已选 1 张')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('checkbox', { name: '全选当前页' }));
+  expect(screen.getByRole('checkbox', { name: '选择林夏 · 礼服' })).toBeChecked();
+  expect(screen.getByText('已选 2 张')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '批量下载' }));
+  await waitFor(() => expect(mocks.downloadArchive).toHaveBeenCalledWith(1, [51, 53], expect.any(AbortSignal)));
+  await waitFor(() => expect(screen.getByRole('button', { name: '清空选择' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '清空选择' }));
+  expect(first).not.toBeChecked();
+  expect(screen.getByRole('button', { name: '批量下载' })).toBeDisabled();
+});
+
+it('keeps selection across pages and clears it when the image category changes', async () => {
+  route('/asset-library/projects/1');
+  mocks.library.mockResolvedValue(response([image], 25));
+  const view = render(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择林夏 · 主形象' }));
+  mocks.library.mockResolvedValue(response([{ ...image, id: 53, name: '林夏 · 礼服' }], 25));
+  route('/asset-library/projects/1?page=2');
+  view.rerender(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择林夏 · 礼服' }));
+  expect(screen.getByText('已选 2 张')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /^场景/ }));
+  view.rerender(<AssetLibrary />);
+  await waitFor(() => expect(screen.getByText('已选 0 张')).toBeInTheDocument());
+});
+
+it('blocks duplicate downloads and reports failures without opening a new tab', async () => {
+  route('/asset-library/projects/1');
+  let fail!: (reason: Error) => void;
+  mocks.downloadArchive.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  render(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择林夏 · 主形象' }));
+  fireEvent.click(screen.getByRole('button', { name: '批量下载' }));
+  expect(screen.getByRole('button', { name: '批量下载' })).toBeDisabled();
+  await act(async () => fail(new Error('图片已被删除')));
+  expect(await screen.findByText('图片已被删除')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '批量下载' })).toBeEnabled();
+});
+
+it('only exposes batch image downloads in a project image library', async () => {
+  const view = render(<AssetLibrary />);
+  await screen.findByRole('button', { name: '打开长夜未央资产库' });
+  expect(screen.queryByRole('button', { name: '批量下载' })).not.toBeInTheDocument();
+  route('/asset-library/projects/1?type=VIDEO');
+  mocks.library.mockResolvedValue(response([video]));
+  view.rerender(<AssetLibrary />);
+  await screen.findByRole('button', { name: '预览EP1 · 镜头 1' });
+  expect(screen.queryByRole('button', { name: '批量下载' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+});
+
+
+it('cancels an in-flight download and clears selection when switching teams', async () => {
+  route('/asset-library/projects/1');
+  mocks.downloadArchive.mockImplementationOnce((_projectId: number, _ids: number[], signal: AbortSignal) =>
+    new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('取消下载', 'AbortError')), { once: true })));
+  const view = render(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('checkbox', { name: '选择林夏 · 主形象' }));
+  fireEvent.click(screen.getByRole('button', { name: '批量下载' }));
+  await waitFor(() => expect(mocks.downloadArchive).toHaveBeenCalledOnce());
+  const signal = mocks.downloadArchive.mock.calls[0]?.[2] as AbortSignal;
+  mocks.tenant = 20;
+  view.rerender(<AssetLibrary />);
+  await waitFor(() => expect(signal.aborted).toBe(true));
+  expect(await screen.findByText('已选 0 张')).toBeInTheDocument();
+  expect(screen.queryByText('取消下载')).not.toBeInTheDocument();
 });

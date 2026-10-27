@@ -15,7 +15,7 @@
 .total { color: var(--app-color-text-tertiary, #a0a4b5); font-size: 12px; }
 .folderGrid, .mediaGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px 22px; }
 .videoGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.card { min-width: 0; border-radius: 12px; transition: background 160ms ease, box-shadow 160ms ease; }
+.card { position: relative; min-width: 0; border-radius: 12px; transition: background 160ms ease, box-shadow 160ms ease; }
 .card:hover { background: var(--app-color-fill-secondary, #f0f1f6); box-shadow: 0 2px 12px rgb(40 44 80 / 5%); }
 .cardEntry { width: 100%; text-align: left; padding: 6px; border: 0; border-radius: 12px; background: none; color: inherit; cursor: pointer; }
 .cardEntry:focus-visible { outline: 2px solid var(--app-color-primary, #6956ff); outline-offset: 2px; }
@@ -45,3 +45,8 @@
 @media (max-width: 1400px) { .folderGrid, .mediaGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1000px) { .folderGrid, .mediaGrid, .videoGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .page { padding: 20px; } }
 @media (max-width: 640px) { .folderGrid, .mediaGrid, .videoGrid { grid-template-columns: minmax(0, 1fr); } .page { padding: 16px; } .categories { gap: 4px; } .categories button { padding: 8px 14px; } .toolbar { flex-wrap: wrap; } .toolbar select { min-height: 34px; } }
+
+.batchActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: -6px 0 22px; }
+.imageCheckbox { position: absolute; z-index: 2; top: 14px; left: 14px; padding: 4px; border-radius: 4px; background: var(--app-color-bg-container, white); }
+.selectedCard { outline: 2px solid var(--app-color-primary, #6956ff); outline-offset: 2px; }
+.downloadError { margin-bottom: 18px; }
