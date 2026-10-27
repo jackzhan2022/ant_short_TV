@@ -70,6 +70,7 @@ export default function StoryboardVideoStrip({
           title={result.createdAt ? `生成时间：${new Date(result.createdAt).toLocaleString('zh-CN')}` : `视频版本 ${result.id}`}
           onClick={() => onPreview(result)}
         >
+          {result.processingType === 'SUBTITLE_ERASE' ? <span className="subtitle-erase-version-tag">字幕已擦除</span> : null}
           <LazyMediaImage src={result.coverUrl || undefined} alt={`分镜${storyboardNo}视频版本${result.id}缩略图`} width="100%" height="100%" preview={false} />
           {result.id === currentResultId ? <span className="storyboard-video-current">当前分镜</span> : null}
         </button>

@@ -18,7 +18,9 @@ public class AiExecutionClaimService {
     private static final String OCCUPIES_CAPACITY = """
         (status='RUNNING' or (status='PENDING' and business_type='FREE_CREATION'
           and exists (select 1 from free_creation f where f.execution_id=ai_execution_task.id
-            and f.external_task_id is not null)))
+            and f.external_task_id is not null)) or (status='PENDING' and business_type='SUBTITLE_ERASE'
+          and exists (select 1 from subtitle_erase_task se where se.execution_id=ai_execution_task.id
+            and se.provider_task_id is not null)))
         """;
     private final AiExecutionTaskMapper taskMapper;
     private final AiExecutionAttemptMapper attemptMapper;
@@ -48,6 +50,9 @@ public class AiExecutionClaimService {
         // Polling an accepted task does not create remote work. It must also drain after limits decrease.
         boolean remoteContinuation = "FREE_CREATION".equals(candidate.businessType)
             && jdbc.queryForObject("select count(*) from free_creation where execution_id=? and external_task_id is not null",
+                Long.class, executionId) == 1L;
+        remoteContinuation |= "SUBTITLE_ERASE".equals(candidate.businessType)
+            && jdbc.queryForObject("select count(*) from subtitle_erase_task where execution_id=? and provider_task_id is not null",
                 Long.class, executionId) == 1L;
         if (!publication && !remoteContinuation) {
             String type = candidate.taskType == null

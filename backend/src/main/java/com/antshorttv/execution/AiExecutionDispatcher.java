@@ -91,9 +91,12 @@ public class AiExecutionDispatcher {
 
     private QueryWrapper<AiExecutionTaskEntity> typedPending(LocalDateTime now, AiExecutionPoolType type) {
         if (type == AiExecutionPoolType.VIDEO_SUBMIT || type == AiExecutionPoolType.VIDEO_QUERY) {
-            return pending(now).eq("task_type", "VIDEO").eq("business_type", "FREE_CREATION")
-                .apply("exists (select 1 from free_creation f where f.execution_id = ai_execution_task.id and f.external_task_id is "
-                    + (type == AiExecutionPoolType.VIDEO_QUERY ? "not " : "") + "null)");
+            String presence=type == AiExecutionPoolType.VIDEO_QUERY ? "not " : "";
+            return pending(now).eq("task_type", "VIDEO").and(q->q
+                .eq("business_type", "FREE_CREATION")
+                .apply("exists (select 1 from free_creation f where f.execution_id = ai_execution_task.id and f.external_task_id is " + presence + "null)")
+                .or().eq("business_type", "SUBTITLE_ERASE")
+                .apply("exists (select 1 from subtitle_erase_task se where se.execution_id = ai_execution_task.id and se.provider_task_id is " + presence + "null)"));
         }
         return pending(now).eq("task_type", type == AiExecutionPoolType.IMAGE_PUBLICATION ? "IMAGE" : type.name())
             .apply((type == AiExecutionPoolType.IMAGE_PUBLICATION ? "" : "not ") + AiExecutionTaskMapper.IMAGE_PUBLICATION);

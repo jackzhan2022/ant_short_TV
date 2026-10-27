@@ -262,7 +262,7 @@ public class ProductionTaskService {
         String type=String.valueOf(row.get("type"));
         if(type.equals("VIRTUAL_AVATAR")) return MenuAuthorization.allows(codes, "ELEMENT:VIEW");
         if(type.equals("IMAGE")) return MenuAuthorization.allows(codes, "AI_IMAGE_TASK:VIEW");
-        if(type.equals("VIDEO")) return MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW");
+        if(type.equals("VIDEO") || type.equals("SUBTITLE_ERASE")) return MenuAuthorization.allows(codes, "AI_VIDEO_TASK:VIEW");
         if(type.equals("SCRIPT_ANALYSIS")) return MenuAuthorization.allows(codes, "SCRIPT:VIEW");
         if(type.equals("STORYBOARD_BATCH") || type.equals("STORYBOARD_ITEM")) return MenuAuthorization.allows(codes, "STORYBOARD:VIEW");
         if(type.equals("SCRIPT_OPERATION")) {
@@ -283,6 +283,10 @@ public class ProductionTaskService {
         if("FREE_CREATION".equals(row.get("type"))) {
             var revision=one("select e.updated_at revision from free_creation f join ai_execution_task e on e.id=f.execution_id where f.tenant_id=? and f.id=?",tenant,number(row,"id"));
             return text(revision.get("revision"));
+        }
+        if("SUBTITLE_ERASE".equals(row.get("type"))) {
+            return text(one("select e.updated_at revision from subtitle_erase_task t join ai_execution_task e on e.id=t.execution_id where t.tenant_id=? and t.id=?",
+                tenant,number(row,"id")).get("revision"));
         }
         String table=switch(String.valueOf(row.get("type"))) {
             case "VIRTUAL_AVATAR" -> "virtual_avatar_task";
@@ -324,6 +328,7 @@ public class ProductionTaskService {
             case "VIRTUAL_AVATAR" -> avatarSections(tenant,id);
             case "IMAGE" -> imageSections(tenant,id);
             case "VIDEO" -> videoSections(tenant,id,resultTaskId(row));
+            case "SUBTITLE_ERASE" -> subtitleEraseSections(tenant,id);
             case "SCRIPT_ANALYSIS" -> analysisSections(tenant,id);
             case "REVIEW" -> reviewSections(tenant,id);
             case "VIDEO_DECOMPOSITION", "VIDEO_EPISODE" -> decompositionSections(tenant,id,String.valueOf(row.get("type")));
@@ -390,6 +395,19 @@ public class ProductionTaskService {
             section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),
                 media(firstPage(results),"image_url",number(task,"project_id"),"IMAGE"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
+    }
+
+    private List<Map<String,Object>> subtitleEraseSections(long tenant,long id) {
+        var task=one("select t.*,e.error_message,e.status execution_status from subtitle_erase_task t join ai_execution_task e on e.id=t.execution_id where t.tenant_id=? and t.id=?",tenant,id);
+        var source=jdbc.queryForList("select id,video_url,cover_url thumbnail_url,width,height,is_selected from ai_video_result where tenant_id=? and project_id=? and id=? and status='ACTIVE'",
+            tenant,number(task,"project_id"),number(task,"source_result_id"));
+        var output=jdbc.queryForList("select id,video_url,cover_url thumbnail_url,width,height,is_selected from ai_video_result where tenant_id=? and project_id=? and id=? and status='ACTIVE'",
+            tenant,number(task,"project_id"),number(task,"result_id"));
+        return List.of(section("submission","来源视频","VIDEO",source.isEmpty()?"DELETED":"AVAILABLE",null,List.of(),media(source,"video_url",number(task,"project_id"),"VIDEO"),false),
+            section("settings","擦除设置","FIELDS","AVAILABLE",null,fields("擦除方式","REGION".equals(task.get("method"))?"指定区域擦除":"智能擦除",
+                "处理版本","PRO".equals(task.get("quality"))?"精细化版":"标准版","来源视频版本",task.get("source_result_id"),"失败原因",failure(task.get("error_message"))),List.of(),false),
+            section("results","擦除结果","VIDEO",output.isEmpty()?("SUCCEEDED".equals(task.get("execution_status"))&&task.get("result_id")!=null?"DELETED":"FAILED".equals(task.get("execution_status"))?"NOT_RECORDED":"PENDING"):"AVAILABLE",null,List.of(),
+                media(output,"video_url",number(task,"project_id"),"VIDEO"),false));
     }
 
     private List<Map<String,Object>> videoSections(long tenant,long id,long resultTask) {
@@ -646,6 +664,7 @@ public class ProductionTaskService {
             item.put("sourceExecutionId",view?number(row,"source_execution_id"):null);
             String destination=view?destination(type,number(row,"id"),project,(String)row.get("subtype")):null;
             if(type.equals("IMAGE") && (!MenuAuthorization.allows(effective, "AI_IMAGE_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
+            if(type.equals("SUBTITLE_ERASE") && !MenuAuthorization.allows(effective, "AI_VIDEO_TASK:VIEW")) destination=null;
             if(type.equals("VIDEO") && (!MenuAuthorization.allows(effective, "AI_VIDEO_TASK:VIEW") || !mediaDestinations.contains((String)item.get("taskKey")))) destination=null;
             if(List.of("STORYBOARD_BATCH","STORYBOARD_ITEM").contains(type) && !MenuAuthorization.allows(effective, "STORYBOARD:VIEW")) destination=null;
             if(type.equals("VIRTUAL_AVATAR") && !MenuAuthorization.allows(effective, "ELEMENT:VIEW")) destination=null;
@@ -663,6 +682,8 @@ public class ProductionTaskService {
                 boolean active=List.of("QUEUED","RUNNING").contains(state);
                 if(type.equals("VIRTUAL_AVATAR") && state.equals("FAILED") && truth(row.get("retryable"))
                     && Set.of("ELEMENT:VIEW","ELEMENT:EDIT","AI_SERVICE:USE").stream().allMatch(code->MenuAuthorization.allows(effective,code))) actions.add("RETRY");
+                if(type.equals("SUBTITLE_ERASE") && state.equals("FAILED") && truth(row.get("retryable"))
+                    && Set.of("AI_VIDEO_TASK:VIEW","AI_VIDEO_TASK:CREATE","AI_SERVICE:USE").stream().allMatch(code->MenuAuthorization.allows(effective,code))) actions.add("RETRY");
                 if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("VIDEO") && active && !"智能虚拟化中".equals(row.get("phase")) && MenuAuthorization.allows(effective, "AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("IMAGE") && state.equals("SUCCEEDED") && number(row,"execution_id")!=null
@@ -730,6 +751,11 @@ public class ProductionTaskService {
         if(type.equals("REVIEW")) return "/script-review/tasks/"+id;
         if(type.startsWith("VIDEO_DECOMPOSITION")||type.equals("VIDEO_EPISODE")) return "/video-script-decomposition";
         if(project==null) return null;
+        if(type.equals("SUBTITLE_ERASE")) {
+            if(subtype==null || !subtype.matches("[0-9]+:[0-9]+")) return null;
+            String[] target=subtype.split(":");
+            return "/projects/"+project+"/production-workbench/storyboard?episodeNo="+target[0]+"&current=1&storyboardId="+target[1];
+        }
         String section=List.of("SCRIPT_ANALYSIS","SCRIPT_OPERATION").contains(type)?"script":"storyboard";
         if(type.equals("VIDEO")) section="video";
         if(type.equals("VIRTUAL_AVATAR")) section="settings";

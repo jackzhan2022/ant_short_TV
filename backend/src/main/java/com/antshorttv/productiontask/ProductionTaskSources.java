@@ -9,7 +9,7 @@ final class ProductionTaskSources {
         "FAILED","TIMED_OUT","VALIDATION_FAILED","CANCELED","CANCELLED","RUNNING","PROCESSING","ANALYZING","DRAFT_GENERATING",
         "GENERATING","SUBMITTING","PENDING","PENDING_ANALYSIS","PENDING_DRAFT","QUEUED","PENDING_REVIEW","WAITING_CONFIRMATION","PARTIAL","COMPLETED_WITH_FAILURES");
     static final List<String> TYPES = List.of("VIDEO_DECOMPOSITION", "VIDEO_EPISODE", "STORYBOARD_BATCH", "STORYBOARD_ITEM",
-        "SCRIPT_OPERATION", "SCRIPT_ANALYSIS", "REVIEW", "IMAGE", "VIDEO", "FREE_CREATION", "VIRTUAL_AVATAR");
+        "SCRIPT_OPERATION", "SCRIPT_ANALYSIS", "REVIEW", "IMAGE", "VIDEO", "FREE_CREATION", "VIRTUAL_AVATAR", "SUBTITLE_ERASE");
 
     static String group(String status) {
         return "case when " + status + " in ('SUCCEEDED','SUCCESS','SUCCEEDED_WITH_WARNING','SUCCESS_WITH_WARNING','COMPLETED','CONFIRMED') then 'SUCCEEDED' "
@@ -27,7 +27,7 @@ final class ProductionTaskSources {
             + state+" domain_status, "+group(state)+" status_group, "+progress+" progress, "+phase+" phase, "
             + "t.created_at, "+finished+" completed_at, "+parentType+" parent_type, "+parentId+" parent_id, "
             + (type.equals("VIDEO") ? "coalesce(re.id,e.id)" : "e.id")+" execution_id, " + (type.equals("VIDEO_EPISODE") ? "(t.retryable=true and t.execution_token is null and not exists (select 1 from video_decomposition_script_result vr where vr.tenant_id=t.tenant_id and vr.episode_id=t.id))" : type.equals("VIRTUAL_AVATAR") ? "t.retryable" : type.equals("VIDEO") ? "coalesce(re.retryable,e.retryable)" : "e.retryable") + " retryable, e.root_execution_id, e.source_execution_id, "
-            + (type.equals("SCRIPT_OPERATION") ? "t.operation_type" : type.equals("IMAGE") ? "t.target_type" : type.equals("FREE_CREATION") ? "t.media_type" : type.equals("REVIEW") ? "concat('',rp.created_by)" : type.equals("VIDEO") ? "concat('',"+VideoTaskPresentation.RESULT_ID+")" : "null") + " subtype, e.user_id execution_user, "
+            + (type.equals("SCRIPT_OPERATION") ? "t.operation_type" : type.equals("SUBTITLE_ERASE") ? "case when se_shot.id is not null and se_shot.deleted_at is null then concat(se_shot.episode_no,':',t.storyboard_id) else null end" : type.equals("IMAGE") ? "t.target_type" : type.equals("FREE_CREATION") ? "t.media_type" : type.equals("REVIEW") ? "concat('',rp.created_by)" : type.equals("VIDEO") ? "concat('',"+VideoTaskPresentation.RESULT_ID+")" : "null") + " subtype, e.user_id execution_user, "
             + (type.equals("SCRIPT_OPERATION") ? "not exists (select 1 from storyboard_batch_item bi join storyboard_batch sb on sb.id=bi.batch_id and sb.tenant_id=bi.tenant_id where bi.execution_id=t.execution_id and bi.tenant_id=t.tenant_id and sb.created_by=t.created_by)" : type.equals("VIDEO") ? "t.avatar_recovery_source_task_id is null" : "true") + " root_visible, "
             + "0 child_total, 0 child_success, 0 child_failed, 0 child_canceled, 0 child_running, 0 child_queued, 0 child_waiting "
             + "from "+table+" t left join ai_execution_task e on e.id=t.execution_id and e.tenant_id=t.tenant_id "+join+" where t.tenant_id=:tenant and "+filter;
@@ -39,6 +39,10 @@ final class ProductionTaskSources {
         source("FREE_CREATION", "free_creation", "concat('自由创作',case when t.media_type='IMAGE' then '图片' else '视频' end,' #',t.id)", "null",
             "case when e.status='PENDING' and t.provider_started_at is not null then 'RUNNING' else coalesce(e.status,'FAILED') end",
             "e.progress", "e.phase", "e.completed_at", "null", "null", "", "1=1"),
+        source("SUBTITLE_ERASE", "subtitle_erase_task", "concat('字幕擦除 #',t.id)", "t.project_id",
+            "case when e.status='PENDING' and t.provider_task_id is not null then 'RUNNING' else coalesce(e.status,'FAILED') end",
+            "e.progress", "case e.phase when 'ERASE_SUBMIT' then '提交擦除任务' when 'ERASE_PROCESSING' then '字幕擦除中' when 'ERASE_PUBLISH' then '结果转存中' else e.phase end",
+            "e.completed_at", "null", "null", "left join storyboard se_shot on se_shot.id=t.storyboard_id and se_shot.tenant_id=t.tenant_id and se_shot.project_id=t.project_id", "1=1"),
         source("VIRTUAL_AVATAR", "virtual_avatar_task", "t.title", "t.project_id", "t.status", "t.progress", "t.phase", "t.completed_at", "null", "null", "", "1=1"),
         source("IMAGE", "ai_image_task", "concat('图片生成 #',t.id)", "t.project_id", "coalesce(e.status,t.status)", "e.progress", "e.phase", "coalesce(e.completed_at,t.completed_at)", "null", "null", "", "t.deleted_at is null"),
         source("VIDEO", "ai_video_task", "concat('视频生成 #',t.id)", "t.project_id", VideoTaskPresentation.STATE, VideoTaskPresentation.PROGRESS, VideoTaskPresentation.PHASE, VideoTaskPresentation.COMPLETED, "null", "null", VideoTaskPresentation.JOIN, "t.deleted_at is null"),

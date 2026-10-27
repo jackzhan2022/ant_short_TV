@@ -52,6 +52,10 @@ import './storyboard.css';
 import ClickToPlayVideo, { stopActiveVideo } from '@/components/ClickToPlayVideo';
 import VideoFrameCaptureModal from './VideoFrameCaptureModal';
 import StoryboardVideoTools from './StoryboardVideoTools';
+import SubtitleEraseModal from './SubtitleEraseModal';
+import SubtitleEraseStatus from './SubtitleEraseStatus';
+import useSubtitleEraseTasks from './useSubtitleEraseTasks';
+import { isEraseActive, type SubtitleEraseTask } from './subtitle-erase-service';
 import { pollVideoTask } from './video-task-polling';
 import { queryRecoveredVideoTask } from './avatar-recovery-service';
 import LazyMediaImage from '@/components/LazyMediaImage';
@@ -787,6 +791,10 @@ const StoryboardCard = ({
   onImageUploaded,
   canCaptureVideo,
   onCaptureVideo,
+  onEraseVideo,
+  eraseTasks,
+  erasedPreviewResult,
+  onRetryErase,
   item,
   projectId,
   videoEstimateOperations,
@@ -834,6 +842,10 @@ const StoryboardCard = ({
   onImageUploaded: (reference: PromptReferenceOption) => void;
   canCaptureVideo: boolean;
   onCaptureVideo: (resultId: number, storyboardNo: number) => void;
+  onEraseVideo: (resultId: number, storyboardNo: number) => void;
+  eraseTasks: SubtitleEraseTask[];
+  erasedPreviewResult?: AiVideoResult;
+  onRetryErase: (id: number) => Promise<void>;
   item: StoryboardShot;
   projectId: number;
   videoEstimateOperations?: PointEstimateOperation[];
@@ -915,6 +927,9 @@ const StoryboardCard = ({
     setPreviewVersion(undefined);
     setPreviewKey('VIDEO');
   }, [item.currentVideoResultId]);
+  useEffect(() => {
+    if (erasedPreviewResult) { setPreviewVersion(erasedPreviewResult); setPreviewKey('VIDEO'); }
+  }, [erasedPreviewResult?.id]);
   const [candidateType, setCandidateType] = useState<'IMAGE' | 'VIDEO'>();
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [imageCandidates, setImageCandidates] = useState<MediaPage<AiImageResult>>();
@@ -1709,10 +1724,13 @@ const StoryboardCard = ({
               )}
             </div>
             {previewKey === 'VIDEO' && video.videoUrl && !videoGenerating && !visibleVideoError ? (
-              <StoryboardVideoTools enabled={canCaptureVideo} resultId={video.resultId}
+              <StoryboardVideoTools enabled={canCaptureVideo} resultId={video.resultId} canErase={canCaptureVideo}
+                eraseRunning={eraseTasks.some(task => task.sourceResultId === video.resultId && isEraseActive(task))}
+                onErase={() => { if (video.resultId) onEraseVideo(video.resultId, item.storyboardNo || item.shotNo); }}
                 onCapture={() => { if (video.resultId) onCaptureVideo(video.resultId, item.storyboardNo || item.shotNo); }} />
             ) : null}
           </div>
+          <SubtitleEraseStatus tasks={eraseTasks} onRetry={onRetryErase} />
           <StoryboardVideoStrip
             storyboardNo={item.storyboardNo || item.shotNo}
             results={videoVersions}
@@ -1936,6 +1954,9 @@ const ProductionWorkbenchStoryboard = () => {
   const projectId = Number(params.id);
   const [frameCapture, setFrameCapture] = useState<{ resultId: number; storyboardNo: number }>();
   useEffect(() => setFrameCapture(undefined), [projectId]);
+  const [subtitleErase, setSubtitleErase] = useState<{ resultId: number; storyboardNo: number }>();
+  const [erasedPreviews, setErasedPreviews] = useState<Record<number, AiVideoResult>>({});
+  useEffect(() => { setSubtitleErase(undefined); setErasedPreviews({}); }, [projectId]);
   const { message, modal } = App.useApp();
   const [imageTasks, setImageTasks] = useState<AiImageTask[]>([]);
   const [videoTasks, setVideoTasks] = useState<AiVideoTask[]>([]);
@@ -2689,6 +2710,13 @@ const ProductionWorkbenchStoryboard = () => {
   };
   const reloadVideoTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
   const reloadImageTasks = (storyboardId?: number) => reloadMediaTasks(storyboardId);
+  const erasure = useSubtitleEraseTasks(projectId, workspace.storyboards.map(item => item.id),
+    Boolean(videoTasks.length || Object.values(videoHistories).some(page => page.total > 0)), async (task) => {
+      if (!task.result) return;
+      setErasedPreviews(previous => ({ ...previous, [task.storyboardId]: task.result as AiVideoResult }));
+      await reloadVideoTasks(task.storyboardId);
+      message.success('字幕擦除完成，已新增视频版本，预览满意后可选用');
+    });
   const loadImageCandidates = async (
     storyboardId: number, current: number, pageSize: number, signal?: AbortSignal,
   ) => {
@@ -3944,6 +3972,19 @@ const ProductionWorkbenchStoryboard = () => {
         ) : null}
         {frameCapture ? <VideoFrameCaptureModal key={`${projectId}:${frameCapture.resultId}`} projectId={projectId}
           resultId={frameCapture.resultId} storyboardNo={frameCapture.storyboardNo} onClose={() => setFrameCapture(undefined)} /> : null}
+        {subtitleErase ? <SubtitleEraseModal key={`${projectId}:${subtitleErase.resultId}`} projectId={projectId}
+          resultId={subtitleErase.resultId} storyboardNo={subtitleErase.storyboardNo} onClose={() => setSubtitleErase(undefined)}
+          onSubmitted={(task) => {
+            erasure.upsert(task);
+            if (task.status === 'SUCCEEDED' && task.result) {
+              setErasedPreviews(previous => ({ ...previous, [task.storyboardId]: task.result as AiVideoResult }));
+              void reloadVideoTasks(task.storyboardId);
+            }
+            void erasure.refresh();
+            message.success('字幕擦除任务已提交，可在任务中心查看进度');
+          }} /> : null}
+        {erasure.error ? <div className="subtitle-erase-load-error" role="alert">字幕擦除状态更新失败
+          <Button type="link" onClick={() => void erasure.refresh()}>重新加载</Button></div> : null}
         <BatchVideoGenerationModal
           operations={previewVideoOperations(batchVideoOptions.filter((item) => !item.disabledReason && videoBatchSelectedIds.includes(item.storyboard.id)).map((item) => item.storyboard))}
           open={videoBatchOpen}
@@ -4072,6 +4113,10 @@ const ProductionWorkbenchStoryboard = () => {
                   canCaptureVideo={project?.capabilities?.canEdit === true}
                   onImageUploaded={(reference) => setUploadedImageReferences((previous) => [...previous, reference])}
                   onCaptureVideo={(resultId, storyboardNo) => { stopActiveVideo(); setFrameCapture({ resultId, storyboardNo }); }}
+                  onEraseVideo={(resultId, storyboardNo) => { stopActiveVideo(); setSubtitleErase({ resultId, storyboardNo }); }}
+                  eraseTasks={erasure.tasks.filter(task => task.storyboardId === item.id)}
+                  erasedPreviewResult={erasedPreviews[item.id]}
+                  onRetryErase={erasure.retry}
                   projectId={projectId}
                   videoEstimateOperations={previewVideoOperations([item])}
                   item={item}

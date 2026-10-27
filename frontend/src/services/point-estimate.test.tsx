@@ -282,3 +282,8 @@ it('does not send virtual-avatar ingestion retries to inference point estimation
   expect(requiresPointEstimate('/api/tenants/7/production-tasks/VIRTUAL_AVATAR:12/retry', { method: 'POST' })).toBe(false);
   expect(requiresPointEstimate('/api/tenants/7/production-tasks/IMAGE%3A12/regenerate', { method: 'POST' })).toBe(true);
 });
+
+it('does not block subtitle erasure retries on an unrelated generation price estimate', () => {
+  expect(requiresPointEstimate('/api/tenants/7/production-tasks/SUBTITLE_ERASE:12/retry', { method: 'POST' })).toBe(false);
+  expect(requiresPointEstimate('/api/tenants/7/production-tasks/SUBTITLE_ERASE%3A12/retry', { method: 'POST' })).toBe(false);
+});

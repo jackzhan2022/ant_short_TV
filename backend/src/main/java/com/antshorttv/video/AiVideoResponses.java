@@ -40,7 +40,7 @@ record AiVideoTaskResponse(
     long resultCount
 ) {
     static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results) {
-        return from(entity, results, results.size(), false);
+        return from(entity, results, results.size(), true);
     }
 
     static AiVideoTaskResponse from(AiVideoTaskEntity entity, List<AiVideoResultEntity> results, long resultCount) {
@@ -102,7 +102,11 @@ record AiVideoResultResponse(
     Long materialId,
     Boolean isSelected,
     String status,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    String processingType,
+    Long sourceResultId,
+    String processingMethod,
+    String processingQuality
 ) {
     static AiVideoResultResponse from(AiVideoResultEntity entity) {
         return from(entity, false);
@@ -130,7 +134,11 @@ record AiVideoResultResponse(
             entity.materialId,
             entity.isSelected,
             entity.status,
-            entity.createdAt
+            entity.createdAt,
+            entity.processingType,
+            entity.sourceResultId,
+            entity.processingMethod,
+            entity.processingQuality
         );
     }
 }

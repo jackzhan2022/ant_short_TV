@@ -36,3 +36,11 @@ describe('storyboard video versions', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多分镜1视频' })).not.toBeInTheDocument());
   });
 });
+
+it('marks an erased version while retaining the original and its current selection', () => {
+  const original = { ...video(1, '2026-10-27T00:00:00'), isSelected: true };
+  const erased = { ...video(2, '2026-10-27T01:00:00'), processingType: 'SUBTITLE_ERASE' as const, sourceResultId: 1 };
+  render(<StoryboardVideoStrip storyboardNo={1} results={[original, erased]} currentResultId={1} previewResultId={2} onPreview={vi.fn()} onLoad={vi.fn()} />);
+  expect(screen.getByText('字幕已擦除').closest('button')).toHaveAttribute('aria-label', '预览分镜1视频版本2');
+  expect(screen.getByText('当前分镜').closest('button')).toHaveAttribute('aria-label', '预览分镜1视频版本1');
+});

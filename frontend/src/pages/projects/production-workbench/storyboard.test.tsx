@@ -11,6 +11,9 @@ import type { AiVideoTask, ScriptEpisode } from './service';
 import { PointEstimateCancelledError } from '@/services/point-estimate';
 
 const mocks = vi.hoisted(() => ({
+  querySubtitleEraseTasks: vi.fn(),
+  createSubtitleEraseTask: vi.fn(),
+  retrySubtitleEraseTask: vi.fn(),
   locationSearch: '',
   startUpload: vi.fn(),
   bindImageUpload: vi.fn(),
@@ -119,6 +122,14 @@ vi.mock('@/components/AiExecutionStatus', () => ({
       ) : null}
     </span>
   ),
+}));
+
+vi.mock('./subtitle-erase-service', () => ({
+  querySubtitleEraseTasks: mocks.querySubtitleEraseTasks,
+  createSubtitleEraseTask: mocks.createSubtitleEraseTask,
+  retrySubtitleEraseTask: mocks.retrySubtitleEraseTask,
+  subtitleEraseSource: (project: number, result: number) => `/api/projects/${project}/ai-video-results/${result}/playback`,
+  isEraseActive: (task: { status: string }) => ['PENDING', 'RUNNING'].includes(task.status),
 }));
 
 vi.mock('./service', () => ({
@@ -833,6 +844,7 @@ describe('ProductionWorkbench script page', () => {
   });
 
   beforeEach(() => {
+  mocks.querySubtitleEraseTasks.mockResolvedValue([]);
     mocks.confirmPointEstimates.mockResolvedValue({ estimatedPoints: 10 });
     mocks.locationSearch = '';
     mocks.projectId = '1';
@@ -1206,6 +1218,40 @@ describe('ProductionWorkbench script page', () => {
     await waitFor(() => expect(document.getElementById('storyboard-121')).toHaveFocus());
     expect(screen.getByRole('button', { name: '跳转到分镜21' })).toHaveAttribute('aria-current', 'location');
     expect(screen.getByRole('textbox', { name: '分镜21视频提示词' })).toBeInTheDocument();
+  });
+
+  it('erases the previewed historical version and previews its result without changing the selected video', async () => {
+    mocks.outletContext = { project: { id: 1, capabilities: { canEdit: true } } };
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
+    const old = { id: 900, taskId: 90, storyboardId: 101, videoUrl: '/old.mp4', status: 'ACTIVE', createdAt: '2026-01-01', isSelected: true };
+    const historical = { ...old, id: 902, videoUrl: '/historical.mp4', createdAt: '2026-02-01', isSelected: false };
+    const response = await mocks.queryStoryboardEditorPage();
+    setupWorkspaceResponse({ storyboards: [{ ...response.data.storyboards[0], currentVideoResultId: 900, currentVideoUrl: '/old.mp4' }] });
+    const media = (extra: any[] = []) => ({ data: { imageTasks: [], voiceTasks: [], assetVisuals: [],
+      videoTasks: [{ id: 90, storyboardId: 101, status: 'SUCCEEDED', results: [old] }],
+      videoHistory: [{ storyboardId: 101, data: [...extra, historical, old], current: 1, pageSize: 8, total: 2 + extra.length }],
+    } });
+    mocks.queryStoryboardMedia.mockResolvedValue(media());
+    const pending = { id: 77, executionId: 88, storyboardId: 101, sourceResultId: 902, method: 'AUTO', quality: 'PRO', status: 'PENDING', retryable: false };
+    mocks.createSubtitleEraseTask.mockImplementation(async () => { mocks.querySubtitleEraseTasks.mockResolvedValue([pending]); return pending; });
+    render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '预览分镜1视频版本902' }));
+    fireEvent.click(screen.getByRole('button', { name: '擦除字幕' }));
+    const video = screen.getByLabelText('待擦除字幕的视频');
+    Object.defineProperties(video, { videoWidth: { value: 720 }, videoHeight: { value: 1280 }, duration: { value: 4 } });
+    fireEvent.loadedMetadata(video); fireEvent.loadedData(video);
+    fireEvent.click(screen.getByRole('button', { name: '开始擦除' }));
+    await waitFor(() => expect(mocks.createSubtitleEraseTask).toHaveBeenCalledWith(1, 902, { method: 'AUTO', quality: 'PRO' }, expect.any(String)));
+    await screen.findByText('字幕擦除排队中');
+    const clean = { ...old, id: 903, videoUrl: '/clean.mp4', createdAt: '2026-03-01', isSelected: false, processingType: 'SUBTITLE_ERASE', sourceResultId: 902 };
+    mocks.querySubtitleEraseTasks.mockResolvedValue([{ ...pending, status: 'SUCCEEDED', result: clean }]);
+    mocks.queryStoryboardMedia.mockResolvedValue(media([clean]));
+    fireEvent.focus(window);
+    await screen.findByRole('button', { name: '预览分镜1视频版本903' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '预览分镜1视频版本903' })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByText('当前分镜').closest('button')).toHaveAttribute('aria-label', '预览分镜1视频版本900');
+    expect(mocks.bindAiVideoResultToStoryboard).not.toHaveBeenCalled();
   });
 
   it('previews chronological video versions and changes the current binding without reordering them', async () => {

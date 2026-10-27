@@ -95,13 +95,14 @@ class MediaCoverDeliveryServiceTest {
         assertThat(f.service.delivery(22L, 1L, f.kind)).isNull();
     }
 
-    @Test
-    void generatedVideoCoverUsesCapturedJpegUntilItsCompressedDisplayIsReady() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"VIDEO_COVER","PROCESSED_VIDEO_COVER"})
+    void generatedVideoCoverUsesCapturedJpegUntilItsCompressedDisplayIsReady(String targetType) {
         Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
         f.source("/api/projects/22/ai-image-results/44/display");
         var image = new AiImageResultEntity();
         image.setId(44L); image.setTenantId(11L); image.setProjectId(22L);
-        image.setTargetType("VIDEO_COVER"); image.setStatus("ACTIVE");
+        image.setTargetType(targetType); image.setStatus("ACTIVE");
         when(f.images.selectById(44L)).thenReturn(image);
         var identity = new MediaObjectIdentity(11L, 22L, "AI_IMAGE_RESULT", 44L, "result-44");
         when(f.renditions.displayDetails(identity)).thenReturn(new RegisteredMediaDetails(44L, identity,

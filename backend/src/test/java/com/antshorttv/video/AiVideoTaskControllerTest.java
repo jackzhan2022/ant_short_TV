@@ -474,7 +474,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.status", is("SUCCEEDED")))
             .andExpect(jsonPath("$.data.results", hasSize(1)))
-            .andExpect(jsonPath("$.data.results[0].videoUrl", containsString(".mp4")));
+            .andExpect(jsonPath("$.data.results[0].videoUrl", containsString("/playback")));
 
         MvcResult detailResult = mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d".formatted(projectId, taskId))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
@@ -991,6 +991,78 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             pollVideoTask(token, tenantId, projectId, readLong(result, "$.data.id"))
                 .andExpect(jsonPath("$.data.status", is("FAILED")));
             assertThat(calls.get()).isZero();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void retainsArkSourceAndExpiryBeforeTransferRetryAndSwitchesPlaybackAtTwoHours() throws Exception {
+        java.time.Instant completed = java.time.Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        AtomicInteger downloads = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        String sourceUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/generated.mp4?signature=source";
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                writeJson(exchange, 200, "{\"id\":\"ark-source-task\",\"status\":\"queued\"}");
+            } else {
+                writeJson(exchange, 200, """
+                    {"id":"ark-source-task","status":"succeeded","content":{"video_url":"%s"},
+                     "updated_at":%d,"resolution":"720p","ratio":"9:16","duration":5,
+                     "usage":{"completion_tokens":1,"total_tokens":1}}
+                    """.formatted(sourceUrl, completed.getEpochSecond()));
+            }
+        });
+        server.createContext("/generated.mp4", exchange -> {
+            if (downloads.incrementAndGet() == 1) {
+                writeJson(exchange, 502, "{\"message\":\"temporary transfer failure\"}");
+                return;
+            }
+            byte[] body = "video".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream output = exchange.getResponseBody()) { output.write(body); }
+        });
+        server.start();
+        try {
+            String token = registerUser("13800016030", "Ark Source Owner");
+            Long tenantId = createTenant(token, "火山源视频团队");
+            Long ownerId = userIdByMobile("13800016030");
+            Long projectId = createProject(token, tenantId, ownerId, "火山源视频项目", "ARK_SOURCE_PLAYBACK");
+            Long modelId = enableSeedanceMini("http://127.0.0.1:" + server.getAddress().getPort() + "/api/v3");
+            Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+            jdbc.update("update storyboard set first_frame_url=null, prompt_document_json=null where id=?", storyboardId);
+            grantTeamPoints(tenantId, 5);
+            var created = mockMvc.perform(post("/api/projects/" + projectId + "/ai-video-tasks")
+                    .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                    .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"storyboardId":%d,"modelId":%d,"prompt":"山间日出","durationSeconds":5,
+                         "aspectRatio":"9:16","resolution":"720p"}
+                        """.formatted(storyboardId, modelId)))
+                .andExpect(status().isOk()).andReturn();
+            Long taskId = readLong(created, "$.data.id");
+            pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("GENERATING")));
+            pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("GENERATING")));
+            String metadata = jdbc.queryForObject("select provider_result_metadata_json from ai_video_task where id=?", String.class, taskId);
+            assertThat(metadata).contains(sourceUrl, completed.plusSeconds(86400).toString());
+            assertThat(jdbc.queryForObject("select count(*) from ai_video_result where task_id=?", Integer.class, taskId)).isZero();
+
+            pollVideoTask(token, tenantId, projectId, taskId).andExpect(jsonPath("$.data.status", is("SUCCEEDED")));
+            var result = jdbc.queryForMap("select * from ai_video_result where task_id=?", taskId);
+            assertThat(result.get("source_video_url")).isEqualTo(sourceUrl);
+            assertThat(((java.sql.Timestamp) result.get("source_video_expires_at")).toLocalDateTime())
+                .isEqualTo(java.time.LocalDateTime.ofInstant(completed.plusSeconds(86400), java.time.ZoneOffset.UTC));
+            assertThat(result.get("video_url").toString()).doesNotContain("127.0.0.1");
+            String playback = "/api/projects/" + projectId + "/ai-video-results/" + result.get("id") + "/playback";
+            mockMvc.perform(get(playback).with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+                .andExpect(status().isFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", sourceUrl))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"));
+            jdbc.update("update ai_video_result set source_video_expires_at=? where id=?",
+                java.time.LocalDateTime.ofInstant(java.time.Instant.now().plusSeconds(7199), java.time.ZoneOffset.UTC), result.get("id"));
+            mockMvc.perform(get(playback).with(com.antshorttv.support.SessionTestSupport.authenticated(token)))
+                .andExpect(status().isFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", containsString("antvcdn.aixmax.cn")));
         } finally {
             server.stop(0);
         }

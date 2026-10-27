@@ -16,6 +16,13 @@ public class AiVideoResultEntity {
     public Long taskId;
     public Long storyboardId;
     public String videoUrl;
+    public String processingType;
+    public Long sourceResultId;
+    public String processingMethod;
+    public String processingQuality;
+    public String sourceVideoUrl;
+    /** UTC expiry of the original provider URL. */
+    public LocalDateTime sourceVideoExpiresAt;
     public String storagePath;
     public String coverUrl;
     public BigDecimal durationSeconds;

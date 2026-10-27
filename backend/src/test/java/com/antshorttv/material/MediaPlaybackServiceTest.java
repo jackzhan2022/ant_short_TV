@@ -17,6 +17,10 @@ import com.antshorttv.storage.DeliveryGrantRequest;
 import com.antshorttv.storage.MediaDeliveryGrantService;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -90,17 +94,97 @@ class MediaPlaybackServiceTest {
         verify(f.permissions).require(11L, 22L, "AI_VIDEO_RESULT:DOWNLOAD");
     }
 
+    @Test
+    void prefersArkSourceOnlyWhileMoreThanTwoHoursRemain() {
+        Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+        when(f.permissions.require(11L, 22L, "AI_VIDEO_TASK:VIEW"))
+            .thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
+        f.source("https://ark.example/result.mp4?signature=original", f.now.plusSeconds(7201));
+
+        var grant = f.service.issue(22L, 1L, MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+
+        assertThat(grant.url()).isEqualTo("https://ark.example/result.mp4?signature=original");
+        assertThat(grant.expiresAt()).isEqualTo(f.now.plusSeconds(7201));
+        verifyNoInteractions(f.grants);
+    }
+
+    @Test
+    void fallsBackToPlatformAtTwoHoursOrLessAndForExpiredSources() {
+        for (long seconds : new long[] {7200, 7199, 0, -1}) {
+            Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+            when(f.permissions.require(11L, 22L, "AI_VIDEO_TASK:VIEW"))
+                .thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
+            when(f.grants.issue(any())).thenReturn(new DeliveryGrant("https://cdn.example/play.mp4", f.now.plus(Duration.ofHours(24))));
+            f.source("https://ark.example/result.mp4", f.now.plusSeconds(seconds));
+
+            assertThat(f.service.issue(22L, 1L, MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT).url())
+                .as("remaining seconds: %s", seconds).isEqualTo("https://cdn.example/play.mp4");
+            verify(f.grants).issue(any());
+        }
+    }
+
+    @Test
+    void fallsBackWhenSourceUrlOrExpiryIsMissing() {
+        for (String url : new String[] {null, "", "https://ark.example/result.mp4"}) {
+            Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+            when(f.permissions.require(11L, 22L, "AI_VIDEO_TASK:VIEW"))
+                .thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
+            when(f.grants.issue(any())).thenReturn(new DeliveryGrant("https://cdn.example/play.mp4", f.now));
+            f.source(url, url != null && !url.isBlank() ? null : f.now.plus(Duration.ofHours(24)));
+
+            assertThat(f.service.issue(22L, 1L, MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT).url())
+                .isEqualTo("https://cdn.example/play.mp4");
+        }
+    }
+
+    @Test
+    void freshSourceStillRequiresPermissionAndDownloadsUsePlatformCopy() {
+        Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+        f.source("https://ark.example/result.mp4", f.now.plus(Duration.ofHours(24)));
+        when(f.permissions.require(11L, 22L, "AI_VIDEO_TASK:VIEW"))
+            .thenThrow(new BusinessException(ErrorCode.FORBIDDEN, "Denied"));
+        assertThatThrownBy(() -> f.service.issue(22L, 1L, MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT))
+            .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(f.grants);
+
+        when(f.permissions.require(11L, 22L, "AI_VIDEO_RESULT:DOWNLOAD"))
+            .thenReturn(new TenantContext(33L, 11L, 44L, "MEMBER"));
+        when(f.grants.issue(any())).thenReturn(new DeliveryGrant("https://cdn.example/download.mp4", f.now));
+        assertThat(f.service.download(22L, 1L).url()).isEqualTo("https://cdn.example/download.mp4");
+    }
+
+    @Test
+    void processingUsesTheSameExpiryThresholdAndRejectsAnotherTenant() {
+        Fixture f = new Fixture(MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT);
+        f.source("https://ark.example/video.mp4", f.now.plusSeconds(7201));
+        assertThat(f.service.issueForProcessing(11L,22L,1L,33L).url()).isEqualTo("https://ark.example/video.mp4");
+        f.source("https://ark.example/video.mp4", f.now.plusSeconds(7200));
+        when(f.grants.issue(any())).thenReturn(new DeliveryGrant("https://cdn.example/play.mp4",f.now));
+        assertThat(f.service.issueForProcessing(11L,22L,1L,33L).url()).isEqualTo("https://cdn.example/play.mp4");
+        assertThatThrownBy(()->f.service.issueForProcessing(12L,22L,1L,33L)).isInstanceOf(BusinessException.class);
+        verifyNoInteractions(f.permissions);
+    }
+
     private static class Fixture {
         final JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:" + java.util.UUID.randomUUID() + ";DB_CLOSE_DELAY=-1", "sa", ""));
         final ProjectPermissionGuard permissions = mock(ProjectPermissionGuard.class);
         final MediaDeliveryGrantService grants = mock(MediaDeliveryGrantService.class);
+        final Instant now = Instant.parse("2026-10-27T04:00:00Z");
         final String table;
         final MediaPlaybackService service;
         Fixture(MediaPlaybackService.ResourceKind kind) {
             table = kind.name().toLowerCase();
             jdbc.execute("create table " + table + " (id bigint primary key,tenant_id bigint,project_id bigint,storage_path varchar(1000),status varchar(32))");
             jdbc.update("insert into " + table + " values (1,11,22,'materials/11/22/videos/v1/original.mp4','ACTIVE')");
-            service = new MediaPlaybackService(jdbc, permissions, grants, new ObjectStorageKeyFactory());
+            if (kind == MediaPlaybackService.ResourceKind.AI_VIDEO_RESULT) {
+                jdbc.execute("alter table " + table + " add source_video_url text");
+                jdbc.execute("alter table " + table + " add source_video_expires_at timestamp");
+            }
+            service = new MediaPlaybackService(jdbc, permissions, grants, new ObjectStorageKeyFactory(), Clock.fixed(now, ZoneOffset.UTC));
+        }
+        void source(String url, Instant expiresAt) {
+            jdbc.update("update " + table + " set source_video_url = ?, source_video_expires_at = ?",
+                url, expiresAt == null ? null : LocalDateTime.ofInstant(expiresAt, ZoneOffset.UTC));
         }
     }
 }

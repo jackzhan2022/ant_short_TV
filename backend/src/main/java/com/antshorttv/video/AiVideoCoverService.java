@@ -27,12 +27,20 @@ public class AiVideoCoverService {
     }
 
     public AiImageResultEntity prepare(AiVideoTaskEntity task, AiVideoResultEntity video) {
+        return prepare(task, video, "VIDEO_COVER", task.id);
+    }
+
+    public AiImageResultEntity prepareProcessed(AiVideoTaskEntity task, AiVideoResultEntity video) {
+        return prepare(task, video, "PROCESSED_VIDEO_COVER", video.id);
+    }
+
+    private AiImageResultEntity prepare(AiVideoTaskEntity task, AiVideoResultEntity video, String targetType, Long targetId) {
         // Reserve a stable image identity so a failed capture/publication can reuse the same original.
         var existing = images.selectList(new LambdaQueryWrapper<AiImageResultEntity>()
             .eq(AiImageResultEntity::getTenantId, task.tenantId)
             .eq(AiImageResultEntity::getProjectId, task.projectId)
-            .eq(AiImageResultEntity::getTargetType, "VIDEO_COVER")
-            .eq(AiImageResultEntity::getTargetId, task.id)
+            .eq(AiImageResultEntity::getTargetType, targetType)
+            .eq(AiImageResultEntity::getTargetId, targetId)
             .in(AiImageResultEntity::getStatus, "PROCESSING", "ACTIVE")
             .orderByAsc(AiImageResultEntity::getId).last("limit 1"));
         LocalDateTime now = LocalDateTime.now();
@@ -41,8 +49,8 @@ public class AiVideoCoverService {
             image = new AiImageResultEntity();
             image.setTenantId(task.tenantId);
             image.setProjectId(task.projectId);
-            image.setTargetType("VIDEO_COVER");
-            image.setTargetId(task.id);
+            image.setTargetType(targetType);
+            image.setTargetId(targetId);
             image.setImageUrl("");
             image.setMimeType("image/jpeg");
             image.setIsSelected(false);

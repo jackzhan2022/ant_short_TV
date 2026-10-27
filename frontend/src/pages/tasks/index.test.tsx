@@ -391,3 +391,17 @@ it('controls free creations and follows the newly created task with audio refere
   expect(mocks.control).toHaveBeenCalledWith(1, 'FREE_CREATION:12', 'RETRY', expect.any(String));
   expect(new URLSearchParams(window.location.search).get('task')).toBe('FREE_CREATION:13');
 });
+
+it('shows subtitle erasure content and retries the same task from the task center', async () => {
+  window.history.replaceState({}, '', '/tasks?task=SUBTITLE_ERASE:4');
+  mocks.detail.mockResolvedValue({ taskKey: 'SUBTITLE_ERASE:4', type: 'SUBTITLE_ERASE', title: '字幕擦除 #4', statusGroup: 'FAILED',
+    childCounts: { total: 0 }, allowedActions: ['RETRY'], destination: '/projects/1/production-workbench/storyboard?episodeNo=1&storyboardId=3' });
+  mocks.content.mockResolvedValue({ schemaVersion: 1, taskKey: 'SUBTITLE_ERASE:4', contentRevision: '1', sections: [{
+    key: 'results', title: '擦除结果', kind: 'VIDEO', availability: 'AVAILABLE', fields: [], hasMore: false,
+    items: [{ id: 33, url: '/api/projects/1/ai-video-results/33/playback', width: 720, height: 1280 }],
+  }] });
+  mocks.control.mockResolvedValue({ taskKey: 'SUBTITLE_ERASE:4' });
+  render(<Tasks />); await screen.findByText('擦除结果');
+  fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }));
+  await waitFor(() => expect(mocks.control).toHaveBeenCalledWith(1, 'SUBTITLE_ERASE:4', 'RETRY', expect.any(String)));
+});

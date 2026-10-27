@@ -6,6 +6,17 @@ import org.junit.jupiter.api.Test;
 
 class AiVideoResultReferenceTest {
     @Test
+    void newlyCompletedTasksUsePlaybackEntryAndKeepPlatformReference() {
+        var entity = new AiVideoResultEntity();
+        entity.id = 1L;
+        entity.projectId = 22L;
+        entity.videoUrl = "/materials/11/22/videos/1/v1/original.mp4";
+        var response = AiVideoTaskResponse.from(new AiVideoTaskEntity(), java.util.List.of(entity)).results().get(0);
+        assertThat(response.videoUrl()).isEqualTo("/api/projects/22/ai-video-results/1/playback");
+        assertThat(response.referenceUrl()).isEqualTo(entity.videoUrl);
+    }
+
+    @Test
     void preservesModelReferenceIndependentlyOfBrowserPlayback() throws Exception {
         var entity = new AiVideoResultEntity();
         entity.id = 1L; entity.projectId = 22L;

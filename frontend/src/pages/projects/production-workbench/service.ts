@@ -1285,6 +1285,10 @@ export type AiVideoTaskStatus =
   | 'CANCELED';
 
 export type AiVideoResult = {
+  processingType?: 'SUBTITLE_ERASE' | null;
+  sourceResultId?: number | null;
+  processingMethod?: 'AUTO' | 'REGION' | null;
+  processingQuality?: 'PRO' | 'STANDARD' | null;
   id: number;
   taskId: number;
   storyboardId: number;

@@ -7,6 +7,11 @@ import com.antshorttv.storage.DeliveryGrant;
 import com.antshorttv.storage.DeliveryGrantRequest;
 import com.antshorttv.storage.MediaDeliveryGrantService;
 import com.antshorttv.storage.ObjectStorageKeyFactory;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -32,13 +37,21 @@ public class MediaPlaybackService {
     private final ProjectPermissionGuard permissions;
     private final MediaDeliveryGrantService grants;
     private final ObjectStorageKeyFactory keys;
+    private final Clock clock;
 
+    @Autowired
     public MediaPlaybackService(JdbcTemplate jdbc, ProjectPermissionGuard permissions,
         MediaDeliveryGrantService grants, ObjectStorageKeyFactory keys) {
+        this(jdbc, permissions, grants, keys, Clock.systemUTC());
+    }
+
+    MediaPlaybackService(JdbcTemplate jdbc, ProjectPermissionGuard permissions,
+        MediaDeliveryGrantService grants, ObjectStorageKeyFactory keys, Clock clock) {
         this.jdbc = jdbc;
         this.permissions = permissions;
         this.grants = grants;
         this.keys = keys;
+        this.clock = clock;
     }
 
     public DeliveryGrant issue(Long projectId, Long resourceId, ResourceKind kind) {
@@ -49,13 +62,29 @@ public class MediaPlaybackService {
         return issue(projectId, resultId, ResourceKind.AI_VIDEO_RESULT, "AI_VIDEO_RESULT:DOWNLOAD");
     }
 
+    /** For an already-authorized persisted task; never exposed directly by a controller. */
+    public DeliveryGrant issueForProcessing(Long tenantId, Long projectId, Long resultId, Long userId) {
+        if (tenantId == null || userId == null) throw unavailable();
+        return issue(projectId, resultId, ResourceKind.AI_VIDEO_RESULT, "AI_VIDEO_TASK:VIEW", tenantId, userId);
+    }
+
     private DeliveryGrant issue(Long projectId, Long resourceId, ResourceKind kind, String permission) {
-        var resources = jdbc.query("select tenant_id, project_id, storage_path from " + kind.table
+        return issue(projectId, resourceId, kind, permission, null, null);
+    }
+
+    private DeliveryGrant issue(Long projectId, Long resourceId, ResourceKind kind, String permission,
+        Long processingTenant, Long processingUser) {
+        boolean aiVideo = kind == ResourceKind.AI_VIDEO_RESULT;
+        String sourceColumns = aiVideo ? ", source_video_url, source_video_expires_at" : "";
+        var resources = jdbc.query("select tenant_id, project_id, storage_path" + sourceColumns + " from " + kind.table
             + " where id = ? and project_id = ? and status = 'ACTIVE' limit 1",
-            (row, index) -> new PlaybackResource(row.getLong("tenant_id"), row.getLong("project_id"), row.getString("storage_path")),
+            (row, index) -> new PlaybackResource(row.getLong("tenant_id"), row.getLong("project_id"), row.getString("storage_path"),
+                aiVideo ? row.getString("source_video_url") : null,
+                aiVideo ? row.getObject("source_video_expires_at", LocalDateTime.class) : null),
             resourceId, projectId);
         if (resources.isEmpty()) throw unavailable();
         var resource = resources.get(0);
+        if (processingTenant != null && !processingTenant.equals(resource.tenantId())) throw unavailable();
         String objectKey;
         try {
             String source = resource.objectKey();
@@ -64,8 +93,15 @@ public class MediaPlaybackService {
             throw unavailable();
         }
         if (!objectKey.startsWith("materials/" + resource.tenantId() + "/" + projectId + "/")) throw unavailable();
-        var context = permissions.require(resource.tenantId(), projectId, permission);
-        return grants.issue(new DeliveryGrantRequest(resource.tenantId(), projectId, context.userId(),
+        Long userId = processingUser != null ? processingUser : permissions.require(resource.tenantId(), projectId, permission).userId();
+        if (aiVideo && permission.equals(kind.permission) && resource.sourceUrl() != null
+            && !resource.sourceUrl().isBlank() && resource.sourceExpiresAt() != null) {
+            var expiresAt = resource.sourceExpiresAt().toInstant(ZoneOffset.UTC);
+            if (expiresAt.isAfter(clock.instant().plus(Duration.ofHours(2)))) {
+                return new DeliveryGrant(resource.sourceUrl(), expiresAt);
+            }
+        }
+        return grants.issue(new DeliveryGrantRequest(resource.tenantId(), projectId, userId,
             kind.name(), resourceId, "resource-" + resourceId, "VIDEO", objectKey, true));
     }
 
@@ -73,5 +109,6 @@ public class MediaPlaybackService {
         return new BusinessException(ErrorCode.NOT_FOUND, "视频资源不存在。");
     }
 
-    private record PlaybackResource(Long tenantId, Long projectId, String objectKey) {}
+    private record PlaybackResource(Long tenantId, Long projectId, String objectKey,
+        String sourceUrl, LocalDateTime sourceExpiresAt) {}
 }

@@ -57,6 +57,7 @@ const types: Record<string, string> = {
   REVIEW: '剧本审核',
   IMAGE: '图片生成',
   VIDEO: '视频生成',
+  SUBTITLE_ERASE: '字幕擦除',
   FREE_CREATION: '自由创作',
   VIRTUAL_AVATAR: '虚拟人像',
 };
@@ -608,7 +609,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
                 .map((action) => (
                   <PointEstimateButton
                     tenantId={tenant}
-                    operations={action === 'CANCEL' ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
+                    operations={action === 'CANCEL' || detail.type === 'SUBTITLE_ERASE' ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
                     key={action}
                     loading={busy}
                     onClick={() => void run(detail, action)}

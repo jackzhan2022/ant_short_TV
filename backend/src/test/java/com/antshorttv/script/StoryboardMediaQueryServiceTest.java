@@ -39,6 +39,10 @@ public class StoryboardMediaQueryServiceTest {
             jdbc.execute("create table ai_" + kind + "_task(id bigint,tenant_id bigint,project_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,task_type varchar(30),model_id bigint,provider_code varchar(50),model varchar(50),aspect_ratio varchar(20),image_count int,duration_seconds int,status varchar(30),error_message varchar(100),created_at timestamp,execution_id bigint,deleted_at timestamp)");
             jdbc.execute("create table ai_" + kind + "_result(id bigint,tenant_id bigint,project_id bigint,task_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,image_url varchar(300),thumbnail_url varchar(300),display_path varchar(300),video_url varchar(300),storage_path varchar(300),cover_url varchar(300),audio_url varchar(300),duration_seconds decimal(8,2),width int,height int,file_size bigint,format varchar(30),material_id bigint,is_selected boolean,status varchar(30),created_at timestamp)");
         }
+        jdbc.execute("alter table ai_video_result add processing_type varchar(32)");
+        jdbc.execute("alter table ai_video_result add source_result_id bigint");
+        jdbc.execute("alter table ai_video_result add processing_method varchar(16)");
+        jdbc.execute("alter table ai_video_result add processing_quality varchar(16)");
         jdbc.execute("alter table ai_video_task add avatar_recovery_source_task_id bigint");
         jdbc.execute("alter table ai_video_task add execution_phase varchar(64)");
         jdbc.execute("create table seedance_avatar_recovery(source_task_id bigint,tenant_id bigint,project_id bigint,retry_task_id bigint,status varchar(32),error_message varchar(1000))");

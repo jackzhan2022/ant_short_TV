@@ -57,7 +57,7 @@ public class StoryboardMediaQueryService {
     private List<Map<String, Object>> videoHistory(Long tenantId, Long projectId, List<Long> ids) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
             select * from (
-              select r.id,r.task_id,r.storyboard_id,r.storage_path,r.cover_url,r.is_selected,r.status,r.created_at,
+              select r.id,r.task_id,r.storyboard_id,r.storage_path,r.cover_url,r.is_selected,r.status,r.created_at,r.processing_type,r.source_result_id,r.processing_method,r.processing_quality,
                      count(*) over (partition by r.storyboard_id) result_count,
                      row_number() over (partition by r.storyboard_id order by r.created_at desc,r.id desc) result_rank
                 from ai_video_result r join ai_video_task t on t.id=r.task_id
@@ -267,7 +267,7 @@ public class StoryboardMediaQueryService {
         String columns = "id, task_id, is_selected, status, created_at";
         columns += switch (kind) {
             case "image" -> ", target_type, target_id, thumbnail_url, width, height, file_size, material_id";
-            case "video" -> ", storyboard_id, video_url, storage_path, cover_url, duration_seconds, width, height, file_size, format, material_id";
+            case "video" -> ", storyboard_id, video_url, storage_path, cover_url, duration_seconds, width, height, file_size, format, material_id, processing_type, source_result_id, processing_method, processing_quality";
             default -> ", storyboard_id, audio_url, storage_path, duration_seconds, file_size, format, material_id";
         };
         List<Object> params = new ArrayList<>();

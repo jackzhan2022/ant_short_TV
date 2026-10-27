@@ -24,6 +24,8 @@ public class ProductionTaskController {
     private com.antshorttv.freecreation.FreeCreationService freeCreations;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.avatar.VirtualAvatarService avatars;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.video.SubtitleEraseTaskService subtitleErasure;
     private final ProductionTaskService service;
     private final AiImageTaskService images;
     private final AiVideoTaskService videos;
@@ -95,6 +97,7 @@ public class ProductionTaskController {
             }
             case "VIDEO_EPISODE" -> decomposition.retry(tenantId,id,null);
             case "VIRTUAL_AVATAR" -> avatars.retry(tenantId,project,id);
+            case "SUBTITLE_ERASE" -> subtitleErasure.retry(tenantId,project,id,request.getHeader("Idempotency-Key"));
             default -> throw ProductionTaskService.denied();
         }
         return ApiResponse.success(service.detail(tenantId,taskKey));

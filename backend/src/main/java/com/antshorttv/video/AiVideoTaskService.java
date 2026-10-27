@@ -62,6 +62,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
@@ -826,7 +828,7 @@ public class AiVideoTaskService {
         storyboard.updatedAt = now;
         storyboardMapper.updateById(storyboard);
         recordOperation(context, projectId, "BIND_AI_VIDEO_RESULT_STORYBOARD", result.id, servletRequest);
-        return AiVideoResultResponse.from(result);
+        return AiVideoResultResponse.fromBrowser(result);
     }
 
     @Transactional
@@ -1380,6 +1382,11 @@ public class AiVideoTaskService {
         );
         long fileSize = writeVideoFile(result.storagePath, providerResult.videoUrl());
         result.videoUrl = materialFileAccessService.publicUrl(result.storagePath);
+        ArkVideoSourceLink source = ArkVideoSourceLink.read(videoJson(task.providerResultMetadataJson));
+        if (source != null) {
+            result.sourceVideoUrl = source.url();
+            result.sourceVideoExpiresAt = LocalDateTime.ofInstant(source.expiresAt(), ZoneOffset.UTC);
+        }
         result.durationSeconds = providerResult.durationSeconds() == null
             ? BigDecimal.valueOf(task.durationSeconds == null ? 5 : task.durationSeconds)
             : providerResult.durationSeconds();
@@ -1782,6 +1789,12 @@ public class AiVideoTaskService {
         var metadata = (com.fasterxml.jackson.databind.node.ObjectNode) videoJson(invocation.response().metadataJson());
         if (invocation.response().completionTokens() != null) metadata.put("completionTokens", invocation.response().completionTokens());
         if (invocation.response().resolution() != null) metadata.put("resolution", invocation.response().resolution());
+        if (com.antshorttv.ai.VolcengineProviderCodes.isArk(task.providerCode)
+            && "SUCCEEDED".equals(invocation.response().status())) {
+            ArkVideoSourceLink source = ArkVideoSourceLink.capture(
+                invocation.response().videoUrl(), metadata, previous, Instant.now());
+            if (source != null) source.writeTo(metadata);
+        }
         metadata.put("billingAttemptId", previous.path("billingAttemptId").asLong(attemptId));
         metadata.put("billingCallLogId", previous.path("billingCallLogId").asLong(invocation.aiCallLogId()));
         task.providerResultMetadataJson = metadata.toString();

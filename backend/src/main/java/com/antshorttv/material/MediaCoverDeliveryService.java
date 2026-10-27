@@ -166,7 +166,7 @@ public class MediaCoverDeliveryService {
             var image = images.selectById(imageId);
             if (image == null || !Objects.equals(tenantId, image.getTenantId())
                 || !Objects.equals(projectId, image.getProjectId()) || !"ACTIVE".equals(image.getStatus())
-                || !"VIDEO_COVER".equals(image.getTargetType())) return null;
+                || !("VIDEO_COVER".equals(image.getTargetType()) || "PROCESSED_VIDEO_COVER".equals(image.getTargetType()))) return null;
             var original = renditions.originalDetails(new MediaObjectIdentity(
                 tenantId, projectId, "AI_IMAGE_RESULT", imageId, "result-" + imageId));
             if (original == null || !"READY".equals(original.status()) || original.fileSize() <= 0
