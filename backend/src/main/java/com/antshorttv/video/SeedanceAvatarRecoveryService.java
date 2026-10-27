@@ -19,6 +19,9 @@ public class SeedanceAvatarRecoveryService {
     private final ObjectMapper json;
     private final ObjectProvider<AiVideoTaskService> videoService;
     private final boolean enabled;
+    private ObjectProvider<com.antshorttv.freecreation.FreeCreationAvatarRecoveryService> freeCreations;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setFreeCreationRecovery(ObjectProvider<com.antshorttv.freecreation.FreeCreationAvatarRecoveryService> recovery) {this.freeCreations=recovery;}
     public SeedanceAvatarRecoveryService(JdbcTemplate jdbc,AiVideoTaskMapper videos,ArkAssetPool pool,ObjectMapper json,
         ObjectProvider<AiVideoTaskService> videoService,@Value("${ark.avatar.recovery-enabled:true}") boolean enabled) {
         this.jdbc=jdbc;this.videos=videos;this.pool=pool;this.json=json;this.videoService=videoService;this.enabled=enabled;
@@ -51,32 +54,44 @@ public class SeedanceAvatarRecoveryService {
         try {
             var job=jdbc.queryForMap("select * from seedance_avatar_recovery where id=?",id);
             if(((java.sql.Timestamp)job.get("deadline_at")).toLocalDateTime().isBefore(LocalDateTime.now())) throw new IllegalStateException("素材准备超过 24 小时，请检查素材库容量和处理状态后重试。");
-            var source=videos.selectById(((Number)job.get("source_task_id")).longValue());
-            if(source==null || source.deletedAt!=null || !"FAILED".equals(source.status)) throw new IllegalStateException("原视频任务已删除或状态已变化，自动恢复已停止。");
+            boolean freeCreation=job.get("source_creation_id")!=null;
+            Long tenant,project;String sourceError;
+            if(freeCreation) {
+                var source=freeCreations.getObject().requireSource(job);
+                tenant=source.tenantId;project=null;sourceError=(String)job.get("source_error_message");
+            } else {
+                var source=videos.selectById(((Number)job.get("source_task_id")).longValue());
+                if(source==null || source.deletedAt!=null || !"FAILED".equals(source.status)) throw new IllegalStateException("原视频任务已删除或状态已变化，自动恢复已停止。");
+                tenant=source.tenantId;project=source.projectId;sourceError=source.errorMessage;
+            }
             if(!pool.configured()) throw new IllegalStateException("虚拟人像素材库尚未配置 AK/SK，无法自动入库。");
             JsonNode frozen=json.readTree(String.valueOf(job.get("prepared_snapshot_json")));
-            if(!(frozen instanceof ObjectNode snapshot))throw new IllegalStateException("原分镜请求快照不可用，无法自动准备素材。");
-            List<JsonNode> eligible=eligibleImages(snapshot,source.errorMessage);
-            pool.reserveRecovery(id,source.tenantId,source.projectId,eligible);
+            if(!(frozen instanceof ObjectNode snapshot))throw new IllegalStateException("原视频请求快照不可用，无法自动准备素材。");
+            List<JsonNode> eligible=eligibleImages(snapshot,sourceError);
+            if(freeCreation)pool.reserveFreeCreationRecovery(id,tenant,eligible);
+            else pool.reserveRecovery(id,tenant,project,eligible);
             int images=0;
             for(JsonNode reference:eligible) {
                 if(!"IMAGE".equalsIgnoreCase(reference.path("reference").path("mediaType").asText()))continue;
                 images++;
                 if(reference.path("avatarPrepared").asBoolean(false))continue;
                 phase(id,token,"上传参考图片至虚拟人像库");
-                var asset=pool.prepareImage(id,source.tenantId,source.projectId,
-                    reference.path("displayName").asText(reference.path("reference").path("displayName").asText("分镜参考图")),
-                    reference.path("objectStoragePath").asText(null),
-                    reference.path("providerUrl").asText(reference.path("rawUrl").asText(null)),reference.path("providerAssetId").asText(null));
+                String label=reference.path("displayName").asText(reference.path("reference").path("displayName").asText(freeCreation?"自由创作参考图":"分镜参考图"));
+                String path=reference.path("objectStoragePath").asText(null);
+                String url=reference.path("providerUrl").asText(reference.path("rawUrl").asText(null));
+                String existing=reference.path("providerAssetId").asText(null);
+                var asset=freeCreation?pool.prepareFreeCreationImage(id,tenant,label,path,url,existing)
+                    :pool.prepareImage(id,tenant,project,label,path,url,existing);
                 var item=(ObjectNode)reference;
                 item.put("providerAssetId",asset.assetId());
                 item.put("avatarPrepared","Active".equals(asset.status()));
-                jdbc.update("update seedance_avatar_recovery set prepared_snapshot_json=?,phase=?,updated_at=now() where id=? and claim_token=?",snapshot.toString(),"Active".equals(asset.status())?"参考图片已就绪，继续准备分镜":"等待素材处理完成",id,token);
+                jdbc.update("update seedance_avatar_recovery set prepared_snapshot_json=?,phase=?,updated_at=now() where id=? and claim_token=?",snapshot.toString(),"Active".equals(asset.status())?"参考图片已就绪，继续准备视频":"等待素材处理完成",id,token);
                 return; // One image per claim bounds provider I/O and allows fair dispatch.
             }
-            if(images==0) throw new IllegalStateException("原分镜请求没有可入库的图片参考，请检查首帧和参考素材。");
-            phase(id,token,"素材已就绪，重新创建分镜视频");
-            videoService.getObject().createAvatarRecoveryTask(id,token,snapshot);
+            if(images==0) throw new IllegalStateException("原视频请求没有可入库的图片参考，请检查首帧和参考素材。");
+            phase(id,token,freeCreation?"素材已就绪，重新创建自由创作视频":"素材已就绪，重新创建分镜视频");
+            if(freeCreation) freeCreations.getObject().createRetry(id,token,snapshot);
+            else videoService.getObject().createAvatarRecoveryTask(id,token,snapshot);
         } catch(ArkAssetPool.Waiting wait) {
             jdbc.update("update seedance_avatar_recovery set status='PENDING',phase=?,updated_at=now() where id=? and claim_token=?",wait.getMessage(),id,token);
         } catch(Exception e) {

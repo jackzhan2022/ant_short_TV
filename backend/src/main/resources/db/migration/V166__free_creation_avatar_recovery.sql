@@ -1,0 +1,12 @@
+alter table seedance_avatar_recovery modify column source_task_id bigint null;
+alter table seedance_avatar_recovery modify column project_id bigint null;
+alter table seedance_avatar_recovery modify column storyboard_id bigint null;
+alter table seedance_avatar_recovery add column source_creation_id bigint null;
+alter table seedance_avatar_recovery add column retry_creation_id bigint null;
+alter table seedance_avatar_recovery add column source_error_message varchar(2000) null;
+create unique index uk_avatar_recovery_creation on seedance_avatar_recovery(source_creation_id);
+alter table free_creation add column avatar_recovery_source_creation_id bigint null;
+alter table free_creation add column video_request_snapshot_json longtext null;
+create unique index uk_free_creation_avatar_source on free_creation(avatar_recovery_source_creation_id);
+alter table ark_asset_consumer add column free_creation_id bigint null;
+create index idx_ark_consumer_free_creation on ark_asset_consumer(free_creation_id);

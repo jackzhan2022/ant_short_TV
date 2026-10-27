@@ -112,6 +112,8 @@ public class SeedanceArkVideoProviderAdapter extends AiProviderAdapter {
         if (error == null && body.path("error").isObject()) {
             error = firstText(body.path("error"), "message", "error_message");
         }
+        String errorCode = providerErrorCode(body);
+        if (errorCode != null) error = errorCode + (error == null ? "" : ": " + error);
         if ("SUCCEEDED".equals(status) && videoUrl == null) {
             return AiProviderExecutionOutcome.completed(
                 videoResult("FAILED", null, "火山方舟未返回视频地址。", body), requestId
@@ -142,6 +144,11 @@ public class SeedanceArkVideoProviderAdapter extends AiProviderAdapter {
         response(providerResponse);
     }
 
+    private String providerErrorCode(JsonNode body) {
+        String code = firstText(body.path("error"), "code", "error_code");
+        return code == null ? firstText(body, "error_code", "errorCode") : code;
+    }
+
     private AiVideoProviderAdapter.VideoResult videoResult(
         String status,
         String videoUrl,
@@ -149,6 +156,8 @@ public class SeedanceArkVideoProviderAdapter extends AiProviderAdapter {
         JsonNode body
     ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
+        String errorCode = providerErrorCode(body);
+        if (errorCode != null) metadata.put("errorCode", errorCode);
         copyLong(body, metadata, "created_at", "createdAt");
         copyLong(body, metadata, "updated_at", "updatedAt");
         copyLong(body, metadata, "execution_expires_after", "executionExpiresAfter");

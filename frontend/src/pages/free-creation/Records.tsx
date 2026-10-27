@@ -1,3 +1,5 @@
+import AvatarRecoveryNotice from './AvatarRecoveryNotice';
+import { avatarRecoveryPending } from './avatar-recovery';
 import {
   ClockCircleOutlined,
   DownloadOutlined,
@@ -30,6 +32,11 @@ export const statusLabels: Record<CreationStatus, string> = {
   FAILED: '失败',
   CANCELED: '已取消',
 };
+const virtualizing = (record: CreationRecord) =>
+  record.phase === 'AVATAR_PREPARING' && ['QUEUED', 'RUNNING'].includes(record.status);
+const statusLabel = (record: CreationRecord) =>
+  virtualizing(record) ? '智能虚拟化中' : statusLabels[record.status] || record.status;
+
 export function parameterLabels(p: CreationParameters) {
   return [
     p.aspectRatio,
@@ -164,7 +171,7 @@ export default function Records({
         const next = await getCreation(detailId, abort.signal);
         if (!abort.signal.aborted) {
           setDetail(next);
-          if (pending(next) || preparingThumbnail(next)) timer = setTimeout(() => void load(), 5000);
+          if (pending(next) || preparingThumbnail(next) || avatarRecoveryPending(next.avatarRecovery)) timer = setTimeout(() => void load(), 5000);
         }
       } catch (failure) {
         if (!abort.signal.aborted)
@@ -352,10 +359,10 @@ export default function Records({
                     <span
                       className={styles.generatingPreview}
                       role="status"
-                      aria-label={`${statusLabels[record.status]}：${record.prompt}`}
+                      aria-label={`${statusLabel(record)}：${record.prompt}`}
                     >
                       <Spin />
-                      <span>{record.status === 'QUEUED' ? '排队等待中' : `${record.mediaType === 'IMAGE' ? '图片' : '视频'}生成中`}</span>
+                      <span>{virtualizing(record) ? '智能虚拟化中' : record.status === 'QUEUED' ? '排队等待中' : `${record.mediaType === 'IMAGE' ? '图片' : '视频'}生成中`}</span>
                     </span>
                   ) : preparingThumbnail(record) && !record.outputs[0]?.thumbnailUrl ? (
                     <span className={styles.generatingPreview} role="status" aria-label={`缩略图准备中：${record.prompt}`}>
@@ -390,7 +397,7 @@ export default function Records({
                       className={styles.recordStatus}
                       data-status={record.status}
                     >
-                      {statusLabels[record.status] || record.status}
+                      {statusLabel(record)}
                     </span>
                   </div>
                   <p className={styles.recordPrompt}>{record.prompt}</p>
@@ -545,17 +552,18 @@ export default function Records({
               )}
               {!detail.outputs.length ? (
                 <p>
-                  {statusLabels[detail.status]}
+                  {statusLabel(detail)}
                   {detail.errorMessage
                     ? `：${detail.errorMessage}`
-                    : ' · 结果生成后将自动展示'}
+                    : virtualizing(detail) ? ' · 正在准备虚拟人像素材，完成后自动继续生成' : ' · 结果生成后将自动展示'}
                 </p>
               ) : null}
             </div>
             <div className={styles.detailInfo}>
+              <AvatarRecoveryNotice recovery={detail.avatarRecovery} onOpen={setDetailId} />
               <div className={styles.recordMeta}>
                 <strong>{detail.creatorName}</strong>
-                <span>{statusLabels[detail.status]}</span>
+                <span>{statusLabel(detail)}</span>
               </div>
               <p>{formatTime(detail.createdAt)}</p>
               <p>{teamName}</p>

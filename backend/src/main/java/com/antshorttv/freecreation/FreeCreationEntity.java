@@ -17,6 +17,8 @@ public class FreeCreationEntity {
     public String providerCode;
     public String prompt;
     public String parametersJson;
+    public Long avatarRecoverySourceCreationId;
+    public String videoRequestSnapshotJson;
     public String externalTaskId;
     public String providerResultJson;
     public Long billingAttemptId;

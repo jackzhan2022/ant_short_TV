@@ -48,7 +48,7 @@ export function draftError(
     draft.references.some(
       (item) =>
         item.status !== 'complete' ||
-        (!item.uploadSessionToken && !item.referenceId),
+        (!item.uploadSessionToken && !item.referenceId && !item.projectImage),
     )
   )
     return '请等待所有参考素材上传并完成校验，失败或暂停的素材请重试或移除';
@@ -114,7 +114,9 @@ export function requestFromDraft(
       kind: item.kind.toUpperCase() as 'IMAGE' | 'VIDEO' | 'AUDIO',
       ...(item.referenceId
         ? { referenceId: item.referenceId }
-        : { uploadSessionToken: item.uploadSessionToken }),
+        : item.projectImage
+          ? { projectImage: item.projectImage }
+          : { uploadSessionToken: item.uploadSessionToken }),
     })),
   };
 }

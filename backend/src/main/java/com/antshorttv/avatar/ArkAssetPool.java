@@ -51,6 +51,12 @@ public class ArkAssetPool {
         reserveRecovery(recoveryId,() -> missingImages);
     }
     public void reserveRecovery(long recoveryId,long tenant,long project,List<JsonNode> images) throws Exception {
+        reserveRecoveryImages(recoveryId,tenant,project,images);
+    }
+    public void reserveFreeCreationRecovery(long recoveryId,long tenant,List<JsonNode> images) throws Exception {
+        reserveRecoveryImages(recoveryId,tenant,null,images);
+    }
+    private void reserveRecoveryImages(long recoveryId,long tenant,Long project,List<JsonNode> images) throws Exception {
         reserveRecovery(recoveryId,() -> {
             Set<String> needed=new HashSet<>();
             for(JsonNode image:images) {
@@ -77,7 +83,7 @@ public class ArkAssetPool {
             Long current=admittedRecovery();
             if(current!=null) {
                 if(current==recoveryId)return;
-                throw new Waiting("正在准备其他分镜的素材，请排队等待容量。");
+                throw new Waiting("正在准备其他视频的素材，请排队等待容量。");
             }
             int missingImages=required.getAsInt();
             Inventory inventory=inventory(lease);reconcile(inventory);
@@ -86,7 +92,7 @@ public class ArkAssetPool {
                 reclaim(inventory,true,target,lease);inventory=inventory(lease);
             }
             if(occupied(inventory,true)+missingImages>50)
-                throw new Waiting("火山素材容量不足以准备当前分镜，等待安全清理或其他任务完成。");
+                throw new Waiting("火山素材容量不足以准备当前视频，等待安全清理或其他任务完成。");
             jdbc.update("update ark_asset_scope set admitted_recovery_id=? where scope_key=? and lease_token=?",recoveryId,scope,lease.token);
         }
     }
@@ -121,6 +127,14 @@ public class ArkAssetPool {
 
     public PreparedAsset prepareImage(long recoveryId, long tenant, long project, String label,
         String path, String url, String existingAssetId) throws Exception {
+        return prepareImageInScope(recoveryId,tenant,project,label,path,url,existingAssetId);
+    }
+    public PreparedAsset prepareFreeCreationImage(long recoveryId,long tenant,String label,
+        String path,String url,String existingAssetId) throws Exception {
+        return prepareImageInScope(recoveryId,tenant,null,label,path,url,existingAssetId);
+    }
+    private PreparedAsset prepareImageInScope(long recoveryId,long tenant,Long project,String label,
+        String path,String url,String existingAssetId) throws Exception {
         if (existingAssetId!=null && !existingAssetId.isBlank()) {
             String id=existingAssetId.replaceFirst("^asset://", "");
             try {
@@ -168,7 +182,12 @@ public class ArkAssetPool {
     }
 
     /** Called inside the video creation transaction; deletion claims lock the same rows. */
-    public void pinVideo(long taskId, JsonNode snapshot) {
+    public void pinVideo(long taskId, JsonNode snapshot) { pinMedia(taskId,null,snapshot); }
+    public void pinFreeCreation(long creationId, JsonNode snapshot) { pinMedia(null,creationId,snapshot); }
+    public void releaseFreeCreation(long creationId) {
+        jdbc.update("delete from ark_asset_consumer where free_creation_id=?",creationId);
+    }
+    private void pinMedia(Long taskId,Long creationId,JsonNode snapshot) {
         for (JsonNode ref : snapshot.path("references")) {
             String id=ref.path("providerAssetId").asText("").replaceFirst("^asset://", "");
             if (id.isBlank()) continue;
@@ -177,21 +196,22 @@ public class ArkAssetPool {
                 var manual=jdbc.queryForList("select * from virtual_avatar_task where provider_asset_id=? order by id desc limit 1",id);
                 if(!manual.isEmpty()) {adopt(manual.get(0),"ASSET","provider_asset_id",text(manual.get(0),"provider_group_id"));resource=ownedId(id);}
             }
-            if (resource!=null) pin(resource,"video:"+taskId,taskId,null);
+            if (resource!=null) pin(resource,creationId==null?"video:"+taskId:"free-creation:"+creationId,taskId,null,creationId);
         }
     }
     private Long ownedId(String id) {
         var rows=jdbc.queryForList("select id from ark_managed_resource where scope_key=? and resource_type='ASSET' and provider_id=?",scope,id);
         return rows.isEmpty()?null:((Number)rows.get(0).get("id")).longValue();
     }
-    private void pin(long resource, String key, Long video, Long recovery) {
+    private void pin(long resource, String key, Long video, Long recovery) { pin(resource,key,video,recovery,null); }
+    private void pin(long resource, String key, Long video, Long recovery,Long creation) {
         tx.executeWithoutResult(s -> {
             var rows=jdbc.queryForList("select status from ark_managed_resource where id=? for update",resource);
             if (rows.isEmpty() || "DELETING".equals(text(rows.get(0),"status"))
-                || video!=null && "EVICTED".equals(text(rows.get(0),"status")))
+                || (video!=null || creation!=null) && "EVICTED".equals(text(rows.get(0),"status")))
                 throw new Waiting("素材已被回收，正在等待重新入库。");
             if (jdbc.queryForObject("select count(*) from ark_asset_consumer where resource_id=? and consumer_key=?",Long.class,resource,key)==0)
-                jdbc.update("insert into ark_asset_consumer(resource_id,consumer_key,video_task_id,recovery_id) values(?,?,?,?)",resource,key,video,recovery);
+                jdbc.update("insert into ark_asset_consumer(resource_id,consumer_key,video_task_id,recovery_id,free_creation_id) values(?,?,?,?,?)",resource,key,video,recovery,creation);
             jdbc.update("update ark_managed_resource set last_used_at=now() where id=?",resource);
         });
     }
@@ -223,7 +243,7 @@ public class ArkAssetPool {
         try (Lease lease=lock()) {
             Long admitted=admittedRecovery();
             if(admitted!=null && !Objects.equals(admitted,recoveryId))
-                throw new Waiting("正在为当前分镜保留素材余量，其他入库任务排队中。");
+                throw new Waiting("正在为当前视频保留素材余量，其他入库任务排队中。");
             var row=row(id);
             if (!text(row,"provider_id").isBlank() && !Set.of("EVICTED","DELETING","FAILED").contains(text(row,"status"))) return text(row,"provider_id");
             if ("DELETING".equals(text(row,"status"))) throw new Waiting("素材正在回收，等待回收确认。");
@@ -367,6 +387,7 @@ public class ArkAssetPool {
     }
     private boolean inUse(Map<String,Object> row) {
         Object id=row.get("id");String provider=text(row,"provider_id");
+        if(jdbc.queryForObject("select count(*) from ark_asset_consumer c join free_creation f on f.id=c.free_creation_id join ai_execution_task e on e.id=f.execution_id where c.resource_id=? and (e.status in ('PENDING','RUNNING') or (f.provider_started_at is not null and f.provider_result_json is null))",Long.class,id)>0)return true;
         if(jdbc.queryForObject("select count(*) from ark_asset_consumer c left join ai_video_task v on v.id=c.video_task_id left join seedance_avatar_recovery r on r.id=c.recovery_id where c.resource_id=? and (((v.deleted_at is null and v.status in ('PENDING','SUBMITTING','GENERATING')) or v.external_status in ('SUBMIT_UNKNOWN','QUERY_UNKNOWN')) or r.status in ('PENDING','RUNNING'))",Long.class,id)>0) return true;
         if("ASSET".equals(text(row,"resource_type"))) {
             if(jdbc.queryForObject("select count(*) from virtual_avatar_task where provider_project=? and provider_asset_id=? and status in ('QUEUED','RUNNING')",Long.class,row.get("provider_project"),provider)>0) return true;
@@ -421,7 +442,7 @@ public class ArkAssetPool {
     }
     private Map<String,Object> row(long id) {return jdbc.queryForMap("select * from ark_managed_resource where id=?",id);}
     private static boolean notFound(ArkAssetClient.ProviderException e) {return e.definitive() && (e.code().toLowerCase(Locale.ROOT).contains("notfound") || e.code().contains("NotFound") || e.code().equals("HTTP_404"));}
-    private static String imageKey(long tenant,long project,String path,String url) {return "image:"+tenant+":"+project+":"+digest(path!=null && !path.isBlank()?"path:"+path:"url:"+url);}
+    private static String imageKey(long tenant,Long project,String path,String url) {return "image:"+tenant+":"+project+":"+digest(path!=null && !path.isBlank()?"path:"+path:"url:"+url);}
     private static String digest(String source) {try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     private static String text(Map<String,Object> row,String key) {return row.get(key)==null?"":String.valueOf(row.get(key));}
     private static String nullable(Map<String,Object> row,String key) {String value=text(row,key);return value.isBlank()?null:value;}

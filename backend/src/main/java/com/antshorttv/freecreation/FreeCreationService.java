@@ -36,6 +36,13 @@ public class FreeCreationService {
     private final ObjectMapper json;
     private final JdbcTemplate jdbc;
     private final Validator validator;
+    private FreeCreationAvatarRecoveryService avatarRecovery;
+    private com.antshorttv.avatar.ArkAssetPool avatarAssets;
+    private ModelAccessibleVideoUrlResolver avatarUrls;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAvatarRecovery(FreeCreationAvatarRecoveryService recovery,com.antshorttv.avatar.ArkAssetPool assets,ModelAccessibleVideoUrlResolver urls) {
+        this.avatarRecovery=recovery;this.avatarAssets=assets;this.avatarUrls=urls;
+    }
 
     public FreeCreationService(FreeCreationMapper creations,FreeCreationMediaMapper mediaMapper,FreeCreationMediaService media,
         TenantContextResolver tenants,AiModelRouter router,AiExecutionService executions,
@@ -84,7 +91,10 @@ public class FreeCreationService {
 
     @Transactional
     public Map<String,Object> create(Long tenantId,FreeCreationRequest request) {
-        TenantContext context=authorize(tenantId); validate(request);
+        return create(authorize(tenantId),request,null,null);
+    }
+    private Map<String,Object> create(TenantContext context,FreeCreationRequest request,Long recoverySource,JsonNode snapshot) {
+        Long tenantId=context.tenantId();validate(request);
         if(request.requestId()==null || !request.requestId().matches("[A-Za-z0-9_-]{16,100}")) throw invalid("请提供有效请求标识。");
         String hash=requestHash(request);
         // Serialize only creation writes within the team: a duplicate cannot reserve points twice.
@@ -92,6 +102,8 @@ public class FreeCreationService {
         var existing=creations.selectOne(new QueryWrapper<FreeCreationEntity>().eq("tenant_id",tenantId)
             .eq("creator_id",context.userId()).eq("request_id",request.requestId()));
         if(existing!=null) {
+            if(recoverySource!=null && !recoverySource.equals(existing.avatarRecoverySourceCreationId))
+                throw invalid("关联重试请求标识已被占用。");
             if(!hash.equals(existing.requestHash)) throw invalid("同一请求标识不能用于不同生成参数。");
             return present(context,existing);
         }
@@ -100,13 +112,26 @@ public class FreeCreationService {
         item.requestId=request.requestId(); item.requestHash=hash; item.mediaType=request.mediaType();
         item.modelId=prepared.route().model().getId(); item.modelName=prepared.route().model().getName();
         item.providerCode=prepared.route().provider().getCode(); item.prompt=request.prompt().trim();
+        item.avatarRecoverySourceCreationId=recoverySource;
+        item.videoRequestSnapshotJson=snapshot==null?null:snapshot.toString();
         item.parametersJson=prepared.parameters().toString(); item.createdAt=LocalDateTime.now(); item.updatedAt=item.createdAt;
         creations.insert(item); media.attach(item.id,prepared.references());
+        if(snapshot!=null && avatarAssets!=null)avatarAssets.pinFreeCreation(item.id,snapshot);
         var execution=executions.createWithReservation(new AiExecutionCreateCommand(tenantId,context.userId(),null,
             "IMAGE".equals(item.mediaType)?"free_creation_image":"free_creation_video",item.mediaType,"FREE_CREATION",item.id,
             item.modelId,"SUBMIT","free:"+context.userId()+":"+request.requestId(),request.requestId(),true,"{}"),
             prepared.usage(),prepared.dimensions());
         item.executionId=execution.id; creations.updateById(item); return present(context,item);
+    }
+
+    @Transactional
+    public Long createAvatarRecovery(Long tenantId,Long sourceId,String requestId,JsonNode snapshot) {
+        var context=authorize(tenantId);var source=requireControl(context,sourceId);
+        if(!"VIDEO".equals(source.mediaType) || source.avatarRecoverySourceCreationId!=null
+            || !"FAILED".equals(executions.requireTask(source.executionId).status)
+            || !VolcengineProviderCodes.isArk(router.route(source.modelId,"VIDEO").provider().getCode()))
+            throw invalid("原视频状态或模型已变化，无法自动恢复。");
+        return ((Number)create(context,resubmission(source,requestId),sourceId,snapshot).get("id")).longValue();
     }
 
     public AiPointEstimatePlan pointEstimate(Long tenantId,JsonNode data) {
@@ -148,6 +173,8 @@ public class FreeCreationService {
         var source=requireControl(authorize(tenantId),id);
         requireAction(executions.requireTask(source.executionId),action);
         if(!Set.of("RETRY","REGENERATE").contains(action)) throw invalid("该操作无需积分预估。");
+        if("RETRY".equals(action) && avatarRecovery!=null && avatarRecovery.retryTarget(tenantId,id)!=null)
+            throw invalid("已自动创建关联视频，请在关联视频中查看结果或重试。");
         return pointEstimate(tenantId,json.valueToTree(resubmission(source,"free-creation-estimate")));
     }
 
@@ -166,6 +193,10 @@ public class FreeCreationService {
             return present(context,source);
         }
         if(!Set.of("RETRY","REGENERATE").contains(action)) throw invalid("任务操作无效。");
+        if("RETRY".equals(action) && avatarRecovery!=null) {
+            Long linked=avatarRecovery.retryTarget(tenantId,id);
+            if(linked!=null)return present(context,require(context,linked));
+        }
         if(idempotencyKey==null || idempotencyKey.isBlank() || idempotencyKey.length()>128) throw invalid("请提供有效操作标识。");
         String requestId="control-"+UUID.nameUUIDFromBytes((tenantId+":"+context.userId()+":"+id+":"+action+":"+idempotencyKey).getBytes(StandardCharsets.UTF_8));
         var existing=creations.selectOne(new QueryWrapper<FreeCreationEntity>().eq("tenant_id",tenantId)
@@ -237,8 +268,13 @@ public class FreeCreationService {
 
     public AiVideoTaskEntity videoTask(FreeCreationEntity creation,boolean urls) {
         String modelCode=urls?router.route(creation.modelId,"VIDEO").model().getModelCode():"";
-        return videoTask(creation.modelId,creation.providerCode,modelCode,creation.prompt,
+        var task=videoTask(creation.modelId,creation.providerCode,modelCode,creation.prompt,
             read(creation.parametersJson),media.items(creation.id,"REFERENCE"),urls);
+        if(creation.videoRequestSnapshotJson!=null) {
+            JsonNode snapshot=read(creation.videoRequestSnapshotJson);
+            task.requestSnapshotJson=(urls && avatarUrls!=null?avatarUrls.refreshSnapshotUrls(snapshot):snapshot).toString();
+        }
+        return task;
     }
 
     private AiVideoTaskEntity videoTask(Long modelId,String provider,String model,String prompt,JsonNode params,
@@ -270,7 +306,11 @@ public class FreeCreationService {
         if(type!=null && !Set.of("IMAGE","VIDEO").contains(type)) throw invalid("媒体类型无效。");
         if(status!=null && !Set.of("QUEUED","RUNNING","SUCCEEDED","FAILED","CANCELED").contains(status)) throw invalid("任务状态无效。");
         if(current<1 || pageSize<1 || pageSize>100 || current>100000) throw invalid("分页参数无效。");
-        String base=" from free_creation f join ai_execution_task e on e.id=f.execution_id left join app_user u on u.id=f.creator_id where f.tenant_id=?";
+        String base=" from free_creation f join ai_execution_task e on e.id=f.execution_id left join app_user u on u.id=f.creator_id"
+            +" left join seedance_avatar_recovery ar on ar.source_creation_id=f.id and ar.tenant_id=f.tenant_id"
+            +" left join free_creation rf on rf.id=ar.retry_creation_id and rf.tenant_id=f.tenant_id and rf.creator_id=f.creator_id and rf.avatar_recovery_source_creation_id=f.id and rf.media_type='VIDEO'"
+            +" left join ai_execution_task re on re.id=rf.execution_id and re.tenant_id=f.tenant_id"
+            +" where f.tenant_id=? and f.avatar_recovery_source_creation_id is null";
         List<Object> args=new ArrayList<>(List.of(tenantId));
         if("mine".equals(scope)) { base+=" and f.creator_id=?"; args.add(context.userId()); }
         if(type!=null) {base+=" and f.media_type=?";args.add(type);}
@@ -288,22 +328,57 @@ public class FreeCreationService {
     }
     public Map<String,Object> download(Long tenantId,Long id,Long outputId) {
         var context=authorize(tenantId); var creation=require(context,id);
+        var recovery=avatarRecovery==null?null:avatarRecovery.get(tenantId,id);
+        if(recovery!=null && "SUCCEEDED".equals(recovery.get("status"))) {
+            creation=linkedCreation(context,creation,recovery);
+            if(creation==null)throw new BusinessException(ErrorCode.NOT_FOUND,"关联视频不可用。");
+        }
         if (!"SUCCEEDED".equals(executions.requireTask(creation.executionId).status)) throw new BusinessException(ErrorCode.NOT_FOUND,"作品尚未发布。");
         var output=mediaMapper.selectById(outputId);
-        if(output==null || !id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !tenantId.equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
+        if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !tenantId.equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
         return Map.of("url",media.grant(context,output,false),"fileName",output.fileName);
     }
     Map<String,Object> present(TenantContext context,FreeCreationEntity item) {
         var task=executions.requireTask(item.executionId); Map<String,Object> result=new LinkedHashMap<>();
         result.put("id",item.id); result.put("executionId",item.executionId); result.put("mediaType",item.mediaType);
-        result.put("status",status(task,item));result.put("prompt",item.prompt);result.put("creatorId",item.creatorId);
+        result.put("status",status(task,item));result.put("phase",task.phase);result.put("prompt",item.prompt);result.put("creatorId",item.creatorId);
         result.put("creatorName",jdbc.queryForObject("select nickname from app_user where id=?",String.class,item.creatorId));
         result.put("createdAt",item.createdAt); result.put("modelId",item.modelId); result.put("modelName",item.modelName);
         result.put("parameters",read(item.parametersJson)); result.put("references",media.items(item.id,"REFERENCE").stream().map(ref->media.present(context,ref)).toList());
         result.put("taskKey","FREE_CREATION:"+item.id);
-        result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status):List.of());
+        var recovery=avatarRecovery==null?null:avatarRecovery.get(item.tenantId,item.id);
+        result.put("avatarRecovery",recovery);
+        result.put("avatarRecoverySourceCreationId",item.avatarRecoverySourceCreationId);
+        boolean recovering=recovery!=null && Set.of("PENDING","RUNNING","SUCCEEDED").contains(recovery.get("status"));
+        result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status).stream()
+            .filter(action->!recovering || !"RETRY".equals(action)).toList():List.of());
         result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(output->media.present(context,output)).toList():List.of());
-        result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?errorMessage(item,task):null); return result;
+        result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?errorMessage(item,task):null);
+        if(recovery!=null) {
+            result.put("originalExecutionId",item.executionId);result.put("originalStatus",status(task,item));
+            if(Set.of("PENDING","RUNNING").contains(recovery.get("status"))) {
+                result.put("status","RUNNING");result.put("phase","AVATAR_PREPARING");
+                result.put("errorMessage",null);result.put("allowedActions",List.of());
+            } else if("SUCCEEDED".equals(recovery.get("status"))) {
+                var linked=linkedCreation(context,item,recovery);
+                if(linked==null) {
+                    result.put("status","FAILED");result.put("errorMessage","关联视频不可用，请查看任务记录。");result.put("allowedActions",List.of());
+                } else {
+                    var current=present(context,linked);
+                    for(String key:List.of("executionId","phase","taskKey","allowedActions","outputs","errorMessage"))result.put(key,current.get(key));
+                    result.put("status","QUEUED".equals(current.get("status"))?"RUNNING":current.get("status"));
+                }
+            } else if("FAILED".equals(recovery.get("status"))) {
+                result.put("status","FAILED");result.put("errorMessage","虚拟人像处理失败："+safeError((String)recovery.get("errorMessage")));
+            }
+        }
+        return result;
+    }
+    private FreeCreationEntity linkedCreation(TenantContext context,FreeCreationEntity source,Map<String,Object> recovery) {
+        if(!(recovery.get("retryCreationId") instanceof Number id))return null;
+        var linked=creations.selectById(id.longValue());
+        return linked!=null && context.tenantId().equals(linked.tenantId) && source.creatorId.equals(linked.creatorId)
+            && source.id.equals(linked.avatarRecoverySourceCreationId) && "VIDEO".equals(linked.mediaType)?linked:null;
     }
     private String errorMessage(FreeCreationEntity item,AiExecutionTaskEntity task) {
         // Older executions persisted only the generic message. Resolve their known cause without rewriting history.
@@ -330,7 +405,10 @@ public class FreeCreationService {
         if("PENDING".equals(task.status)) return item.providerStartedAt==null?"QUEUED":"RUNNING";
         return "TIMED_OUT".equals(task.status)?"FAILED":task.status;
     }
-    private static final String STATUS_SQL="case when e.status='PENDING' then case when f.provider_started_at is null then 'QUEUED' else 'RUNNING' end when e.status='TIMED_OUT' then 'FAILED' else e.status end";
+    private static final String BASE_STATUS_SQL="case when e.status='PENDING' then case when f.provider_started_at is null then 'QUEUED' else 'RUNNING' end when e.status='TIMED_OUT' then 'FAILED' else e.status end";
+    private static final String STATUS_SQL="case when ar.status in ('PENDING','RUNNING') then 'RUNNING' when ar.status='FAILED' then 'FAILED'"
+        +" when ar.status='SUCCEEDED' then case when re.id is null then 'FAILED' when re.status in ('PENDING','RUNNING') then 'RUNNING' when re.status='TIMED_OUT' then 'FAILED' else re.status end"
+        +" else "+BASE_STATUS_SQL+" end";
     public JsonNode read(String value) { try {return value==null?json.createObjectNode():json.readTree(value);}catch(Exception ex){throw invalid("模型或任务参数无法读取。");} }
     private void defaultValue(ObjectNode node,String key,Object value) { if(!node.hasNonNull(key)) node.set(key,json.valueToTree(value)); }
     private void allow(ObjectNode params,Set<String> allowed) { params.fieldNames().forEachRemaining(key->{if(!allowed.contains(key))throw invalid("不支持的生成参数："+key);}); }

@@ -1,15 +1,17 @@
 import {
   DeleteOutlined,
   FileImageOutlined,
+  FolderOpenOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import {
   type MediaUploadHandle,
   startMediaUpload,
   type VerifiedMediaUpload,
 } from '@/services/mediaUpload';
 import styles from './index.module.css';
+import ProjectImagePicker from './ProjectImagePicker';
 import { readReferenceMetadata } from './reference-metadata';
 import type { ReferenceConstraint } from './service';
 export type ReferenceKind = 'image' | 'video' | 'audio';
@@ -22,6 +24,7 @@ export type ReferenceDraft = {
   percent: number;
   uploadSessionToken?: string;
   referenceId?: number;
+  projectImage?: { projectId: number; resultId: number };
   error?: string;
   durationSeconds?: number;
 };
@@ -31,6 +34,7 @@ type Props = {
   initialReferences?: ReferenceDraft[];
   onChange?: (references: ReferenceDraft[]) => void;
   disabled?: boolean;
+  pasteTarget?: RefObject<HTMLFieldSetElement | null>;
 };
 const labels = { image: '参考图片', video: '参考视频', audio: '参考音频' };
 export function referenceFileError(
@@ -59,11 +63,14 @@ export default function ReferenceFiles({
   initialReferences = [],
   onChange,
   disabled,
+  pasteTarget,
 }: Props) {
   const [files, setFiles] = useState<ReferenceDraft[]>(initialReferences);
   const items = useRef(files);
   const initialFiles = useRef(files);
   const [error, setError] = useState('');
+  const [pickingAssets, setPickingAssets] = useState(false);
+  const field = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
   const uploads = useRef(
     new Map<
@@ -187,6 +194,7 @@ export default function ReferenceFiles({
     setError('');
   };
   const add = (selected: File[]) => {
+    if (disabled || !selected.length || constraints?.maxCount === 0) return;
     if (
       constraints?.maxCount !== undefined &&
       items.current.length + selected.length > constraints.maxCount
@@ -223,6 +231,31 @@ export default function ReferenceFiles({
     setError('');
     for (const item of next) void start(item.id);
   };
+  useEffect(() => {
+    if (kind !== 'image') return;
+    const target = pasteTarget?.current ?? field.current;
+    const paste = (event: Event) => {
+      if (disabled || constraints?.maxCount === 0) return;
+      const clipboard = (event as ClipboardEvent).clipboardData;
+      if (!clipboard) return;
+      const selected = Array.from(clipboard.files).filter((file) =>
+        file.type.startsWith('image/'),
+      );
+      if (!selected.length) {
+        for (const item of Array.from(clipboard.items)) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) selected.push(file);
+          }
+        }
+      }
+      if (!selected.length) return;
+      event.preventDefault();
+      add(selected);
+    };
+    target?.addEventListener('paste', paste);
+    return () => target?.removeEventListener('paste', paste);
+  });
   const formats = constraints?.formats
     ?.map((format) => `.${format.replace(/^\./, '')}`)
     .join(',');
@@ -241,7 +274,7 @@ export default function ReferenceFiles({
     .filter(Boolean)
     .join(' · ');
   return (
-    <div className={styles.field}>
+    <div ref={field} className={styles.field}>
       <div className={styles.fieldLabel}>
         <span>{labels[kind]}</span>
         <span className={styles.muted}>
@@ -257,7 +290,11 @@ export default function ReferenceFiles({
         <PlusOutlined aria-hidden="true" />
         <span>
           选择{labels[kind]}
-          <small>上传并完成校验后可用于生成</small>
+          <small>
+            {kind === 'image'
+              ? '点击本地上传，或在创作区粘贴图片'
+              : '上传并完成校验后可用于生成'}
+          </small>
         </span>
         <input
           id={id}
@@ -272,6 +309,51 @@ export default function ReferenceFiles({
           }}
         />
       </label>
+      {kind === 'image' ? (
+        <div className={styles.referenceSources}>
+          <button
+            type="button"
+            disabled={disabled || constraints?.maxCount === 0}
+            onClick={() => document.getElementById(id)?.click()}
+          >
+            本地上传
+          </button>
+          <button
+            type="button"
+            disabled={disabled || constraints?.maxCount === 0}
+            onClick={() => setPickingAssets(true)}
+          >
+            <FolderOpenOutlined aria-hidden="true" />
+            项目资产
+          </button>
+          <span>支持 Ctrl / ⌘ + V 粘贴</span>
+        </div>
+      ) : null}
+      {pickingAssets && kind === 'image' ? (
+        <ProjectImagePicker
+          references={files}
+          maxCount={constraints?.maxCount}
+          disabled={disabled}
+          onCancel={() => setPickingAssets(false)}
+          onConfirm={(selected) => {
+            if (disabled) return;
+            const added = selected.filter(
+              (item) =>
+                !items.current.some((current) => current.id === item.id),
+            );
+            if (
+              constraints?.maxCount !== undefined &&
+              items.current.length + added.length > constraints.maxCount
+            ) {
+              setError(`当前模型最多允许 ${constraints.maxCount} 个参考图片`);
+              return;
+            }
+            update([...items.current, ...added]);
+            setError('');
+            setPickingAssets(false);
+          }}
+        />
+      ) : null}
       {limitText ? <p className={styles.help}>{limitText}</p> : null}
       {files.length ? (
         <ul className={styles.referenceList}>
@@ -286,7 +368,9 @@ export default function ReferenceFiles({
                     ? '已暂停'
                     : item.status === 'failed'
                       ? '上传失败'
-                      : '上传完成';
+                      : item.projectImage
+                        ? '项目资产 · 已引用'
+                        : '上传完成';
             return (
               <li key={item.id}>
                 {item.url ? (

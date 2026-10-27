@@ -120,11 +120,11 @@ class ArkAssetPoolTest {
         jdbc.update("insert into seedance_avatar_recovery(source_task_id,tenant_id,project_id,storyboard_id,created_by,deadline_at) values(902,1,1,2,1,?)",LocalDateTime.now().plusHours(1));
         long first=jdbc.queryForObject("select id from seedance_avatar_recovery where source_task_id=901",Long.class);
         long second=jdbc.queryForObject("select id from seedance_avatar_recovery where source_task_id=902",Long.class);
-        assertThatThrownBy(() -> pool.reserveRecovery(first,9)).isInstanceOf(ArkAssetPool.Waiting.class).hasMessageContaining("当前分镜");
+        assertThatThrownBy(() -> pool.reserveRecovery(first,9)).isInstanceOf(ArkAssetPool.Waiting.class).hasMessageContaining("当前视频");
         assertThat(jdbc.queryForObject("select admitted_recovery_id from ark_asset_scope where scope_key='test-account'",Long.class)).isNull();
         assets.subList(40,44).clear();
         pool.reserveRecovery(first,9);
-        assertThatThrownBy(() -> pool.reserveRecovery(second,9)).isInstanceOf(ArkAssetPool.Waiting.class).hasMessageContaining("其他分镜");
+        assertThatThrownBy(() -> pool.reserveRecovery(second,9)).isInstanceOf(ArkAssetPool.Waiting.class).hasMessageContaining("其他视频");
         assertThatThrownBy(() -> pool.createManualAsset(3,"group-1","manual","https://example.com/manual.png")).isInstanceOf(ArkAssetPool.Waiting.class);
         verify(client,never()).createAsset(anyString(),anyString(),anyString());
         jdbc.update("update seedance_avatar_recovery set status='SUCCEEDED' where id=?",first);

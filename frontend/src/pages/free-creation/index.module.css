@@ -1043,3 +1043,142 @@
   color: var(--app-color-primary);
   border-bottom-color: var(--app-color-primary);
 }
+
+.referenceSources {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+.referenceSources button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	border: 1px solid var(--app-color-border-secondary);
+	border-radius: 6px;
+	background: var(--app-color-bg-container);
+	color: var(--app-color-text-secondary);
+	padding: 5px 10px;
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+}
+.referenceSources button:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+.referenceSources > span {
+	color: var(--app-color-text-tertiary);
+	font-size: 10px;
+}
+.assetPickerToolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+}
+.assetPickerToolbar > button {
+	flex-shrink: 0;
+	border: 1px solid var(--app-color-border-secondary);
+	border-radius: 6px;
+	padding: 7px 10px;
+	color: var(--app-color-text-secondary);
+	background: var(--app-color-bg-container);
+	font: inherit;
+	cursor: pointer;
+}
+.assetPickerToolbar > input {
+	flex: 1;
+	min-width: 0;
+	border: 1px solid var(--app-color-border-secondary);
+	border-radius: 6px;
+	padding: 7px 10px;
+}
+.assetPickerToolbar > strong {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.assetPickerGrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+	gap: 12px;
+	margin: 14px 0;
+}
+.assetPickerImage,
+.assetPickerProject {
+	border: 1px solid var(--app-color-border-secondary);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--app-color-bg-container);
+}
+.assetPickerImage img {
+	display: block;
+	width: 100%;
+	height: 120px;
+	object-fit: contain;
+	background: #f5f5fa;
+}
+.assetPickerImage > span {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 9px;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+.assetPickerProject {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	min-height: 120px;
+	padding: 16px;
+	cursor: pointer;
+	color: var(--app-color-text);
+}
+.assetPickerProject > span {
+	font-size: 28px;
+	color: var(--app-color-primary);
+}
+.assetPickerEmpty {
+	padding: 40px 16px;
+	text-align: center;
+	color: var(--app-color-text-secondary);
+}
+
+.assetPickerImage:has(input:checked),
+.assetPickerProject:hover {
+	border-color: var(--app-color-primary);
+}
+.assetPickerImage:has(input:disabled) {
+	opacity: 0.65;
+}
+
+.avatarRecovery {
+	display: flex;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 5px 10px;
+	padding: 9px 11px;
+	margin: 8px 0;
+	border-radius: 6px;
+	color: var(--app-color-text-secondary);
+	background: var(--app-color-fill-secondary);
+	font-size: 11px;
+}
+.avatarRecovery small {
+	flex-basis: 100%;
+	color: var(--app-color-text-tertiary);
+}
+.avatarRecovery button {
+	border: 0;
+	padding: 0;
+	background: none;
+	color: var(--app-color-primary);
+	font: inherit;
+	cursor: pointer;
+}

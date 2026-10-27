@@ -21,10 +21,40 @@ class FreeCreationMediaServiceTest {
     final JdbcTemplate jdbc=mock(JdbcTemplate.class);
     final ImageDisplayRenditionService images=mock(ImageDisplayRenditionService.class);
     final MediaDeliveryGrantService grants=mock(MediaDeliveryGrantService.class);
+    final ProjectImageReferenceService projectImages=mock(ProjectImageReferenceService.class);
     final FreeCreationMediaService service=new FreeCreationMediaService(media,creations,uploads,storage,
         mock(ObjectStorageKeyFactory.class),images,grants,
         mock(COS.class),mock(ObjectStorageProperties.class),jdbc,mock(CloudInfiniteVideoCoverService.class),
-        mock(com.antshorttv.execution.AiExecutionService.class),mock(org.springframework.transaction.PlatformTransactionManager.class));
+        mock(com.antshorttv.execution.AiExecutionService.class),mock(org.springframework.transaction.PlatformTransactionManager.class),projectImages);
+
+    @Test void projectImagesAreAuthorizedDuringEstimationAndProbedBeforeCreation() throws Exception {
+        var context=new TenantContext(2L,1L,3L,"MEMBER");
+        var source=new FreeCreationRequest.ProjectImage(5L,9L);
+        var reference=new FreeCreationRequest.Reference("IMAGE",null,null,source);
+        var bytes=new ByteArrayOutputStream();ImageIO.write(new BufferedImage(320,320,BufferedImage.TYPE_INT_RGB),"png",bytes);
+        when(projectImages.resolve(context,source)).thenAnswer(call->{
+            var item=new FreeCreationMediaEntity();item.tenantId=1L;item.kind="IMAGE";item.objectKey="project.png";
+            item.mimeType="image/png";item.format="png";item.fileSize=(long)bytes.size();return item;
+        });
+        var estimate=service.referenceForImageEstimate(context,reference);
+        assertThat(estimate.role).isEqualTo("REFERENCE");
+        verifyNoInteractions(storage,uploads);
+        when(storage.resource("project.png")).thenReturn(new ByteArrayResource(bytes.toByteArray()));
+        var creation=service.reference(context,reference);
+        assertThat(creation.width).isEqualTo(320);
+        assertThat(creation.height).isEqualTo(320);
+        verify(projectImages,times(2)).resolve(context,source);
+    }
+
+    @Test void rejectsMixedSourcesAndProjectImagesDeclaredAsVideo() {
+        var context=new TenantContext(2L,1L,3L,"MEMBER");
+        var source=new FreeCreationRequest.ProjectImage(5L,9L);
+        assertThatThrownBy(()->service.reference(context,new FreeCreationRequest.Reference("IMAGE","upload",null,source)))
+            .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->service.reference(context,new FreeCreationRequest.Reference("VIDEO",null,null,source)))
+            .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(projectImages,uploads);
+    }
 
     @Test void listThumbnailNeverFallsBackToOriginalAndUsesItsOwnStableRendition() {
         var item=new FreeCreationMediaEntity();item.id=2L;item.tenantId=1L;item.creationId=3L;item.position=0;

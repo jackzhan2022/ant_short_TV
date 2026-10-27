@@ -16,11 +16,39 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SeedanceArkVideoProviderAdapterTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AiSecretCodec secretCodec = new AiSecretCodec("seedance-test-secret");
+
+    @ParameterizedTest
+    @ValueSource(strings={"InputVideoSensitiveContentDetected","InputAudioSensitiveContentDetected","OutputVideoSensitiveContentDetected","InputTextSensitiveContentDetected"})
+    void structuredNonImagePrivacyRejectionsCannotTriggerAvatarRecovery(String code) throws Exception {
+        HttpServer server=server(exchange->writeJson(exchange,200,
+            "{\"id\":\"ark-refused\",\"status\":\"failed\",\"error\":{\"code\":\""+code+"\",\"message\":\"The input may contain real person.\"}}"));
+        try {
+            var adapter=new SeedanceArkVideoProviderAdapter(secretCodec,objectMapper);
+            var result=adapter.poll(config(server),model("ep-seedance-fast"),"ark-refused","query").response();
+            assertThat(SeedanceRealPersonRejection.matches(result.errorMessage())).isFalse();
+            assertThat(result.errorMessage()).contains(code);
+            assertThat(objectMapper.readTree(result.metadataJson()).path("errorCode").asText()).isEqualTo(code);
+        } finally {server.stop(0);}
+    }
+
+    @Test
+    void structuredImagePrivacyRejectionRemainsEligibleForRecovery() throws Exception {
+        HttpServer server=server(exchange->writeJson(exchange,200,
+            "{\"id\":\"ark-refused\",\"status\":\"failed\",\"error\":{\"code\":\"InputImageSensitiveContentDetected.PrivacyInformation\",\"message\":\"The input image may contain real person.\"}}"));
+        try {
+            var adapter=new SeedanceArkVideoProviderAdapter(secretCodec,objectMapper);
+            var result=adapter.poll(config(server),model("ep-seedance-fast"),"ark-refused","query").response();
+            assertThat(SeedanceRealPersonRejection.matches(result.errorMessage())).isTrue();
+            assertThat(objectMapper.readTree(result.metadataJson()).path("errorCode").asText()).isEqualTo("InputImageSensitiveContentDetected.PrivacyInformation");
+        } finally {server.stop(0);}
+    }
 
     @Test
     void submitsTextOnlySnapshotWithoutSendingAStaleFirstFrame() throws Exception {

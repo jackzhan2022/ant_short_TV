@@ -18,6 +18,10 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class FreeCreationExecutionHandler extends AiExecutionHandler {
+    private FreeCreationAvatarRecoveryService avatarRecovery;
+    private com.antshorttv.avatar.ArkAssetPool avatarAssets;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAvatarRecovery(FreeCreationAvatarRecoveryService recovery,com.antshorttv.avatar.ArkAssetPool assets) {this.avatarRecovery=recovery;this.avatarAssets=assets;}
     private final FreeCreationMapper creations;
     private final FreeCreationService service;
     private final FreeCreationMediaService media;
@@ -69,8 +73,11 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
             }
             JsonNode result=service.read(creation.providerResultJson);
             if("VIDEO".equals(creation.mediaType) && !"SUCCEEDED".equals(result.path("status").asText())) {
+                String error=result.path("errorMessage").asText("");
+                boolean rejected=VolcengineProviderCodes.isArk(creation.providerCode) && SeedanceRealPersonRejection.matches(error);
                 settle(context,creation,result.path("completionTokens").asLong()>0?AiSettlementOutcome.PROVIDER_BILLED_FAILURE:AiSettlementOutcome.TRANSPORT_UNKNOWN);
-                throw new IllegalStateException("视频服务商生成失败，请调整提示词后重试。");
+                if(rejected)enqueueRecovery(context,creation,error);
+                throw new IllegalStateException(error.isBlank()?"视频服务商生成失败，请调整提示词后重试。":FreeCreationErrorMessages.forProviderFailure(error));
             }
             recordUsage(context,creation);
             phase(context,"STORE");
@@ -94,7 +101,10 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
         catch(AiGatewayException failure) {
             claims.requireActive(context.claim());
             creation.billingCallLogId=failure.getAiCallLogId();creation.billingAttemptId=context.claim().attemptId();save(context,creation);
-            settle(context,creation,creation.externalTaskId==null && isRejection(failure)?AiSettlementOutcome.PROVIDER_REJECTION:AiSettlementOutcome.TRANSPORT_UNKNOWN);
+            boolean rejected=creation.externalTaskId==null && isRejection(failure);
+            settle(context,creation,rejected?AiSettlementOutcome.PROVIDER_REJECTION:AiSettlementOutcome.TRANSPORT_UNKNOWN);
+            if(rejected && avatarAssets!=null)avatarAssets.releaseFreeCreation(creation.id);
+            if(rejected && SeedanceRealPersonRejection.matches(failure.getErrorCode(),failure.getMessage()))enqueueRecovery(context,creation,failure.getMessage());
             throw new IllegalStateException(FreeCreationErrorMessages.forProviderFailure(failure.getMessage()));
         } catch(RuntimeException failure) {
             settle(context,creation,creation.providerResultJson!=null?AiSettlementOutcome.BUSINESS_FAILURE:
@@ -125,6 +135,9 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
         boolean seedance=VolcengineProviderCodes.isArk(creation.providerCode);
         AiInvocationResult<AiVideoProviderAdapter.VideoResult> response;
         if(creation.externalTaskId==null) {
+            if(creation.videoRequestSnapshotJson==null) {
+                creation.videoRequestSnapshotJson=task.requestSnapshotJson;save(context,creation);
+            }
             beginProvider(context,creation);
             response=invocations.invokeProviderNative(request,creation.prompt,route->seedance
                 ?ark.submit(route.providerConfig(),route.model(),task,request.idempotencyKey())
@@ -144,6 +157,10 @@ public class FreeCreationExecutionHandler extends AiExecutionHandler {
         if(response.response()==null) throw new IllegalStateException("视频服务商未返回生成结果。");
         creation.billingAttemptId=context.claim().attemptId();
         creation.billingCallLogId=response.aiCallLogId();creation.providerResultJson=json.valueToTree(response.response()).toString();save(context,creation);
+    }
+
+    private void enqueueRecovery(AiExecutionContext context,FreeCreationEntity creation,String error) {
+        if(avatarRecovery!=null)withClaim(context,()->avatarRecovery.enqueue(creation,error));
     }
 
     private void beginProvider(AiExecutionContext context,FreeCreationEntity creation) {

@@ -62,6 +62,38 @@ class FreeCreationExecutionHandlerTest {
         assertThat(creation.billingCallLogId).isEqualTo(7L);
     }
 
+    @Test void explicitSubmitPrivacyRejectionEnqueuesRecoveryAfterSettlingTheOriginalAttempt() {
+        var context=context();var creation=creation();creation.externalTaskId=null;creation.providerStartedAt=null;
+        var recovery=mock(FreeCreationAvatarRecoveryService.class);var assets=mock(com.antshorttv.avatar.ArkAssetPool.class);
+        handler.setAvatarRecovery(recovery,assets);
+        var task=new AiVideoTaskEntity();task.requestSnapshotJson="{\"references\":[]}";
+        when(creations.selectById(2L)).thenReturn(creation);when(creations.update(any(),any())).thenReturn(1);
+        when(executions.requireTaskForUpdate(1L)).thenReturn(context.task());when(service.videoTask(creation,true)).thenReturn(task);
+        when(service.read(null)).thenReturn(new ObjectMapper().createObjectNode());
+        when(invocation.invokeProviderNative(any(),anyString(),any())).thenThrow(new AiGatewayException(ErrorCode.VALIDATION_ERROR,"InputImageSensitiveContentDetected: image may contain realperson",7L));
+        var reserved=new AiPointReservationEntity();reserved.id=8L;reserved.status="RESERVED";
+        when(reservations.selectByExecutionId(1L)).thenReturn(reserved);
+        when(settlements.finalizeOutcome(anyLong(),any(),anyMap(),any(),any(),anyString())).thenReturn(reserved);
+        assertThatThrownBy(()->handler.execute(context)).isInstanceOf(IllegalStateException.class);
+        var order=inOrder(settlements,recovery);order.verify(settlements).finalizeOutcome(eq(8L),eq(AiSettlementOutcome.PROVIDER_REJECTION),anyMap(),any(),any(),anyString());
+        order.verify(recovery).enqueue(eq(creation),contains("realperson"));
+        assertThat(creation.videoRequestSnapshotJson).isEqualTo(task.requestSnapshotJson);
+        verify(assets).releaseFreeCreation(2L);
+    }
+
+    @Test void failedPollWithExplicitPrivacyReasonAlsoEnqueuesRecovery() {
+        var context=context();var creation=creation();creation.videoRequestSnapshotJson="{\"references\":[]}";
+        creation.providerResultJson="{\"status\":\"FAILED\",\"errorMessage\":\"InputImageSensitiveContentDetected: image may contain real person\"}";
+        var recovery=mock(FreeCreationAvatarRecoveryService.class);handler.setAvatarRecovery(recovery,mock(com.antshorttv.avatar.ArkAssetPool.class));
+        when(creations.selectById(2L)).thenReturn(creation);when(executions.requireTaskForUpdate(1L)).thenReturn(context.task());
+        when(service.read(creation.providerResultJson)).thenAnswer(call->new ObjectMapper().readTree(creation.providerResultJson));
+        var reserved=new AiPointReservationEntity();reserved.id=8L;reserved.status="RESERVED";when(reservations.selectByExecutionId(1L)).thenReturn(reserved);
+        when(settlements.finalizeOutcome(anyLong(),any(),anyMap(),any(),any(),anyString())).thenAnswer(call->{reserved.status="HELD";return reserved;});
+        assertThatThrownBy(()->handler.execute(context)).isInstanceOf(IllegalStateException.class);
+        verify(recovery).enqueue(eq(creation),contains("real person"));verifyNoInteractions(invocation);
+        verify(settlements).finalizeOutcome(eq(8L),eq(AiSettlementOutcome.TRANSPORT_UNKNOWN),eq(Map.of()),any(),any(),anyString());
+    }
+
     @Test void staleWorkerCannotSettleAfterItsClaimWasReplaced() {
         var context=context();var creation=creation();
         when(creations.selectById(2L)).thenReturn(creation);when(creations.update(any(),any())).thenReturn(1);

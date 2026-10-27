@@ -14,5 +14,11 @@ public record FreeCreationRequest(
     @Valid @Size(max=50) List<@NotNull Reference> references
 ) {
     public record Reference(@NotNull @Pattern(regexp="IMAGE|VIDEO|AUDIO") String kind,
-        @Size(max=200) String uploadSessionToken, @Positive Long referenceId) {}
+        @Size(max=200) String uploadSessionToken, @Positive Long referenceId,
+        @Valid ProjectImage projectImage) {
+        public Reference(String kind, String uploadSessionToken, Long referenceId) {
+            this(kind,uploadSessionToken,referenceId,null);
+        }
+    }
+    public record ProjectImage(@NotNull @Positive Long projectId, @NotNull @Positive Long resultId) {}
 }

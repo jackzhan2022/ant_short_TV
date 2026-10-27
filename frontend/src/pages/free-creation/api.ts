@@ -1,3 +1,4 @@
+import type { AvatarRecovery } from './avatar-recovery';
 import { request } from '@umijs/max';
 import { pointEstimatedRequest } from '@/services/point-estimate';
 import type { CreationMode } from './service';
@@ -43,6 +44,9 @@ export type CreationRecord = {
   allowedActions?: ('CANCEL' | 'RETRY' | 'REGENERATE')[];
   mediaType: CreationMode;
   status: CreationStatus;
+  phase?: string;
+  originalStatus?: CreationStatus;
+  originalExecutionId?: number;
   prompt: string;
   creatorId: number;
   creatorName: string;
@@ -53,6 +57,8 @@ export type CreationRecord = {
   references: CreationReference[];
   outputs: CreationOutput[];
   errorMessage?: string;
+  avatarRecovery?: AvatarRecovery;
+  avatarRecoverySourceCreationId?: number;
 };
 export type CreationRequest = {
   requestId: string;
@@ -64,6 +70,7 @@ export type CreationRequest = {
     kind: CreationReference['kind'];
     uploadSessionToken?: string;
     referenceId?: number;
+    projectImage?: { projectId: number; resultId: number };
   }[];
 };
 export type CreationPage = {

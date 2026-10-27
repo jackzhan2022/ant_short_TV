@@ -21,6 +21,18 @@ const image: CreationModel = {
   resolutions: [],
 };
 describe('free creation drafts', () => {
+  it('submits project image identities without converting them to upload tokens or URLs', () => {
+    const draft = { ...newDraft(image), prompt: '项目资产参考', references: [{
+      id: 'project-3-image-9', kind: 'image' as const, name: '角色图片',
+      projectImage: { projectId: 3, resultId: 9 },
+      status: 'complete' as const, percent: 100, url: '/thumbnail',
+    }] };
+    expect(draftError(draft, image)).toBeUndefined();
+    expect(requestFromDraft(draft, 'IMAGE', 'request').references).toEqual([
+      { kind: 'IMAGE', projectImage: { projectId: 3, resultId: 9 } },
+    ]);
+  });
+
   it('blocks incomplete uploads and maps verified references without arbitrary URLs', () => {
     const draft = {
       ...newDraft(image),

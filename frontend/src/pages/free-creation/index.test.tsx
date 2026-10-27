@@ -119,6 +119,34 @@ beforeEach(() => {
 });
 
 describe('自由创作页面', () => {
+  it('shows avatar preparation in the original card and details without a failure or cancel action', async () => {
+    const record = { id: 9, mediaType: 'VIDEO', status: 'RUNNING', phase: 'AVATAR_PREPARING', prompt: '连续视频流程', creatorId: 1, creatorName: '作者',
+      createdAt: '2026-10-27T10:00:00', modelId: 2, modelName: '视频模型', parameters: {}, references: [], outputs: [], allowedActions: [],
+      avatarRecovery: { status: 'RUNNING', phase: '等待素材处理完成' } };
+    mocks.list.mockResolvedValue({ records: [record], total: 1, current: 1, pageSize: 10 });
+    render(<FreeCreationPage />);
+    const preparing = await screen.findByRole('status', { name: '智能虚拟化中：连续视频流程' });
+    expect(preparing).toHaveTextContent('智能虚拟化中');
+    expect(preparing.closest('article')).not.toHaveTextContent('失败');
+    mocks.detail.mockResolvedValueOnce(record);
+    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findAllByText('智能虚拟化中')).not.toHaveLength(0);
+    expect(within(dialog).queryByRole('button', { name: '取消任务' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the linked retry accessible from the logical creation details', async () => {
+    const record = { id: 9, mediaType: 'VIDEO', status: 'RUNNING', phase: 'QUERY', prompt: '虚拟人像视频', creatorId: 1, creatorName: '作者',
+      createdAt: '2026-10-27T10:00:00', modelId: 2, modelName: '视频模型', parameters: {}, references: [], outputs: [],
+      avatarRecovery: { status: 'SUCCEEDED', phase: '已创建关联重试视频', retryCreationId: 10, retryStatus: 'RUNNING' } };
+    mocks.list.mockResolvedValue({ records: [record], total: 1, current: 1, pageSize: 10 });
+    mocks.detail.mockResolvedValueOnce(record).mockResolvedValue({ ...record, id: 10, prompt: '关联视频结果', avatarRecovery: undefined });
+    render(<FreeCreationPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看关联视频' }));
+    await waitFor(() => expect(mocks.detail).toHaveBeenCalledWith(10, expect.any(AbortSignal)));
+  });
+
   it('缩略图未就绪时显示占位，不把高清预览当作列表图片加载', async () => {
     mocks.list.mockResolvedValue({ records: [{
       id: 9, mediaType: 'IMAGE', status: 'SUCCEEDED', prompt: '等待缩略图', creatorId: 1, creatorName: '作者',

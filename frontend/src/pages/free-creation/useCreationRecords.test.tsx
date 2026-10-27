@@ -41,6 +41,49 @@ afterEach(() => {
 });
 
 describe('creation record scrolling', () => {
+  it('keeps one card while generation moves through avatar preparation to its final result', async () => {
+    vi.useFakeTimers();
+    const initial: CreationRecord = { ...record(1, 'RUNNING'), mediaType: 'VIDEO', phase: 'SUBMIT' };
+    const preparing: CreationRecord = { ...initial, phase: 'AVATAR_PREPARING', avatarRecovery: { status: 'PENDING', phase: '等待素材处理' } };
+    const retrying: CreationRecord = { ...initial, phase: 'QUERY', taskKey: 'FREE_CREATION:2', avatarRecovery: {
+      status: 'SUCCEEDED', phase: '已创建关联重试视频', retryCreationId: 2, retryStatus: 'RUNNING',
+    } };
+    const completed: CreationRecord = { ...retrying, status: 'SUCCEEDED', outputs: [{ id: 30, thumbnailUrl: '/video-cover.webp', previewUrl: '/video.mp4' }], avatarRecovery: {
+      ...retrying.avatarRecovery!, status: 'SUCCEEDED', retryStatus: 'SUCCEEDED',
+    } };
+    vi.mocked(listCreations).mockResolvedValueOnce({ ...page([1], 1, 1), records: [initial] });
+    vi.mocked(getCreation).mockResolvedValueOnce(preparing).mockResolvedValueOnce(retrying).mockResolvedValueOnce(completed);
+    const { result } = renderHook(() => useCreationRecords(query, 'logical-avatar'));
+    await act(async () => {});
+    for (const expected of [preparing, retrying, completed]) {
+      await act(async () => vi.advanceTimersByTimeAsync(5000));
+      expect(result.current.page.records).toEqual([expected]);
+      expect(result.current.page.total).toBe(1);
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(getCreation).toHaveBeenCalledTimes(3);
+  });
+
+  it('polls a failed video through avatar preparation and its linked retry until completion', async () => {
+    vi.useFakeTimers();
+    const item = { ...record(1, 'FAILED'), mediaType: 'VIDEO' as const,
+      avatarRecovery: { status: 'PENDING' as const, phase: '等待素材入库' } };
+    vi.mocked(listCreations).mockResolvedValueOnce({ ...page([1], 1, 1), records: [item] });
+    vi.mocked(getCreation).mockResolvedValueOnce({ ...item, avatarRecovery: {
+      status: 'SUCCEEDED', phase: '已创建关联重试视频', retryCreationId: 2, retryStatus: 'RUNNING',
+    } }).mockResolvedValueOnce({ ...item, avatarRecovery: {
+      status: 'SUCCEEDED', phase: '已创建关联重试视频', retryCreationId: 2, retryStatus: 'SUCCEEDED',
+    } });
+    const { result } = renderHook(() => useCreationRecords(query, 'avatar-recovery'));
+    await act(async () => {});
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(result.current.page.records[0].avatarRecovery?.retryCreationId).toBe(2);
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(result.current.page.records[0].avatarRecovery?.retryStatus).toBe('SUCCEEDED');
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(getCreation).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps polling a completed creation until its small thumbnail is ready', async () => {
     vi.useFakeTimers();
     const item: CreationRecord = { ...record(1), outputs: [{ id: 10, previewUrl: '/large.png', thumbnailStatus: 'PENDING' }] };

@@ -19,12 +19,13 @@ import javax.imageio.ImageIO;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-/** Only accepts verified uploads or media already owned by a visible free creation. */
+/** Accepts verified uploads, visible free creation media, or authorized project images. */
 @Service
 public class FreeCreationMediaService {
     private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(FreeCreationMediaService.class);
     private final FreeCreationMediaMapper media;
     private final FreeCreationMapper creations;
+    private final ProjectImageReferenceService projectImages;
     private final MediaUploadSessionService uploads;
     private final ObjectStorageService storage;
     private final ObjectStorageKeyFactory keys;
@@ -50,7 +51,9 @@ public class FreeCreationMediaService {
         MediaUploadSessionService uploads, ObjectStorageService storage, ObjectStorageKeyFactory keys,
         ImageDisplayRenditionService images, MediaDeliveryGrantService grants, COS cos,
         ObjectStorageProperties properties, JdbcTemplate jdbc, CloudInfiniteVideoCoverService covers,
-        AiExecutionService executions,org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        AiExecutionService executions,org.springframework.transaction.PlatformTransactionManager transactionManager,
+        ProjectImageReferenceService projectImages) {
+        this.projectImages=projectImages;
         this.media=media; this.creations=creations; this.uploads=uploads; this.storage=storage;
         this.executions=executions;this.transactions=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         this.covers=covers; this.keys=keys; this.images=images; this.grants=grants; this.cos=cos; this.properties=properties; this.jdbc=jdbc;
@@ -68,9 +71,15 @@ public class FreeCreationMediaService {
 
     private FreeCreationMediaEntity reference(TenantContext context, FreeCreationRequest.Reference request, boolean inspectMetadata) {
         boolean token=request.uploadSessionToken()!=null && !request.uploadSessionToken().isBlank();
-        if (token == (request.referenceId()!=null)) throw invalid("参考素材必须指定上传会话或已授权素材之一。");
+        int sources=(token?1:0)+(request.referenceId()!=null?1:0)+(request.projectImage()!=null?1:0);
+        if (sources!=1) throw invalid("参考素材必须指定上传会话、已授权素材或项目图片之一。");
+        if (request.projectImage()!=null && !"IMAGE".equals(request.kind()))
+            throw invalid("项目图片仅可用作图片参考素材。");
         FreeCreationMediaEntity result;
-        if (token) {
+        if (request.projectImage()!=null) {
+            result=projectImages.resolve(context,request.projectImage());
+            if (inspectMetadata && (result.width==null || result.height==null || result.width<=0 || result.height<=0)) probe(result);
+        } else if (token) {
             VerifiedMediaUpload verified;
             try { verified=uploads.requireCompleted(context.userId(),context.tenantId(),null,request.uploadSessionToken()); }
             catch (IllegalArgumentException ex) { throw invalid("参考素材上传会话不可用或不属于当前用户及团队。"); }

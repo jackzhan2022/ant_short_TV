@@ -1,5 +1,6 @@
 import { BulbOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
+import { useRef } from 'react';
 import type { CreationParameters } from './api';
 import { type CreationDraft, imageCountOptions, newDraft } from './draft';
 import styles from './index.module.css';
@@ -33,6 +34,7 @@ export default function Composer({
   example: string;
   disabled?: boolean;
 }) {
+  const pasteTarget = useRef<HTMLFieldSetElement>(null);
   const selected = models.find((model) => model.id === draft.modelId);
   const setParameters = (parameters: Partial<CreationParameters>) =>
     onChange({ ...draft, parameters: { ...draft.parameters, ...parameters } });
@@ -48,7 +50,7 @@ export default function Composer({
       ],
     }));
   return (
-    <fieldset className={styles.composerFields} disabled={disabled}>
+    <fieldset ref={pasteTarget} className={styles.composerFields} disabled={disabled}>
       <div className={styles.field}>
         <label
           className={styles.fieldLabel}
@@ -139,6 +141,7 @@ export default function Composer({
               <ReferenceFiles
                 key={kind}
                 kind={kind}
+                pasteTarget={pasteTarget}
                 constraints={selected.references[kind]}
                 initialReferences={draft.references.filter(
                   (ref) => ref.kind === kind,

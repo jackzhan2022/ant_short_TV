@@ -1,3 +1,4 @@
+import { avatarRecoveryPending } from './avatar-recovery';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type CreationPage,
@@ -8,7 +9,7 @@ import {
 } from './api';
 
 const pending = (record: CreationRecord) =>
-  record.status === 'QUEUED' || record.status === 'RUNNING' ||
+  record.status === 'QUEUED' || record.status === 'RUNNING' || avatarRecoveryPending(record.avatarRecovery) ||
   record.outputs.some((output) => output.thumbnailStatus === 'PENDING');
 const matches = (query: CreationQuery, record: CreationRecord) =>
   (!query.mediaType || query.mediaType === record.mediaType) &&
