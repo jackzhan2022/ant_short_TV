@@ -11,7 +11,7 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
-  { path: '/system-audio', name: 'system-audio', icon: 'audio', access: 'canViewSystemAudio', component: './system-audio' },
+  { path: '/system-audio', name: 'system-audio', hideInMenu: true, icon: 'audio', access: 'canViewSystemAudio', component: './system-audio' },
   { path: '/asset-library', name: 'asset-library', icon: 'folderOpen', access: 'canViewAssetLibrary', component: './asset-library' },
   { path: '/asset-library/projects/:projectId', hideInMenu: true, access: 'canViewAssetLibrary', component: './asset-library' },
   { path: '/messages', name: 'messages', hideInMenu: true, component: './messages' },
