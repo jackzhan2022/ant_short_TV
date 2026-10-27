@@ -187,7 +187,7 @@ public class ProductionTaskService {
         String url=type.equals("IMAGE")?"image_url":"video_url";
         String thumbnail=type.equals("IMAGE")?"thumbnail_url":"cover_url";
         List<Map<String,Object>> rows=sql.queryForList("select id,"+url+" content_url,"+thumbnail+" thumbnail_url,width,height,is_selected,status from "+table+" where tenant_id=:tenant and task_id=:task order by id limit :limit offset :offset",
-            Map.of("tenant",tenant,"task",number(row,"id"),"limit",size+1,"offset",offset));
+            Map.of("tenant",tenant,"task",resultTaskId(row),"limit",size+1,"offset",offset));
         return collection(key,sectionKey,media(rows.size()>size?rows.subList(0,size):rows,"content_url",
             number(row,"project_id"),type),page,size,
             rows.isEmpty()&&page==1?"PENDING":"AVAILABLE",rows.size()>size);
@@ -299,7 +299,7 @@ public class ProductionTaskService {
         };
         if(table==null) return "unknown";
         String column=table.startsWith("storyboard_batch") ? "created_at" : "updated_at";
-        Map<String,Object> revision=one("select "+column+" revision from "+table+" where tenant_id=? and id=?",tenant,number(row,"id"));
+        Map<String,Object> revision=one("select "+column+" revision from "+table+" where tenant_id=? and id=?",tenant,resultTaskId(row));
         return text(revision.get("revision"));
     }
 
@@ -323,7 +323,7 @@ public class ProductionTaskService {
             case "FREE_CREATION" -> freeCreationSections(a.context,row);
             case "VIRTUAL_AVATAR" -> avatarSections(tenant,id);
             case "IMAGE" -> imageSections(tenant,id);
-            case "VIDEO" -> videoSections(tenant,id);
+            case "VIDEO" -> videoSections(tenant,id,resultTaskId(row));
             case "SCRIPT_ANALYSIS" -> analysisSections(tenant,id);
             case "REVIEW" -> reviewSections(tenant,id);
             case "VIDEO_DECOMPOSITION", "VIDEO_EPISODE" -> decompositionSections(tenant,id,String.valueOf(row.get("type")));
@@ -392,10 +392,10 @@ public class ProductionTaskService {
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
     }
 
-    private List<Map<String,Object>> videoSections(long tenant,long id) {
+    private List<Map<String,Object>> videoSections(long tenant,long id,long resultTask) {
         Map<String,Object> task=one("select project_id,prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
-        List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
+        List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",resultTask));
         boolean resultsMore=results.size()>20;
         List<Map<String,Object>> references=new ArrayList<>();
         addReference(references,task.get("first_frame_url"),"首帧");addReference(references,task.get("last_frame_url"),"尾帧");
@@ -664,7 +664,7 @@ public class ProductionTaskService {
                 if(type.equals("VIRTUAL_AVATAR") && state.equals("FAILED") && truth(row.get("retryable"))
                     && Set.of("ELEMENT:VIEW","ELEMENT:EDIT","AI_SERVICE:USE").stream().allMatch(code->MenuAuthorization.allows(effective,code))) actions.add("RETRY");
                 if(type.equals("IMAGE") && active && number(row,"execution_id")!=null && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CANCEL")) actions.add("CANCEL");
-                if(type.equals("VIDEO") && active && MenuAuthorization.allows(effective, "AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
+                if(type.equals("VIDEO") && active && !"智能虚拟化中".equals(row.get("phase")) && MenuAuthorization.allows(effective, "AI_VIDEO_TASK:CANCEL")) actions.add("CANCEL");
                 if(type.equals("IMAGE") && state.equals("SUCCEEDED") && number(row,"execution_id")!=null
                     && !"VISUAL_VARIANT".equals(row.get("subtype"))
                     && MenuAuthorization.allows(effective, "AI_IMAGE_TASK:CREATE")) actions.add("REGENERATE");
@@ -736,6 +736,10 @@ public class ProductionTaskService {
         if(type.equals("IMAGE") && !"STORYBOARD".equals(subtype)) section="settings";
         if(type.equals("SCRIPT_OPERATION") && "STORYBOARD_BREAKDOWN".equals(subtype)) section="storyboard";
         return "/projects/"+project+"/production-workbench/"+section;
+    }
+    private static Long resultTaskId(Map<String,Object> row) {
+        if("VIDEO".equals(row.get("type")) && row.get("subtype")!=null) return Long.valueOf(String.valueOf(row.get("subtype")));
+        return number(row,"id");
     }
     static Long number(Map<String,Object> row,String key) {Object value=row.get(key);return value instanceof Number n?n.longValue():null;}
     static boolean truth(Object value) {return Boolean.TRUE.equals(value) || value instanceof Number n && n.intValue()!=0;}

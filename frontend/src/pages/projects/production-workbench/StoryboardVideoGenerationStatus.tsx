@@ -1,6 +1,6 @@
 import { Button, Progress } from 'antd';
-import type { AiVideoTask } from './service';
 import styles from './StoryboardVideoGenerationStatus.module.css';
+import type { AiVideoTask } from './service';
 
 export const isVideoGenerationActive = (task?: AiVideoTask) => {
   if (!task || ['SUCCEEDED', 'FAILED', 'CANCELED'].includes(task.status))
@@ -28,19 +28,25 @@ export default function StoryboardVideoGenerationStatus({
   task: AiVideoTask;
   onCancel: () => void;
 }) {
-  const progress = Math.min(100, Math.max(0, task.execution?.progress ?? 0));
-  const phase = task.execution?.phase || '';
+  const progress = Math.min(
+    100,
+    Math.max(0, task.progress ?? task.execution?.progress ?? 0),
+  );
+  const phase = task.executionPhase || task.execution?.phase || '';
+  const virtualizing = phase === 'AVATAR_PREPARING';
   const pending =
     task.execution?.status === 'PENDING' ||
     (!task.execution && (!task.status || task.status === 'PENDING'));
   const submitting = phase
     ? phase === 'VIDEO_SUBMIT'
     : task.status === 'SUBMITTING';
-  const description = submitting
-    ? '正在准备并提交视频任务'
-    : pending
-      ? '任务已创建，正在排队'
-      : '视频正在生成，请稍候';
+  const description = virtualizing
+    ? '正在准备虚拟人像素材，完成后自动继续生成'
+    : submitting
+      ? '正在准备并提交视频任务'
+      : pending
+        ? '任务已创建，正在排队'
+        : '视频正在生成，请稍候';
 
   return (
     <section
@@ -70,7 +76,9 @@ export default function StoryboardVideoGenerationStatus({
         </svg>
       </div>
       <div className={styles.heading}>
-        <output aria-live="polite">正在生成</output>
+        <output aria-live="polite">
+          {virtualizing ? '智能虚拟化中' : '正在生成'}
+        </output>
         <span className={styles.dots} aria-hidden="true">
           <span />
           <span />
@@ -89,13 +97,15 @@ export default function StoryboardVideoGenerationStatus({
         />
         <span className={styles.percent}>{progress}%</span>
       </div>
-      <Button
-        size="small"
-        onClick={onCancel}
-        aria-label={`取消分镜${storyboardNo}视频生成`}
-      >
-        取消生成
-      </Button>
+      {!virtualizing && (
+        <Button
+          size="small"
+          onClick={onCancel}
+          aria-label={`取消分镜${storyboardNo}视频生成`}
+        >
+          取消生成
+        </Button>
+      )}
     </section>
   );
 }

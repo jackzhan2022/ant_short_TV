@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-27",
+  "branch": "codex/unified-video-avatar-task",
+  "flow": [
+    "生成中",
+    "智能虚拟化中",
+    "生成中",
+    "已完成"
+  ],
+  "backendLatestReports": [
+    {
+      "suite": "com.antshorttv.productiontask.ProductionTaskControllerTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "com.antshorttv.productiontask.UnifiedVideoTaskTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "com.antshorttv.script.StoryboardMediaQueryServiceTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "com.antshorttv.video.AiVideoTaskControllerTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "com.antshorttv.video.SeedanceAvatarRecoveryServiceTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "com.antshorttv.video.VideoTaskPresentationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "backendLatestReportTotal": 40,
+  "frontendTestsPassed": 162,
+  "typescript": "passed after Umi setup",
+  "biome": "passed with 10 existing warnings",
+  "antd": "0 deprecated, 0 a11y; 9 existing usage warnings",
+  "review": "independent review completed; terminal-child manual retry issue fixed and regression passed",
+  "deployed": false
+}

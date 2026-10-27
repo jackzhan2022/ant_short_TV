@@ -66,6 +66,9 @@ const actions: Record<string, string> = {
   REGENERATE: '重新生成',
 };
 const active = (task: Task) => ['QUEUED', 'RUNNING'].includes(task.statusGroup);
+const taskStatus = (task: Task) => task.type === 'VIDEO' && active(task)
+  ? task.phase === '智能虚拟化中' ? '智能虚拟化中' : '生成中'
+  : statuses[task.statusGroup] || task.statusGroup;
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : '任务加载失败，请重试';
 const availability: Record<ContentSection['availability'], string> = {
@@ -395,7 +398,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     {
       title: '状态',
       dataIndex: 'statusGroup',
-      render: (_: unknown, record) => statuses[record.statusGroup] || record.statusGroup,
+      render: (_: unknown, record) => taskStatus(record),
     },
     {
       title: '进度',
@@ -412,7 +415,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
   const childColumns = [
     { title: '任务', key: 'title', render: (_: unknown, task: Task) => <Button type="link" onClick={() => select(task, true)}>{task.title}</Button> },
     { title: '类型', render: (_: unknown, task: Task) => types[task.type] || '分集任务' },
-    { title: '状态', render: (_: unknown, task: Task) => statuses[task.statusGroup] || task.statusGroup },
+    { title: '状态', render: (_: unknown, task: Task) => taskStatus(task) },
     { title: '进度', render: (_: unknown, task: Task) => task.progress != null ? <Progress percent={Number(task.progress)} size="small" /> : task.phase || '—' },
     { title: '创建时间', dataIndex: 'createdAt' },
   ];
@@ -571,7 +574,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         {detail && (
           <>
             <p>
-              {statuses[detail.statusGroup]} ·{' '}
+              {taskStatus(detail)} ·{' '}
               {detail.phase || statuses[detail.statusGroup]}
             </p>
             {detail.progress != null && (

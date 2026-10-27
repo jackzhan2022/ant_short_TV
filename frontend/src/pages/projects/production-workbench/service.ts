@@ -1305,6 +1305,9 @@ export type AiVideoResult = {
 export type AiVideoTask = {
   id: number;
   executionId?: number;
+  executionPhase?: string | null;
+  retryable?: boolean;
+  progress?: number | null;
   execution?: API.AiExecutionResponse;
   projectId: number;
   storyboardId: number;

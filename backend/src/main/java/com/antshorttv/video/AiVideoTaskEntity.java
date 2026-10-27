@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 
 @TableName("ai_video_task")
 public class AiVideoTaskEntity {
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    public Integer progress;
     public Long executionId;
     public Long avatarRecoverySourceTaskId;
     @TableId(type = IdType.AUTO)

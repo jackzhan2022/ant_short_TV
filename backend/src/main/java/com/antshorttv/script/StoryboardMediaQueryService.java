@@ -5,6 +5,7 @@ import com.antshorttv.project.ProjectAccessResolver;
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
 import com.antshorttv.video.VideoReferenceDiagnostics;
+import com.antshorttv.video.VideoTaskPresentation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -193,18 +194,32 @@ public class StoryboardMediaQueryService {
         String boundClause = boundIds.isEmpty() ? ""
             : " or t.id in (select task_id from ai_" + kind + "_result where tenant_id = ? and project_id = ?"
                 + " and status = 'ACTIVE' and id in (" + placeholders(boundIds.size()) + "))";
+        if ("video".equals(kind) && !boundIds.isEmpty()) boundClause = " or t.id in (select coalesce(vt.avatar_recovery_source_task_id,vt.id) from ai_video_result vr "
+            + "join ai_video_task vt on vt.id=vr.task_id and vt.tenant_id=vr.tenant_id and vt.project_id=vr.project_id "
+            + "where vr.tenant_id=? and vr.project_id=? and vr.status='ACTIVE' and vr.id in ("+placeholders(boundIds.size())+"))";
         List<Object> params = scopedParameters(tenantId, projectId, ids);
         if (!boundIds.isEmpty()) params.addAll(scopedParameters(tenantId, projectId, boundIds));
         // Rank only requested targets; bound tasks are independent of the history page.
-        List<Map<String, Object>> rows = jdbc.queryForList(
+        List<Map<String, Object>> rows = "video".equals(kind) ? List.of() : jdbc.queryForList(
             "select " + columns + " from (select " + columns
                 + ", row_number() over (partition by " + target + " order by created_at desc, id desc) as media_rank "
                 + "from ai_" + kind + "_task where tenant_id = ? and project_id = ? and deleted_at is null"
                 + targetFilter + " and " + target + " in (" + placeholders(ids.size()) + ")) t "
                 + "where media_rank = 1" + boundClause + " order by created_at desc, id desc", params.toArray()
         );
+        if ("video".equals(kind)) rows = jdbc.queryForList(
+            "select * from (select t.id,t.project_id,t.storyboard_id,t.model,t.provider_code,t.created_at,t.duration_seconds,t.aspect_ratio,t.first_frame_url, "
+            + VideoTaskPresentation.DOMAIN_STATE+" status, "
+            + "case when ar.status in ('PENDING','RUNNING') then null when ar.status='FAILED' then ar.error_message when rv.id is not null then rv.error_message else t.error_message end error_message, "
+            + "case when ar.status in ('PENDING','RUNNING') then null else coalesce(rv.execution_id,t.execution_id) end execution_id, "
+            + "case when ar.status in ('PENDING','RUNNING') then 'AVATAR_PREPARING' else coalesce(rv.execution_phase,t.execution_phase) end execution_phase, "
+            + "coalesce(rv.request_snapshot_json,t.request_snapshot_json) request_snapshot_json, "+VideoTaskPresentation.RESULT_ID+" result_task_id, "
+            + "row_number() over (partition by t.storyboard_id order by t.created_at desc,t.id desc) media_rank "
+            + "from ai_video_task t left join ai_execution_task e on e.id=t.execution_id and e.tenant_id=t.tenant_id "+VideoTaskPresentation.JOIN
+            + "where t.tenant_id=? and t.project_id=? and t.deleted_at is null and t.avatar_recovery_source_task_id is null "
+            + "and t.storyboard_id in ("+placeholders(ids.size())+")) t where media_rank=1"+boundClause+" order by created_at desc,id desc",params.toArray());
         if (rows.isEmpty()) return List.of();
-        List<Long> taskIds = rows.stream().map(row -> ((Number) value(row, "id")).longValue()).toList();
+        List<Long> taskIds = rows.stream().map(row -> ((Number) value(row, "video".equals(kind)?"result_task_id":"id")).longValue()).toList();
         Map<Long, List<Map<String, Object>>> results = results(tenantId, projectId, kind, taskIds, boundIds);
         Map<Long, Map<String, Object>> executions = executions(tenantId, projectId, rows);
         return rows.stream().map(row -> {
@@ -217,7 +232,8 @@ public class StoryboardMediaQueryService {
                 mapped.put("errorMessage", VideoReferenceDiagnostics.describeFailedImages(
                     (String) mapped.get("errorMessage"), diagnostics));
             }
-            Long taskId = ((Number) mapped.get("id")).longValue();
+            Long taskId = ((Number) mapped.getOrDefault("resultTaskId",mapped.get("id"))).longValue();
+            mapped.remove("resultTaskId");
             List<Map<String, Object>> taskResults = results.getOrDefault(taskId, List.of());
             mapped.put("results", taskResults);
             mapped.put("resultCount", taskResults.stream().findFirst()
@@ -225,6 +241,8 @@ public class StoryboardMediaQueryService {
             taskResults.forEach(result -> result.remove("resultCount"));
             if (mapped.get("executionId") instanceof Number executionId) {
                 mapped.put("execution", executions.get(executionId.longValue()));
+                var execution=executions.get(executionId.longValue());
+                if("video".equals(kind) && execution!=null) mapped.put("progress",execution.get("progress"));
             }
             return mapped;
         }).toList();

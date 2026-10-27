@@ -39,6 +39,9 @@ public class StoryboardMediaQueryServiceTest {
             jdbc.execute("create table ai_" + kind + "_task(id bigint,tenant_id bigint,project_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,task_type varchar(30),model_id bigint,provider_code varchar(50),model varchar(50),aspect_ratio varchar(20),image_count int,duration_seconds int,status varchar(30),error_message varchar(100),created_at timestamp,execution_id bigint,deleted_at timestamp)");
             jdbc.execute("create table ai_" + kind + "_result(id bigint,tenant_id bigint,project_id bigint,task_id bigint,storyboard_id bigint,target_type varchar(30),target_id bigint,image_url varchar(300),thumbnail_url varchar(300),display_path varchar(300),video_url varchar(300),storage_path varchar(300),cover_url varchar(300),audio_url varchar(300),duration_seconds decimal(8,2),width int,height int,file_size bigint,format varchar(30),material_id bigint,is_selected boolean,status varchar(30),created_at timestamp)");
         }
+        jdbc.execute("alter table ai_video_task add avatar_recovery_source_task_id bigint");
+        jdbc.execute("alter table ai_video_task add execution_phase varchar(64)");
+        jdbc.execute("create table seedance_avatar_recovery(source_task_id bigint,tenant_id bigint,project_id bigint,retry_task_id bigint,status varchar(32),error_message varchar(1000))");
         jdbc.execute("alter table ai_video_task add request_snapshot_json text");
         jdbc.execute("alter table ai_video_task add first_frame_url varchar(300)");
         jdbc.execute("create table ai_execution_task(id bigint,tenant_id bigint,project_id bigint,status varchar(30),phase varchar(30),progress int,execution_version int,source_execution_id bigint,root_execution_id bigint,retryable boolean,result_type varchar(30),result_id bigint,error_code varchar(60),error_message varchar(100),usage_cost_status varchar(30),provider_cost_summary_json text,business_call_count int,technical_retry_count int,point_settlement_status varchar(30),reserved_points decimal(12,2),settled_points decimal(12,2),released_points decimal(12,2),started_at timestamp,created_at timestamp,updated_at timestamp,completed_at timestamp,canceled_at timestamp)");
@@ -49,6 +52,28 @@ public class StoryboardMediaQueryServiceTest {
             jdbc.update("insert into ai_video_task(id,tenant_id,project_id,storyboard_id,status,created_at) values(?,1,2,10,'SUCCEEDED',current_timestamp)", id);
             jdbc.update("insert into ai_video_result(id,tenant_id,project_id,task_id,storyboard_id,video_url,storage_path,cover_url,material_id,is_selected,status,created_at) values(?,1,2,?,10,?,?,?,777,false,'ACTIVE',current_timestamp)", id == 1 ? 100 : 1000 + id, id, "/video-" + id, "materials/1/2/videos/" + id + ".mp4", "/materials/1/2/images/cover.png");
         }
+    }
+
+    @Test
+    void keepsTheOriginalMediaTaskDuringPreparationAndWhenItsReplacementProducesAVideo() {
+        jdbc.update("update ai_video_task set status='FAILED',error_message='image may contain real person' where id=200");
+        jdbc.update("insert into seedance_avatar_recovery(source_task_id,tenant_id,project_id,status) values(200,1,2,'RUNNING')");
+        var preparing=service.summary(1L,2L,List.of(10L)).get("videoTasks").get(0);
+        assertThat(preparing).containsEntry("id",200L).containsEntry("status","GENERATING").containsEntry("executionPhase","AVATAR_PREPARING")
+            .containsEntry("errorMessage",null).containsEntry("executionId",null);
+        jdbc.update("insert into ai_video_task(id,tenant_id,project_id,storyboard_id,status,created_at,avatar_recovery_source_task_id) values(201,1,2,10,'GENERATING',current_timestamp,200)");
+        jdbc.update("update seedance_avatar_recovery set status='SUCCEEDED',retry_task_id=201 where source_task_id=200");
+        var generating=service.summary(1L,2L,List.of(10L)).get("videoTasks");
+        assertThat(generating).hasSize(2); // The current logical task and the independently bound historical video.
+        assertThat(generating.get(0)).containsEntry("id",200L).containsEntry("status","GENERATING").containsEntry("errorMessage",null);
+        jdbc.update("insert into ai_video_result(id,tenant_id,project_id,task_id,storyboard_id,video_url,storage_path,is_selected,status,created_at) values(2201,1,2,201,10,'/recovered.mp4','videos/recovered.mp4',true,'ACTIVE',current_timestamp)");
+        jdbc.update("update ai_video_task set status='SUCCEEDED' where id=201");
+        var completed=service.summary(1L,2L,List.of(10L)).get("videoTasks").get(0);
+        assertThat(completed).containsEntry("id",200L).containsEntry("status","SUCCEEDED").containsEntry("errorMessage",null);
+        assertThat(completed.get("results").toString()).contains("ai-video-results/2201/playback");
+        // Binding the replacement result must still select the original logical task only once.
+        jdbc.update("update storyboard set current_video_result_id=2201 where id=10");
+        assertThat(service.summary(1L,2L,List.of(10L)).get("videoTasks")).hasSize(1);
     }
 
     @Test

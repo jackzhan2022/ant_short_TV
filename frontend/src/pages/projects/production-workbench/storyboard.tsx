@@ -52,7 +52,7 @@ import './storyboard.css';
 import ClickToPlayVideo, { stopActiveVideo } from '@/components/ClickToPlayVideo';
 import VideoFrameCaptureModal from './VideoFrameCaptureModal';
 import StoryboardVideoTools from './StoryboardVideoTools';
-import StoryboardAvatarRecovery from './StoryboardAvatarRecovery';
+import { pollVideoTask } from './video-task-polling';
 import { queryRecoveredVideoTask } from './avatar-recovery-service';
 import LazyMediaImage from '@/components/LazyMediaImage';
 import AssetVariantGenerationModal, {
@@ -813,7 +813,6 @@ const StoryboardCard = ({
   bindingVideoId,
   onCancelVideo,
   onRetryVideo,
-  onRecoveredVideo,
   onGenerateImage,
   onSelectFirstFrame,
   selectingFirstFrameId,
@@ -864,7 +863,6 @@ const StoryboardCard = ({
   bindingVideoId?: number;
   onCancelVideo: (task: AiVideoTask) => void;
   onRetryVideo: (task: AiVideoTask) => void;
-  onRecoveredVideo: (taskId: number) => Promise<void>;
   onGenerateImage: (storyboard: StoryboardShot) => void;
   onSelectFirstFrame: (resultId: number) => void;
   selectingFirstFrameId?: number;
@@ -1128,7 +1126,6 @@ const StoryboardCard = ({
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => b.id - a.id)[0];
   const videoGenerating = isVideoGenerationActive(videoTask);
-  const [avatarRecoveryBusy, setAvatarRecoveryBusy] = useState(false);
   const [dismissedVideoErrorTaskId, setDismissedVideoErrorTaskId] = useState<number>();
   const videoError = videoGenerationError(videoTask);
   const visibleVideoError = videoTask?.id === dismissedVideoErrorTaskId ? undefined : videoError;
@@ -1667,13 +1664,9 @@ const StoryboardCard = ({
                   message={visibleVideoError}
                   timedOut={videoTask.execution?.status === 'TIMED_OUT'}
                   onClose={() => setDismissedVideoErrorTaskId(videoTask.id)}
-                  onRetry={!avatarRecoveryBusy && videoTask.execution?.retryable ? () => onRetryVideo(videoTask) : undefined}
+                  onRetry={(videoTask.retryable || videoTask.execution?.retryable) ? () => onRetryVideo(videoTask) : undefined}
                   retryOperations={[{ url: `/api/projects/${projectId}/ai-video-tasks/${videoTask.id}/regenerate` }]}
                 >
-                  {/may\s+contain\s+real\s*(?:person|people|persons)\b/i.test(videoTask.errorMessage || videoTask.execution?.errorMessage || '') ? (
-                    <StoryboardAvatarRecovery projectId={projectId} taskId={videoTask.id}
-                      onReady={onRecoveredVideo} onBusyChange={setAvatarRecoveryBusy} />
-                  ) : null}
                   {!!videoTask.referenceDiagnostics?.failedImages?.length && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
                       {videoTask.referenceDiagnostics.failedImages.map((image) => (
@@ -2114,7 +2107,7 @@ const ProductionWorkbenchStoryboard = () => {
             }).catch(() => undefined);
           }
         }
-        for (const task of response.data.videoTasks.filter((item) => item.executionId &&
+        for (const task of response.data.videoTasks.filter((item) =>
           !successStatuses.includes(item.status) && !['FAILED', 'CANCELED'].includes(item.status))) {
           void followVideoExecution(task).catch(() => {
             if (!controller.signal.aborted) message.error('视频任务状态刷新失败');
@@ -2685,7 +2678,7 @@ const ProductionWorkbenchStoryboard = () => {
     ]);
     setVideoTasks((previous) => [
       ...previous.filter((task) => !appliesTo(task.storyboardId)),
-      ...response.data.videoTasks.map((task) => ({ ...task, execution: previous.find((item) => item.id === task.id)?.execution })),
+      ...response.data.videoTasks,
     ]);
     setVoiceTasks((previous) => [
       ...previous.filter((task) => !appliesTo(task.storyboardId)), ...response.data.voiceTasks,
@@ -2920,26 +2913,13 @@ const ProductionWorkbenchStoryboard = () => {
   const followVideoExecution = async (task: AiVideoTask) => {
     const scope = currentMediaScope.current;
     const signal = mediaAbort.current?.signal;
-    const tenantId = currentTenantId();
-    if (!task.executionId || !tenantId) {
-      await reloadVideoTasks(task.storyboardId);
-      return;
-    }
-    await aiExecutionTaskService.poll(
-      tenantId,
-      task.executionId,
-      (execution) => {
+    await pollVideoTask(task.id,
+      (id, abort) => queryRecoveredVideoTask(projectId, id, abort),
+      (next) => {
         if (currentMediaScope.current !== scope || signal?.aborted) return;
-        setVideoTasks((previous) =>
-          previous.map((item) =>
-            item.id === task.id ? { ...item, execution } : item,
-          ),
-        );
-      },
-      1500,
-      signal,
-    );
-    await reloadVideoTasks(task.storyboardId);
+        setVideoTasks((previous) => previous.map((item) => item.id === task.id ? next : item));
+      }, signal);
+    if (currentMediaScope.current === scope && !signal?.aborted) await reloadVideoTasks(task.storyboardId);
   };
 
   const generateImage = async (storyboard: StoryboardShot) => {
@@ -3331,15 +3311,6 @@ const ProductionWorkbenchStoryboard = () => {
     } catch {
       message.error('视频任务取消失败');
     }
-  };
-
-  const followRecoveredVideo = async (taskId: number) => {
-    const scope = currentMediaScope.current;
-    const signal = mediaAbort.current?.signal;
-    const task = await queryRecoveredVideoTask(projectId, taskId, signal);
-    if (signal?.aborted || currentMediaScope.current !== scope || task.projectId !== projectId) return;
-    setVideoTasks((previous) => [...previous.filter((item) => item.id !== task.id), task]);
-    void followVideoExecution(task).catch(() => message.error('重试视频状态刷新失败'));
   };
 
   const retryVideo = async (task: AiVideoTask) => {
@@ -4135,7 +4106,6 @@ const ProductionWorkbenchStoryboard = () => {
                   bindingVideoId={bindingVideoId}
                   onCancelVideo={cancelVideo}
                   onRetryVideo={retryVideo}
-                  onRecoveredVideo={followRecoveredVideo}
                   onGenerateImage={generateImage}
                   onSelectFirstFrame={selectFirstFrame}
                   selectingFirstFrameId={selectingFirstFrameId}

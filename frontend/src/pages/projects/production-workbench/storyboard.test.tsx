@@ -7,7 +7,7 @@ import {
   reorderReferencesWithinType,
   sortableIdFor,
 } from './StoryboardAssetReferenceEditor';
-import type { ScriptEpisode } from './service';
+import type { AiVideoTask, ScriptEpisode } from './service';
 import { PointEstimateCancelledError } from '@/services/point-estimate';
 
 const mocks = vi.hoisted(() => ({
@@ -57,6 +57,7 @@ const mocks = vi.hoisted(() => ({
   queryStoryboardBatch: vi.fn(),
   queryLatestStoryboardBatch: vi.fn(),
   pollExecution: vi.fn(),
+  pollVideoTask: vi.fn(),
   cancelExecution: vi.fn(),
   retryExecution: vi.fn(),
 }));
@@ -87,6 +88,8 @@ vi.mock('./ai-config/service', () => ({
   queryProjectAiModels: mocks.queryProjectAiModels,
   queryProjectAiConfig: mocks.queryProjectAiConfig,
 }));
+
+vi.mock('./video-task-polling', () => ({ pollVideoTask: mocks.pollVideoTask }));
 
 vi.mock('@/services/ai-execution/task', () => ({
   aiExecutionTaskService: {
@@ -845,6 +848,7 @@ describe('ProductionWorkbench script page', () => {
       disconnect() {}
     });
     vi.clearAllMocks();
+    mocks.pollVideoTask.mockImplementation(async (id) => ({ id, status: 'SUCCEEDED' }));
     localStorage.setItem('currentTenantId', '1');
     mocks.queryAiImageResults.mockResolvedValue({
       data: { data: [], current: 1, pageSize: 20, total: 0 },
@@ -2088,9 +2092,9 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('shows a newly created video task in the right preview before polling returns, updates progress, and displays the result', async () => {
-    let updateExecution!: (task: API.AiExecutionResponse) => void;
-    let finishExecution!: (task: API.AiExecutionResponse) => void;
-    mocks.pollExecution.mockImplementation((_tenant, _id, onUpdate) => {
+    let updateExecution!: (task: AiVideoTask) => void;
+    let finishExecution!: (task: AiVideoTask) => void;
+    mocks.pollVideoTask.mockImplementation((_id, _read, onUpdate) => {
       updateExecution = onUpdate;
       return new Promise((resolve) => { finishExecution = resolve; });
     });
@@ -2107,7 +2111,7 @@ describe('ProductionWorkbench script page', () => {
     expect(generate).toBeDisabled();
     expect(within(screen.getByRole('region', { name: '分镜2视频预览区' })).queryByText('正在生成')).not.toBeInTheDocument();
 
-    act(() => updateExecution({ id: 7002, status: 'RUNNING', phase: 'VIDEO_QUERY', progress: 42 }));
+    act(() => updateExecution({ id: 9002, storyboardId: 101, status: 'GENERATING', executionPhase: 'VIDEO_QUERY', progress: 42 } as AiVideoTask));
     expect(within(progress).getByText('42%')).toBeInTheDocument();
     expect(within(progress).getByText('视频正在生成，请稍候')).toBeInTheDocument();
     expect(within(progress).getByRole('progressbar')).toHaveAttribute('value', '42');
@@ -2118,7 +2122,7 @@ describe('ProductionWorkbench script page', () => {
         coverUrl: '/ready-cover.png', isSelected: true, status: 'SUCCEEDED',
       }],
     }] });
-    await act(async () => { finishExecution({ id: 7002, status: 'SUCCEEDED', progress: 100 }); });
+    await act(async () => { finishExecution({ id: 9002, storyboardId: 101, status: 'SUCCEEDED', progress: 100 } as AiVideoTask); });
     await waitFor(() => expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument());
     expect(await screen.findByAltText('分镜1成片预览')).toHaveAttribute('src', '/ready-cover.png');
     expect(await screen.findByAltText('分镜1视频版本9102缩略图')).toHaveAttribute('src', '/ready-cover.png');
@@ -2139,9 +2143,25 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.getByRole('button', { name: '生成分镜1视频' })).toBeDisabled();
   });
 
-  it('stops showing generation when the execution fails even before the video task refreshes', async () => {
-    let updateExecution!: (task: API.AiExecutionResponse) => void;
-    mocks.pollExecution.mockImplementation((_tenant, _id, onUpdate) => {
+  it('keeps the same preview generating through intelligent avatar preparation without flashing a failure', async () => {
+    let update!: (task: AiVideoTask) => void;
+    mocks.pollVideoTask.mockImplementation((_id, _read, onUpdate) => { update=onUpdate;return new Promise(() => {}); });
+    const task={ id: 9003, projectId: 1, storyboardId: 101, modelId: 10, providerCode: 'VOLCENGINE_ARK', model: 'video-model', prompt: 'Video prompt', firstFrameUrl: null, durationSeconds: 5, aspectRatio: '16:9', status: 'GENERATING', results: [] } satisfies AiVideoTask;
+    setupWorkspaceResponse({ videoTasks: [task] });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('region', { name: '分镜1视频生成进度' });
+    act(() => update({ ...task, executionPhase: 'AVATAR_PREPARING' }));
+    expect(screen.getByText('智能虚拟化中')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '分镜1视频生成错误' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成分镜1视频' })).toBeDisabled();
+    act(() => update({ ...task, executionId: 7004, executionPhase: 'VIDEO_QUERY' }));
+    expect(screen.getByText('正在生成')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '分镜1视频生成错误' })).not.toBeInTheDocument();
+  });
+
+  it('shows final failure from the logical video task after recovery has stopped', async () => {
+    let updateExecution!: (task: AiVideoTask) => void;
+    mocks.pollVideoTask.mockImplementation((_id, _read, onUpdate) => {
       updateExecution = onUpdate;
       return new Promise(() => {});
     });
@@ -2150,7 +2170,7 @@ describe('ProductionWorkbench script page', () => {
     }] });
     render(<ProductionWorkbench />);
     await screen.findByRole('region', { name: '分镜1视频生成进度' });
-    act(() => updateExecution({ id: 7003, status: 'FAILED', errorMessage: '视频生成失败' }));
+    act(() => updateExecution({ id: 9003, storyboardId: 101, status: 'FAILED', errorMessage: '视频生成失败' } as AiVideoTask));
     expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: '分镜1视频预览区' })).getByRole('alert')).toHaveTextContent('视频生成失败');
     expect(screen.queryByText('execution:FAILED')).not.toBeInTheDocument();
@@ -2184,9 +2204,9 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('keeps a closed failure hidden during polling but shows the same error for a new video task', async () => {
-    const updates = new Map<number, (task: API.AiExecutionResponse) => void>();
+    const updates = new Map<number, (task: AiVideoTask) => void>();
     const failure = '服务商提交失败：HTTP 400';
-    mocks.pollExecution.mockImplementation((_tenant, id, onUpdate) => {
+    mocks.pollVideoTask.mockImplementation((id, _read, onUpdate) => {
       updates.set(id, onUpdate);
       return new Promise(() => {});
     });
@@ -2195,9 +2215,9 @@ describe('ProductionWorkbench script page', () => {
     }] });
     render(<ProductionWorkbench />);
     await screen.findByRole('region', { name: '分镜1视频生成进度' });
-    act(() => updates.get(7003)?.({ id: 7003, status: 'FAILED', errorMessage: failure }));
+    act(() => updates.get(9003)?.({ id: 9003, storyboardId: 101, status: 'FAILED', errorMessage: failure } as AiVideoTask));
     fireEvent.click(await screen.findByRole('button', { name: '关闭分镜1视频错误' }));
-    act(() => updates.get(7003)?.({ id: 7003, status: 'FAILED', errorMessage: failure }));
+    act(() => updates.get(9003)?.({ id: 9003, storyboardId: 101, status: 'FAILED', errorMessage: failure } as AiVideoTask));
     expect(screen.queryByRole('region', { name: '分镜1视频生成错误' })).not.toBeInTheDocument();
 
     mocks.createAiVideoTask.mockResolvedValueOnce({ data: {
@@ -2205,7 +2225,7 @@ describe('ProductionWorkbench script page', () => {
     } });
     fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
     await screen.findByRole('region', { name: '分镜1视频生成进度' });
-    act(() => updates.get(7004)?.({ id: 7004, status: 'FAILED', errorMessage: failure }));
+    act(() => updates.get(9004)?.({ id: 9004, storyboardId: 101, status: 'FAILED', errorMessage: failure } as AiVideoTask));
     expect(await screen.findByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent(failure);
   });
 
@@ -2778,12 +2798,8 @@ describe('ProductionWorkbench script page', () => {
         generateAudio: false,
         watermark: true,
       }, true);
-      expect(mocks.pollExecution).toHaveBeenCalledWith(
-        1,
-        7002,
-        expect.any(Function),
-        1500,
-        expect.anything(),
+      expect(mocks.pollVideoTask).toHaveBeenCalledWith(
+        9002, expect.any(Function), expect.any(Function), expect.anything(),
       );
     });
   });
@@ -3010,7 +3026,7 @@ describe('ProductionWorkbench script page', () => {
     });
   });
 
-  it('recovers shared video execution polling after a page reload', async () => {
+  it('recovers logical video task polling after a page reload', async () => {
     setupWorkspaceResponse({
       videoTasks: [
         {
@@ -3027,12 +3043,8 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     await waitFor(() => {
-      expect(mocks.pollExecution).toHaveBeenCalledWith(
-        1,
-        7003,
-        expect.any(Function),
-        1500,
-        expect.anything(),
+      expect(mocks.pollVideoTask).toHaveBeenCalledWith(
+        9003, expect.any(Function), expect.any(Function), expect.anything(),
       );
     });
   });
@@ -3343,12 +3355,8 @@ describe('ProductionWorkbench script page', () => {
 
     await waitFor(() => {
       expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(2);
-      expect(mocks.pollExecution).toHaveBeenCalledWith(
-        1,
-        7300,
-        expect.any(Function),
-        1500,
-        expect.anything(),
+      expect(mocks.pollVideoTask).toHaveBeenCalledWith(
+        9300, expect.any(Function), expect.any(Function), expect.anything(),
       );
     });
     expect(within(picker).getByRole('checkbox', { name: '选择分镜1' })).toBeChecked();

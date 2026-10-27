@@ -84,7 +84,7 @@ export function getShotState(shot: StoryboardShot, tasks: AiVideoTask[]) {
   return {
     src,
     kind,
-    label: labels[kind],
+    label: kind === 'generating' && task?.executionPhase === 'AVATAR_PREPARING' ? '智能虚拟化中' : labels[kind],
     error: task?.errorMessage,
     sourceLabel: shot.currentShotVideoUrl ? '单镜头合成结果' : '分镜原始视频',
   };

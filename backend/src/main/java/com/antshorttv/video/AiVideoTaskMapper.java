@@ -10,6 +10,9 @@ import org.apache.ibatis.annotations.Mapper;
 public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
     String[] LIST_QUERY_COLUMNS = {
         "id",
+        "execution_id",
+        "execution_phase",
+        "avatar_recovery_source_task_id",
         "tenant_id",
         "project_id",
         "storyboard_id",
@@ -61,6 +64,7 @@ public interface AiVideoTaskMapper extends BaseMapper<AiVideoTaskEntity> {
             .eq("tenant_id", tenantId)
             .eq("project_id", projectId)
             .isNull("deleted_at")
+            .isNull("avatar_recovery_source_task_id")
             .orderByDesc("created_at");
         if (status != null && !status.isBlank()) {
             query.eq("status", status);

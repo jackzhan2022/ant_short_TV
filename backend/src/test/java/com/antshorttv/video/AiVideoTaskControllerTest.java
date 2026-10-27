@@ -1378,16 +1378,19 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                         """.formatted(storyboardId, modelId)))
                 .andExpect(status().isOk()).andReturn();
             Long taskId = readLong(created, "$.data.id");
-            pollVideoTask(token, tenantId, projectId, taskId)
-                .andExpect(jsonPath("$.data.status", is("FAILED")))
-                .andExpect(jsonPath("$.data.errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
-                .andExpect(jsonPath("$.data.referenceDiagnostics.failedImages[0].imageUrl",
-                    is("https://cdn.example/seedance-frame.png")));
-            mockMvc.perform(get("/api/projects/%d/ai-video-tasks".formatted(projectId))
+            boolean preparing=providerStatus==400;
+            var polled=pollVideoTask(token, tenantId, projectId, taskId)
+                .andExpect(jsonPath("$.data.status", is(preparing?"GENERATING":"FAILED")));
+            if(preparing) polled.andExpect(jsonPath("$.data.executionPhase",is("AVATAR_PREPARING")))
+                .andExpect(jsonPath("$.data.errorMessage").isEmpty());
+            else polled.andExpect(jsonPath("$.data.errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
+                .andExpect(jsonPath("$.data.referenceDiagnostics.failedImages[0].imageUrl",is("https://cdn.example/seedance-frame.png")));
+            var listed=mockMvc.perform(get("/api/projects/%d/ai-video-tasks".formatted(projectId))
                     .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
                     .header("X-Tenant-Id", tenantId).param("storyboardId", storyboardId.toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.data[0].errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
+                .andExpect(status().isOk());
+            if(preparing) listed.andExpect(jsonPath("$.data.data[0].errorMessage").isEmpty());
+            else listed.andExpect(jsonPath("$.data.data[0].errorMessage", org.hamcrest.Matchers.containsString("图片1（林晚）")))
                 .andExpect(jsonPath("$.data.data[0].referenceDiagnostics.failedImages[0].imageUrl",
                     is("https://cdn.example/seedance-frame.png")));
             String settlement = releaseExpected ? "RELEASED" : "SETTLEMENT_REVIEW_REQUIRED";
@@ -1512,7 +1515,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
                 .andExpect(status().isOk()).andReturn();
             Long source=readLong(created,"$.data.id");
             String frozen=jdbc.queryForObject("select request_snapshot_json from ai_video_task where id=?",String.class,source);
-            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("FAILED")));
+            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("GENERATING"))).andExpect(jsonPath("$.data.executionPhase",is("AVATAR_PREPARING")));
             long recovery=jdbc.queryForObject("select id from seedance_avatar_recovery where source_task_id=?",Long.class,source);
             mockMvc.perform(get("/api/projects/%d/ai-video-tasks/%d/avatar-recovery".formatted(project,source))
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
@@ -1538,6 +1541,11 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             jdbc.update("update ai_video_task set next_poll_at=now() where id=?",child);
             pollVideoTask(token,tenant,project,child).andExpect(jsonPath("$.data.status",is("FAILED")));
             assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery where tenant_id=?",Long.class,tenant)).isEqualTo(1);
+            var manual=mockMvc.perform(post("/api/projects/%d/ai-video-tasks/%d/regenerate".formatted(project,source))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token)).header("X-Tenant-Id",tenant))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status",is("PENDING"))).andReturn();
+            assertThat(readLong(manual,"$.data.id")).isNotEqualTo(source).isNotEqualTo(child);
+
         } finally {server.stop(0);}
     }
 
@@ -1561,7 +1569,7 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
             Long source=readLong(created,"$.data.id");
             pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("GENERATING")));
             jdbc.update("update ai_video_task set next_poll_at=now() where id=?",source);
-            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("FAILED")));
+            pollVideoTask(token,tenant,project,source).andExpect(jsonPath("$.data.status",is("GENERATING"))).andExpect(jsonPath("$.data.executionPhase",is("AVATAR_PREPARING")));
             assertThat(jdbc.queryForObject("select count(*) from seedance_avatar_recovery where source_task_id=?",Long.class,source)).isEqualTo(1);
         } finally {server.stop(0);}
     }

@@ -90,6 +90,7 @@ public class AiVideoTaskService {
     private static final List<Integer> SUPPORTED_DURATIONS = List.of(5, 8, 10);
     private static final List<String> SUPPORTED_ASPECT_RATIOS = List.of("9:16", "16:9", "1:1");
 
+    @org.springframework.beans.factory.annotation.Autowired private VideoTaskPresentation videoPresentation;
     private SeedanceAvatarRecoveryService avatarRecovery;
     private com.antshorttv.avatar.ArkAssetPool avatarAssets;
     private org.springframework.jdbc.core.JdbcTemplate avatarJdbc;
@@ -235,9 +236,9 @@ public class AiVideoTaskService {
     public List<AiVideoTaskResponse> list(Long tenantId, Long projectId, String status, Long storyboardId) {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
-        return aiVideoTaskMapper.selectByProject(tenantId, projectId, status, storyboardId)
-            .stream()
-            .map(task -> AiVideoTaskResponse.from(task, aiVideoResultMapper.selectByTask(tenantId, projectId, task.id)))
+        return videoViews(aiVideoTaskMapper.selectByProject(tenantId, projectId, null, storyboardId))
+            .stream().filter(view -> status==null || status.isBlank() || status.equals(view.task().status))
+            .map(view -> AiVideoTaskResponse.from(view.task(), aiVideoResultMapper.selectByTask(tenantId, projectId, view.resultTaskId())))
             .toList();
     }
 
@@ -252,8 +253,10 @@ public class AiVideoTaskService {
         Long tenantId, Long projectId, String status, Long storyboardId, Integer current, Integer pageSize
     ) {
         requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
-        var query = MediaPageQueries.<AiVideoTaskEntity>projectQuery(tenantId, projectId).isNull("deleted_at");
-        if (status != null && !status.isBlank()) query.eq("status", status);
+        var query = MediaPageQueries.<AiVideoTaskEntity>projectQuery(tenantId, projectId).isNull("deleted_at")
+            .isNull("avatar_recovery_source_task_id");
+        if (status != null && !status.isBlank()) query.apply("id in (select t.id from ai_video_task t left join ai_execution_task e on e.id=t.execution_id and e.tenant_id=t.tenant_id "
+            +VideoTaskPresentation.JOIN+" where ("+VideoTaskPresentation.DOMAIN_STATE+")={0})",status);
         if (storyboardId != null) query.eq("storyboard_id", storyboardId);
         var page = MediaPageQueries.select(aiVideoTaskMapper, query, PageBounds.of(current, pageSize), q -> q
             .select(AiVideoTaskEntity.class, f -> !Set.of("prompt", "compiled_prompt", "negative_prompt", "first_frame_url",
@@ -266,7 +269,7 @@ public class AiVideoTaskService {
         Long tenantId, Long projectId, Long taskId, Long storyboardId, Integer current, Integer pageSize
     ) {
         requireProjectAccess(tenantContextResolver.requireActiveMember(tenantId), projectId);
-        if (taskId != null) requireTask(tenantId, projectId, taskId);
+        if (taskId != null) taskId=videoViews(List.of(requireTask(tenantId, projectId, taskId))).get(0).resultTaskId();
         var query = MediaPageQueries.<AiVideoResultEntity>projectQuery(tenantId, projectId).eq("status", "ACTIVE");
         if (taskId != null) query.eq("task_id", taskId);
         if (storyboardId != null) query.eq("storyboard_id", storyboardId);
@@ -276,13 +279,14 @@ public class AiVideoTaskService {
 
     private List<AiVideoTaskResponse> previewResponses(Long tenantId, Long projectId, List<AiVideoTaskEntity> tasks) {
         if (tasks.isEmpty()) return List.of();
-        var ids = tasks.stream().map(task -> task.id).toList();
+        var views=videoViews(tasks);
+        var ids = views.stream().map(VideoTaskPresentation.View::resultTaskId).toList();
         var representatives = aiVideoResultMapper.selectList(MediaPageQueries.<AiVideoResultEntity>representativeQuery(
             "ai_video_result", tenantId, projectId, ids, "ACTIVE", "is_selected"));
         var grouped = representatives.stream().collect(java.util.stream.Collectors.groupingBy(result -> result.taskId));
         var counts = MediaPageQueries.resultCounts(aiVideoResultMapper, tenantId, projectId, ids, "ACTIVE", "task_id");
-        return tasks.stream().map(task -> AiVideoTaskResponse.from(task,
-            grouped.getOrDefault(task.id, List.of()), counts.getOrDefault(task.id, 0L))).toList();
+        return views.stream().map(view -> AiVideoTaskResponse.from(view.task(),
+            grouped.getOrDefault(view.resultTaskId(), List.of()), counts.getOrDefault(view.resultTaskId(), 0L))).toList();
     }
 
     @Transactional
@@ -572,6 +576,11 @@ public class AiVideoTaskService {
         TenantContext context = tenantContextResolver.requireActiveMember(tenantId);
         requireProjectAccess(context, projectId);
         AiVideoTaskEntity snapshot = requireTask(tenantId, projectId, taskId);
+        var view=videoViews(List.of(snapshot)).get(0);
+        if(!view.resultTaskId().equals(taskId)) {
+            cancel(tenantId,projectId,view.resultTaskId(),servletRequest);
+            return response(snapshot);
+        }
         if (AiVideoTaskStatus.CANCELED.name().equals(snapshot.status)) {
             return response(snapshot);
         }
@@ -634,7 +643,13 @@ public class AiVideoTaskService {
         if(avatarRecovery!=null) {
             var recovering=avatarRecovery.get(tenantId,projectId,taskId);
             if(recovering!=null) {
-                if(recovering.get("retryTaskId") instanceof Number child) return response(requireTask(tenantId,projectId,child.longValue()));
+                if(recovering.get("retryTaskId") instanceof Number child) {
+                    var recovered=requireTask(tenantId,projectId,child.longValue());
+                    if(!taskId.equals(recovered.avatarRecoverySourceTaskId))
+                        throw new BusinessException(ErrorCode.AI_VIDEO_TASK_STATUS_INVALID,"关联的视频任务已不可用。");
+                    if(CANCELABLE_STATUSES.contains(recovered.status)) return response(recovered);
+                    source=recovered;
+                }
                 if(java.util.Set.of("PENDING","RUNNING").contains(recovering.get("status")))
                     throw new BusinessException(ErrorCode.VALIDATION_ERROR,"当前分镜正在自动准备虚拟人像素材，请等待恢复完成。");
             }
@@ -837,8 +852,13 @@ public class AiVideoTaskService {
         return AiVideoResultResponse.from(result);
     }
 
+    private List<VideoTaskPresentation.View> videoViews(List<AiVideoTaskEntity> tasks) {
+        return videoPresentation==null ? tasks.stream().map(t->new VideoTaskPresentation.View(t,t.id)).toList() : videoPresentation.views(tasks);
+    }
+
     private AiVideoTaskResponse response(AiVideoTaskEntity task) {
-        return AiVideoTaskResponse.from(task, aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, task.id));
+        var view=videoViews(List.of(task)).get(0);
+        return AiVideoTaskResponse.from(view.task(), aiVideoResultMapper.selectByTask(task.tenantId, task.projectId, view.resultTaskId()));
     }
 
     private PreparedVideoRequest prepareLegacyRequest(
