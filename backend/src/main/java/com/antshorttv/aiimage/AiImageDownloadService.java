@@ -94,7 +94,8 @@ public class AiImageDownloadService {
     }
 
     public record ImageDownload(Resource resource, String fileName, String contentType, Long fileSize) {}
-    private record Original(String objectKey, String fileName, String contentType, Long size) {}
+    public Original describe(Long projectId, Long resultId) { return resolve(projectId, resultId); }
+    public record Original(String objectKey, String fileName, String contentType, Long size) {}
 
     private static class TemporaryArchiveResource extends FileSystemResource {
         private final Path archive;

@@ -36,6 +36,13 @@ vi.mock('../RightContent/AvatarDropdown', () => ({
 }));
 
 describe('SidebarAccount', () => {
+  it('opens download center above the message center', () => {
+    render(<SidebarAccount currentTenantId={7} currentUser={{ name: 'Test User' }} />);
+    const entry = screen.getByRole('button', { name: '下载中心' });
+    expect(entry.compareDocumentPosition(screen.getByRole('button', { name: /消息中心/ }))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    fireEvent.click(entry);
+    expect(mocks.push).toHaveBeenCalledWith('/downloads');
+  });
   it('refreshes the unread badge after message changes', async () => {
     mocks.messageSummary.mockResolvedValueOnce({ unread: 120, categories: {}, canSend: false });
     render(<SidebarAccount currentUser={{ name: 'Test User' }} />);

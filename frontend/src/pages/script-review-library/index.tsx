@@ -1,3 +1,4 @@
+import { createDownloadTask } from '@/pages/downloads/service';
 import {
   AuditOutlined,
   CopyOutlined,
@@ -237,17 +238,10 @@ function ReviewPage({ tenantId }: { tenantId: number | undefined }) {
       message.error('复制失败，请手动选择报告文字复制');
     }
   };
-  const downloadReport = () => {
-    const markdown = report.data?.reportMarkdown;
-    if (!markdown) return;
-    const url = URL.createObjectURL(
-      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `审核报告-${taskId}.md`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const downloadReport = async () => {
+    if (!taskId || !report.data?.reportMarkdown) return;
+    try { await createDownloadTask(`审核报告_${taskId}`, [{ kind: 'REVIEW', id: taskId }]); }
+    catch (error) { message.error(errorText(error)); }
   };
 
   if (!tenantId) return <div className={styles.empty}>请先选择当前团队</div>;

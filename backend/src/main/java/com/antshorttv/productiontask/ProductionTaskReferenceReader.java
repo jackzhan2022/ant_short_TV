@@ -91,6 +91,8 @@ final class ProductionTaskReferenceReader {
             && row.get("source_id") instanceof Number source) {
             item.put("url", "/api/system-audio/" + source.longValue() + "/playback");
         }
+        if(item.containsKey("downloadUrl") && path!=null)
+            item.put("downloadSource",Map.of("kind","VIDEO_REFERENCE","projectId",project,"id",row.get("id")));
         return item;
     }
 

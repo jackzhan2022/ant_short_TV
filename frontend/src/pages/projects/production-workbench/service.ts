@@ -1,3 +1,4 @@
+import { createDownloadTask } from '@/pages/downloads/service';
 import type { VideoGenerationSettings } from './useStoryboardVideoSettings';
 import type { MediaPage, MediaPageParams } from '@/services/media/paging';
 import { pointEstimatedRequest as request } from '@/services/point-estimate';
@@ -1439,13 +1440,8 @@ export const deleteAiVideoTask = async (projectId: number, taskId: number) =>
     { method: 'DELETE' },
   );
 
-export const downloadAiVideoResult = async (
-  projectId: number,
-  resultId: number,
-) =>
-  request<ApiResponse<AiVideoResult>>(
-    `/api/projects/${projectId}/ai-video-results/${resultId}/download`,
-  );
+export const downloadAiVideoResult = (projectId: number, resultId: number) =>
+  createDownloadTask(`视频_${resultId}`, [{ kind: 'VIDEO', projectId, id: resultId }]);
 
 export const saveAiVideoResultAsMaterial = async (
   projectId: number,
@@ -1921,41 +1917,8 @@ export const setCurrentEpisodeVideoVersion = async (
     { method: 'POST' },
   );
 
-export const downloadEpisodeVideoVersion = async (
-  projectId: number,
-  versionId: number,
-) =>
-  (async () => {
-    const token = localStorage.getItem('accessToken');
-    const currentTenantId = localStorage.getItem('currentTenantId');
-    const response = await fetch(
-      `/api/projects/${projectId}/episode-video-versions/${versionId}/download`,
-      {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
-        },
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`下载失败：${response.status}`);
-    }
-    const blob = await response.blob();
-    const disposition = response.headers.get('content-disposition') || '';
-    const fileName =
-      disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
-      `episode_${versionId}.mp4`;
-    const url = URL.createObjectURL(blob);
-    try {
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      link.rel = 'noreferrer';
-      link.click();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  })();
+export const downloadEpisodeVideoVersion = (projectId: number, versionId: number) =>
+  createDownloadTask(`成片_${versionId}`, [{ kind: 'EPISODE_VERSION', projectId, id: versionId }]);
 
 export const saveEpisodeVideoMaterial = async (
   projectId: number,
@@ -2076,42 +2039,11 @@ export const deleteShotComposeResult = async (
   );
 
 
-const downloadWorkbenchFile = async (endpoint: string, fallbackName: string, kind: 'video' | 'zip') => {
-  const token = localStorage.getItem('accessToken');
-  const tenantId = localStorage.getItem('currentTenantId');
-  const response = await fetch(endpoint, {
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
-    },
-  });
-  const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-  const validType = type === 'application/octet-stream' || (kind === 'zip' ? type === 'application/zip' : type.startsWith('video/'));
-  if (!response.ok || !validType) throw new Error(`下载失败：${response.status}`);
-  const disposition = response.headers.get('content-disposition') || '';
-  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  let name = disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallbackName;
-  if (encoded) {
-    try { name = decodeURIComponent(encoded); } catch { name = fallbackName; }
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.rel = 'noreferrer';
-    link.click();
-  } finally { URL.revokeObjectURL(url); }
-};
-
 export const downloadStoryboardVideo = (projectId: number, storyboardId: number) =>
-  downloadWorkbenchFile(`/api/projects/${projectId}/storyboards/${storyboardId}/download-video`, `storyboard_${storyboardId}.mp4`, 'video');
+  createDownloadTask(`分镜视频_${storyboardId}`, [{ kind: 'STORYBOARD_VIDEO', projectId, id: storyboardId }]);
 
 export const downloadEpisodeStoryboardVideos = (projectId: number, episodeNo: number) =>
-  downloadWorkbenchFile(`/api/projects/${projectId}/episodes/${episodeNo}/download-videos`, `episode_${episodeNo}_storyboards.zip`, 'zip');
+  createDownloadTask(`第${episodeNo}集_全部分镜视频`, [{ kind: 'EPISODE_STORYBOARDS', projectId, id: episodeNo }]);
 
 export const saveStoryboardVideoSettings = (projectId: number, storyboardId: number, values: VideoGenerationSettings) =>
   request<ApiResponse<VideoGenerationSettings>>(`/api/projects/${projectId}/storyboards/${storyboardId}/video-generation-settings`, {

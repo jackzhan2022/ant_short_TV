@@ -1,9 +1,14 @@
-import { BulbOutlined } from '@ant-design/icons';
+import {
+  BulbOutlined,
+  LoadingOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons';
 import { Input } from 'antd';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CreationParameters } from './api';
 import { type CreationDraft, imageCountOptions, newDraft } from './draft';
 import styles from './index.module.css';
+import { polishPrompt } from './prompt-polish';
 import ReferenceFiles, { type ReferenceDraft } from './ReferenceFiles';
 import type { CreationMode, CreationModel } from './service';
 
@@ -35,6 +40,41 @@ export default function Composer({
   disabled?: boolean;
 }) {
   const pasteTarget = useRef<HTMLFieldSetElement>(null);
+  const [polishing, setPolishing] = useState(false);
+  const [polishError, setPolishError] = useState('');
+  const polishRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setPolishing(false);
+    setPolishError('');
+    return () => {
+      polishRequest.current?.abort();
+      polishRequest.current = null;
+    };
+  }, [draft.prompt, draft.modelId, disabled]);
+  const polish = async () => {
+    if (polishRequest.current || disabled || !draft.prompt.trim()) return;
+    const controller = new AbortController();
+    polishRequest.current = controller;
+    setPolishing(true);
+    setPolishError('');
+    try {
+      const prompt = await polishPrompt(draft.prompt, mode, controller.signal);
+      if (!controller.signal.aborted) {
+        onChange((current) => ({ ...current, prompt }));
+      }
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        setPolishError(
+          failure instanceof Error ? failure.message : '润色失败，请重试',
+        );
+      }
+    } finally {
+      if (polishRequest.current === controller) {
+        polishRequest.current = null;
+        setPolishing(false);
+      }
+    }
+  };
   const selected = models.find((model) => model.id === draft.modelId);
   const setParameters = (parameters: Partial<CreationParameters>) =>
     onChange({ ...draft, parameters: { ...draft.parameters, ...parameters } });
@@ -50,7 +90,11 @@ export default function Composer({
       ],
     }));
   return (
-    <fieldset ref={pasteTarget} className={styles.composerFields} disabled={disabled}>
+    <fieldset
+      ref={pasteTarget}
+      className={styles.composerFields}
+      disabled={disabled}
+    >
       <div className={styles.field}>
         <label
           className={styles.fieldLabel}
@@ -70,7 +114,11 @@ export default function Composer({
             const model = models.find(
               (item) => item.id === Number(event.target.value),
             );
-            onChange({ ...newDraft(model), prompt: draft.prompt });
+            onChange({
+              ...newDraft(model),
+              prompt: draft.prompt,
+              suppressSubtitles: draft.suppressSubtitles,
+            });
           }}
         >
           {!models.length ? (
@@ -92,12 +140,22 @@ export default function Composer({
         ) : null}
       </div>
       <div className={styles.field}>
-        <label
-          className={styles.fieldLabel}
-          htmlFor={`free-creation-prompt-${mode}`}
-        >
-          创意描述<span className={styles.muted}>提示词</span>
-        </label>
+        <div className={styles.fieldLabel}>
+          <label htmlFor={`free-creation-prompt-${mode}`}>创意描述</label>
+          <button
+            type="button"
+            className={styles.polishButton}
+            disabled={disabled || polishing || !draft.prompt.trim()}
+            onClick={() => void polish()}
+          >
+            {polishing ? (
+              <LoadingOutlined aria-hidden="true" />
+            ) : (
+              <ThunderboltOutlined aria-hidden="true" />
+            )}
+            {polishing ? '润色中…' : 'AI润色'}
+          </button>
+        </div>
         <div className={styles.promptBox}>
           <Input.TextArea
             id={`free-creation-prompt-${mode}`}
@@ -123,10 +181,35 @@ export default function Composer({
               <BulbOutlined aria-hidden="true" />
               试试示例
             </button>
-            <span>{draft.prompt.length} / 2000</span>
+            {mode === 'VIDEO' ? (
+              <label
+                className={styles.subtitleConstraint}
+                title="勾选后，提交时自动在提示词前加上：视频画面中禁止出现任何形式的字幕"
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.suppressSubtitles !== false}
+                  onChange={(event) =>
+                    onChange({
+                      ...draft,
+                      suppressSubtitles: event.target.checked,
+                    })
+                  }
+                />
+                字幕显示反向约束
+              </label>
+            ) : null}
+            <span className={styles.promptCount}>
+              {draft.prompt.length} / 2000
+            </span>
           </div>
         </div>
       </div>
+      {polishError ? (
+        <p role="alert" className={styles.error}>
+          {polishError}
+        </p>
+      ) : null}
       {selected?.configStatus === 'invalid' ? (
         <p role="alert" className={styles.error}>
           模型扩展配置有误，请在管理后台检查。

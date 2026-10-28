@@ -377,6 +377,12 @@ public class ReviewWorkbenchService {
         return toTaskResponse(task, true);
     }
 
+    public String downloadReportMarkdown(Long tenantId, Long taskId) {
+        String markdown=taskDetail(tenantId,taskId).reportMarkdown();
+        if(markdown==null || markdown.isBlank())throw new BusinessException(ErrorCode.VALIDATION_ERROR,"暂无可导出的审核报告。");
+        return markdown;
+    }
+
     public ReviewTaskResponse detailTask(Long tenantId, Long taskId) {
         return taskDetail(tenantId, taskId);
     }

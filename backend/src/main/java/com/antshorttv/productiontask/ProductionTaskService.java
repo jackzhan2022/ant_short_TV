@@ -372,6 +372,7 @@ public class ProductionTaskService {
             result.put("url",freeCreationMedia.grant(context,item,"IMAGE".equals(kind)));
             result.put("thumbnailUrl",!"AUDIO".equals(kind) && ("IMAGE".equals(kind) || item.thumbnailKey!=null)?freeCreationMedia.grant(context,item,true):null);
             result.put("downloadUrl",freeCreationMedia.grant(context,item,false));
+            result.put("downloadSource",Map.of("kind","OUTPUT".equals(role)?"FREE_CREATION":"FREE_REFERENCE","id",item.id,"parentId",item.creationId));
             return result;
         }).toList();
     }

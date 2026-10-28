@@ -1,3 +1,4 @@
+import { createDownloadTask } from '@/pages/downloads/service';
 import AvatarRecoveryNotice from './AvatarRecoveryNotice';
 import { avatarRecoveryPending } from './avatar-recovery';
 import {
@@ -229,18 +230,7 @@ export default function Records({
     });
   const download = (recordId: number, outputId: number) =>
     void action(async (signal) => {
-      const result = await getCreationDownload(recordId, outputId, signal);
-      const link = document.createElement('a');
-      try {
-        if (signal.aborted) return;
-        link.href = result.url;
-        link.download = result.fileName;
-        document.body.appendChild(link);
-        link.click();
-      } finally {
-        link.remove();
-        URL.revokeObjectURL(result.url);
-      }
+      await getCreationDownload(recordId, outputId, signal);
     });
   const filter = (values: Partial<CreationQuery>) =>
     setQuery((current) => ({ ...current, ...values, current: 1 }));
@@ -460,7 +450,7 @@ export default function Records({
                         icon={<DownloadOutlined aria-hidden="true" />}
                         onClick={() =>
                           record.outputs.length > 1
-                            ? setDetailId(record.id)
+                            ? void action(async (signal) => { await createDownloadTask(`自由创作_${record.id}`, record.outputs.map(output => ({ kind: 'FREE_CREATION', id: output.id, parentId: record.id })), signal); })
                             : download(record.id, record.outputs[0].id)
                         }
                       >

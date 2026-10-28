@@ -1,3 +1,4 @@
+import DownloadButton from '@/pages/downloads/DownloadButton';
 import { AudioOutlined, DownloadOutlined, FolderFilled, PlayCircleFilled } from '@ant-design/icons';
 import { history, useLocation, useModel, useParams } from '@umijs/max';
 import { Alert, Button, Checkbox, Empty, Input, Modal, Pagination, Tabs } from 'antd';
@@ -285,7 +286,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
         footer={preview?.downloadUrl ? preview.resourceType === 'AI_IMAGE_RESULT' ? (
           <Button aria-label="下载原文件" icon={<DownloadOutlined aria-hidden="true" />} loading={downloading} disabled={downloading}
             onClick={() => void download(preview.id)}>下载原文件</Button>
-        ) : <Button href={preview.downloadUrl} target="_blank" rel="noopener">下载原文件</Button> : null}>
+        ) : <DownloadButton type="default" name={preview.name} sources={[{ kind: 'VIDEO', projectId, id: preview.id }]}>下载原文件</DownloadButton> : null}>
         {downloadError ? <Alert type="error" showIcon title={downloadError} className={styles.downloadError} /> : null}
         {preview ? <div className={styles.preview}>
           {preview.resourceType === 'AI_IMAGE_RESULT' ? (

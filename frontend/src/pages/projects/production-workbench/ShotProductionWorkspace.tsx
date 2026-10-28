@@ -1,3 +1,4 @@
+import DownloadButton from '@/pages/downloads/DownloadButton';
 import {
   AudioOutlined,
   EditOutlined,
@@ -354,9 +355,7 @@ const ShotProductionWorkspace = ({
                       保存素材
                     </Button>
                   )}
-                  <Button type="link" href={result.audioUrl} target="_blank">
-                    下载
-                  </Button>
+                  <DownloadButton name={`语音_${result.id}`} sources={[{ kind: 'VOICE', projectId, id: result.id }]} />
                   <Popconfirm
                     title="确认删除该语音结果？"
                     onConfirm={async () => {
@@ -500,9 +499,7 @@ const ShotProductionWorkspace = ({
                   >
                     设为当前
                   </Button>
-                  <Button type="link" href={result.videoUrl} target="_blank">
-                    下载
-                  </Button>
+                  <DownloadButton name={`合成视频_${result.id}`} sources={[{ kind: 'COMPOSE', projectId, id: result.id }]} />
                   <Popconfirm
                     title="确认删除该单镜头结果？"
                     onConfirm={async () => {
@@ -659,9 +656,7 @@ const ShotProductionWorkspace = ({
             >
               设为当前
             </Button>
-            <Button type="link" href={record.srtUrl || undefined} target="_blank">
-              导出
-            </Button>
+            <DownloadButton name={`字幕_${record.id}`} sources={[{ kind: 'SUBTITLE', projectId, id: record.id }]}>导出</DownloadButton>
             <Popconfirm
               title="确认删除该字幕？"
               onConfirm={async () => {

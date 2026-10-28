@@ -112,6 +112,7 @@ it('keeps task result video resources absent until play and releases them on dra
             url: '/api/video-results/1/file',
             thumbnailUrl: '/cover.png',
             downloadUrl: '/api/video-results/1/download-file',
+            downloadSource: { kind: 'VIDEO', projectId: 1, id: 1 },
           },
         ],
         hasMore: false,
@@ -121,9 +122,7 @@ it('keeps task result video resources absent until play and releases them on dra
   const view = render(<Tasks />);
   fireEvent.click(await screen.findByText('审核任务一'));
   await screen.findByText('视频结果');
-  expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute(
-    'href', '/api/video-results/1/download-file',
-  );
+  expect(screen.getByRole('button', { name: '下载' })).toBeInTheDocument();
   expect(view.baseElement.querySelector('video,source')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '播放视频结果 1' }));
   const video = view.baseElement.querySelector('video');

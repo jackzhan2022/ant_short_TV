@@ -141,8 +141,42 @@
   font-size: 13px;
   line-height: 1.85;
 }
+.polishButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--app-color-primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.polishButton:disabled {
+  color: var(--app-color-text-tertiary);
+  cursor: not-allowed;
+}
+.subtitleConstraint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  color: var(--app-color-text-secondary);
+  cursor: pointer;
+}
+.subtitleConstraint input {
+  margin: 0;
+  accent-color: var(--app-color-primary);
+}
+.promptCount {
+  margin-left: auto;
+  white-space: nowrap;
+}
 .promptFooter {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
   justify-content: space-between;
   font-size: 10px;

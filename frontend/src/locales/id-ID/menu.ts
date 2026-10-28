@@ -1,4 +1,5 @@
 export default {
+  'menu.downloads': 'Downloads',
   'menu.system-audio': 'Pustaka audio sistem',
   'menu.free-creation': 'Kreasi Bebas',
   'menu.asset-library': 'Pustaka Aset',

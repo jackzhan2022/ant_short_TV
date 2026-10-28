@@ -1,3 +1,5 @@
+import DownloadButton from '@/pages/downloads/DownloadButton';
+import { type DownloadSource, sourceFromDownloadUrl } from '@/pages/downloads/service';
 import {
   PageContainer,
   type ProColumns,
@@ -171,6 +173,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
         const url = typeof item.url === 'string' ? item.url : '';
         const thumbnail = typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl : '';
         const download = typeof item.downloadUrl === 'string' ? item.downloadUrl : '';
+        const downloadSource = item.downloadSource as DownloadSource | undefined ?? sourceFromDownloadUrl(download);
         return <article className={styles.mediaCard} key={String(item.id ?? index)}>
           <div className={styles.mediaPreview}>
             {kind === 'IMAGE' ? <LazyMediaImage width="100%" height="100%" src={thumbnail} alt={alt}
@@ -186,7 +189,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
               <Tag>{displayEnum(typeof item.role === 'string' ? item.role : kind)}</Tag>
               {item.selected && <Tag color="success">当前采用</Tag>}
               {kind === 'IMAGE' && !thumbnail && url && <a href={url} target="_blank" rel="noreferrer">查看原图</a>}
-              {download && <a href={download} download>{kind === 'AUDIO' ? '下载音频' : '下载'}</a>}
+              {downloadSource && <DownloadButton name={name} sources={[downloadSource]}>{kind === 'AUDIO' ? '下载音频' : '下载'}</DownloadButton>}
             </div>
           </div>
         </article>;

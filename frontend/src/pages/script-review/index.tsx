@@ -1,3 +1,4 @@
+import { createDownloadTask } from '@/pages/downloads/service';
 import {
   AuditOutlined,
   CopyOutlined,
@@ -39,7 +40,6 @@ import type { ReviewProjectDetail, ReviewTask } from './service';
 import {
   cancelReviewTask,
   createReviewTask,
-  exportReviewReport,
   queryReviewProject,
   queryReviewProjects,
   queryReviewTask,
@@ -348,25 +348,9 @@ const ScriptReviewPage = () => {
       !selectedTask?.reportMarkdown
     )
       return;
-    const response = await exportReviewReport(
-      selectedProjectId,
-      selectedVersionId,
-      'MARKDOWN',
-      selectedTask.id,
-    );
-    message.success(`导出记录已创建：${response.data?.fileName ?? '审核报告'}`);
-    const downloadUrl = URL.createObjectURL(
-      new Blob([selectedTask.reportMarkdown], {
-        type: 'text/markdown;charset=utf-8',
-      }),
-    );
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = response.data?.fileName ?? '审核报告.md';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(downloadUrl);
+    try {
+      await createDownloadTask(`审核报告_${selectedTask.id}`, [{ kind: 'PROJECT_REVIEW', id: selectedTask.id }]);
+    } catch (error) { message.error(error instanceof Error ? error.message : '创建下载任务失败'); }
   };
 
   const copyMarkdownReport = async () => {
@@ -589,7 +573,7 @@ const ScriptReviewPage = () => {
                         disabled={!selectedTask.reportMarkdown}
                         onClick={exportReport}
                       >
-                        下载 .md
+                        下载报告
                       </Button>
                     </Space>
                     {selectedTask.reportMarkdown ? (

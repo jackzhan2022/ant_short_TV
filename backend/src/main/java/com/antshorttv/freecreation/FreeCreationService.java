@@ -334,6 +334,18 @@ public class FreeCreationService {
         return new CreationDownload(storage.resource(output.objectKey),output.fileName,
             output.mimeType==null?"application/octet-stream":output.mimeType,output.fileSize);
     }
+    public record DownloadSource(String objectKey, String fileName) {}
+    public DownloadSource describeDownload(Long tenantId, Long id, Long outputId) {
+        var output=downloadOutput(authorize(tenantId),id,outputId);
+        return new DownloadSource(output.objectKey,output.fileName);
+    }
+    public DownloadSource describeReference(Long tenantId, Long id, Long mediaId) {
+        var context=authorize(tenantId);require(context,id);
+        var item=mediaMapper.selectById(mediaId);
+        if(item==null || !id.equals(item.creationId) || !tenantId.equals(item.tenantId) || "OUTPUT".equals(item.role))
+            throw new BusinessException(ErrorCode.NOT_FOUND,"参考素材不存在。");
+        return new DownloadSource(item.objectKey,item.fileName);
+    }
     public record CreationDownload(org.springframework.core.io.Resource resource,String fileName,String contentType,Long fileSize) {}
     private FreeCreationMediaEntity downloadOutput(TenantContext context,Long id,Long outputId) {
         var creation=require(context,id);

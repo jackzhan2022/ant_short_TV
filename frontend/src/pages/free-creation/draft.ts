@@ -5,9 +5,11 @@ import type {
 } from './api';
 import type { ReferenceDraft } from './ReferenceFiles';
 import type { CreationMode, CreationModel } from './service';
+export const SUBTITLE_CONSTRAINT = '视频画面中禁止出现任何形式的字幕';
 export type CreationDraft = {
   modelId?: number;
   prompt: string;
+  suppressSubtitles?: boolean;
   parameters: CreationParameters;
   references: ReferenceDraft[];
 };
@@ -18,6 +20,7 @@ export function newDraft(model?: CreationModel): CreationDraft {
   return {
     modelId: model?.id,
     prompt: '',
+    suppressSubtitles: true,
     references: [],
     parameters:
       model?.serviceType === 'VIDEO'
@@ -108,7 +111,12 @@ export function requestFromDraft(
     requestId,
     mediaType: mode,
     modelId: draft.modelId as number,
-    prompt: draft.prompt.trim(),
+    prompt:
+      mode === 'VIDEO' &&
+      draft.suppressSubtitles !== false &&
+      !draft.prompt.trim().startsWith(SUBTITLE_CONSTRAINT)
+        ? `${SUBTITLE_CONSTRAINT}\n${draft.prompt.trim()}`
+        : draft.prompt.trim(),
     parameters: { ...draft.parameters },
     references: draft.references.map((item) => ({
       kind: item.kind.toUpperCase() as 'IMAGE' | 'VIDEO' | 'AUDIO',
@@ -131,9 +139,15 @@ export function reuseDraft(
   if (!model) throw new Error('原模型已停用或不可用，请手动选择模型后重新创作');
   if (record.references.some((ref) => !ref.referenceId || !ref.previewUrl))
     throw new Error('参考素材已失效或无访问权限，无法复用');
+  const suppressSubtitles =
+    record.mediaType === 'VIDEO' &&
+    record.prompt.startsWith(SUBTITLE_CONSTRAINT);
   const draft: CreationDraft = {
     modelId: model.id,
-    prompt: record.prompt,
+    prompt: suppressSubtitles
+      ? record.prompt.slice(SUBTITLE_CONSTRAINT.length).trimStart()
+      : record.prompt,
+    suppressSubtitles,
     parameters: { ...record.parameters },
     references: record.references.map((ref) => ({
       id: `reference-${ref.referenceId}`,

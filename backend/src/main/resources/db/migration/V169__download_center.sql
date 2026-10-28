@@ -1,0 +1,20 @@
+CREATE TABLE download_task (
+ id VARCHAR(36) NOT NULL PRIMARY KEY,
+ tenant_id BIGINT NOT NULL,
+ user_id BIGINT NOT NULL,
+ name VARCHAR(160) NOT NULL,
+ source_type VARCHAR(40) NOT NULL,
+ request_json LONGTEXT NOT NULL,
+ status VARCHAR(16) NOT NULL,
+ file_count INT NOT NULL,
+ file_size BIGINT NULL,
+ error_message VARCHAR(500) NULL,
+ created_at TIMESTAMP(3) NOT NULL,
+ completed_at TIMESTAMP(3) NULL,
+ expires_at TIMESTAMP(3) NULL,
+ lease_until TIMESTAMP(3) NULL,
+ file_deleted_at TIMESTAMP(3) NULL,
+ INDEX idx_download_owner (tenant_id, user_id, created_at),
+ INDEX idx_download_queue (status, created_at),
+ INDEX idx_download_expiry (status, expires_at, file_deleted_at)
+);

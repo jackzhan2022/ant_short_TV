@@ -1,4 +1,5 @@
 export default {
+  'menu.downloads': '下载中心',
   'menu.system-audio': '系统音频库',
   'menu.free-creation': '自由创作',
   'menu.asset-library': '资产库',
