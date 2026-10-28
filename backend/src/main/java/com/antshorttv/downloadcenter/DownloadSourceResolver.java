@@ -18,7 +18,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class DownloadSourceResolver {
     @FunctionalInterface public interface Content { InputStream open() throws IOException; }
-    public record File(String name, Content content) {}
+    public record File(String name, String objectKey, String contentType, Content content) {
+        public File(String name,Content content){this(name,null,mime(name),content);}
+    }
+    static String mime(String name) {
+        return switch(DownloadFileNames.extension(name)) {
+            case ".png"->"image/png";case ".jpg", ".jpeg"->"image/jpeg";case ".webp"->"image/webp";case ".gif"->"image/gif";
+            case ".mp4"->"video/mp4";case ".mov"->"video/quicktime";case ".webm"->"video/webm";case ".mp3"->"audio/mpeg";case ".wav"->"audio/wav";case ".m4a"->"audio/mp4";
+            case ".srt"->"application/x-subrip";case ".md"->"text/markdown; charset=UTF-8";case ".txt"->"text/plain; charset=UTF-8";default->"application/octet-stream";
+        };
+    }
     private final JdbcTemplate jdbc;
     private final ProjectPermissionGuard permissions;
     private final AiImageDownloadService images;
@@ -58,8 +67,12 @@ public class DownloadSourceResolver {
     }
     // Validation resolves metadata only. Opening private object streams is deferred to the background worker.
     public List<File> resolve(Long tenant,List<DownloadTask.Source> sources) {
-        return sources.stream().map(source->resolveOne(tenant,source)).toList();
+        return sources.stream().map(source->{
+            File file=resolveOne(tenant,source);
+            return new File(new DownloadFileNames(jdbc).name(tenant,source,file.name()),file.objectKey(),file.contentType(),file.content());
+        }).toList();
     }
+    public String bundleName(Long tenant,List<DownloadTask.Source> sources,String name){return new DownloadFileNames(jdbc).bundle(tenant,sources,name);}
     private File resolveOne(Long tenant,DownloadTask.Source source) {
         if(source.kind().equals("FREE_CREATION") || source.kind().equals("FREE_REFERENCE")) {
             if(source.parentId()==null)throw invalid("缺少创作记录。");
@@ -104,7 +117,7 @@ public class DownloadSourceResolver {
         if(!extension.matches("[.][A-Za-z0-9]{1,10}"))extension=".bin";
         return stored(prefix+"_"+source.id()+extension,key);
     }
-    private File stored(String name,String key) {return new File(name,()->storage.resource(key).getInputStream());}
+    private File stored(String name,String key) {return new File(name,key,mime(name),()->storage.resource(key).getInputStream());}
     private void requireProject(Long tenant,Long project,String permission) {
         if(project==null || project<1)throw invalid("缺少项目。");
         permissions.require(tenant,project,permission);

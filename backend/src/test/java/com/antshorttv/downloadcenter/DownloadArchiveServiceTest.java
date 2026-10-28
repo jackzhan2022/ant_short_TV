@@ -11,6 +11,29 @@ import java.util.zip.*;
 import org.junit.jupiter.api.Test;
 
 class DownloadArchiveServiceTest {
+    @Test void storedSingleFileIsCopiedInsideCosWithoutReadingBytesOnServer() {
+        var storage=mock(ObjectStorageService.class);var service=new DownloadArchiveService(storage);
+        String key="download-archives/1/2/"+UUID.randomUUID()+".file";
+        when(storage.copyForDownload("materials/1/2/original.mp4",key)).thenReturn(new com.antshorttv.storage.StoredObject(key,123L,"video/mp4","etag","STANDARD"));
+        var file=new DownloadSourceResolver.File("星河_第01集.mp4","materials/1/2/original.mp4","video/mp4",()->{throw new AssertionError("Application must not read original bytes");});
+        assertThat(service.generate(key,List.of(file),()->{})).isEqualTo(123L);
+        verify(storage).copyForDownload("materials/1/2/original.mp4",key);verifyNoMoreInteractions(storage);
+    }
+    @Test void singleFileKeepsOriginalBytesInsteadOfZip() throws Exception {
+        var storage=mock(ObjectStorageService.class);var service=new DownloadArchiveService(storage);
+        AtomicReference<byte[]> uploaded=new AtomicReference<>();
+        doAnswer(call->{uploaded.set(Files.readAllBytes(call.getArgument(1)));return null;})
+            .when(storage).uploadFile(anyString(),any(Path.class),anyString());
+        byte[] original="审核报告正文".getBytes(StandardCharsets.UTF_8);
+        long size=service.generate("download-archives/1/2/"+UUID.randomUUID()+".file",
+            List.of(new DownloadSourceResolver.File("审核报告.md",()->new ByteArrayInputStream(original))),()->{});
+        assertThat(uploaded.get()).isEqualTo(original);assertThat(size).isEqualTo(original.length);
+    }
+    @Test void longUnicodeNamesKeepExtensionAndStayWithinFilesystemByteLimit() {
+        String name=DownloadArchiveService.uniqueName("项目".repeat(120)+".mp4",new HashSet<>());
+        assertThat(name).endsWith(".mp4");assertThat(name.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(240);
+        assertThat(DownloadArchiveService.uniqueName("CON.txt",new HashSet<>())).isNotEqualTo("CON.txt");
+    }
     @Test void buildsOneValidZipWithSafeUniqueNamesAndRemovesTemporaryFile() throws Exception {
         var storage=mock(ObjectStorageService.class);var service=new DownloadArchiveService(storage);
         AtomicReference<Path> path=new AtomicReference<>();Map<String,String> entries=new LinkedHashMap<>();

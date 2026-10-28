@@ -28,6 +28,20 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class ObjectStorageServiceCosTest {
+    @Test void downloadSignaturesCarryReadableNamesAndExactExpiry() throws Exception {
+        COS cos=mock(COS.class);
+        when(cos.generatePresignedUrl(any(com.qcloud.cos.model.GeneratePresignedUrlRequest.class),eq(true)))
+            .thenReturn(java.net.URI.create("https://internal.example/key?q-signature=test").toURL());
+        var expiry=java.time.Instant.now().plusSeconds(30);
+        var url=service(cos).downloadUrl("download-archives/1/2/file.mp4","星河_第01集.mp4",expiry);
+        assertThat(url).startsWith("https://antv-1418200553.cos.ap-guangzhou.myqcloud.com/");
+        var capture=ArgumentCaptor.forClass(com.qcloud.cos.model.GeneratePresignedUrlRequest.class);
+        verify(cos).generatePresignedUrl(capture.capture(),eq(true));
+        assertThat(capture.getValue().getExpiration()).isEqualTo(java.util.Date.from(expiry));
+        assertThat(capture.getValue().getResponseHeaders().getContentDisposition()).contains("filename*=UTF-8''");
+        assertThat(capture.getValue().getResponseHeaders().getCacheControl()).isEqualTo("private, no-store");
+    }
+
     @Test
     void rangeResourceRequestsOnlySelectedBytesAndClosesTheObjectStream() throws Exception {
         COS cos = mock(COS.class);

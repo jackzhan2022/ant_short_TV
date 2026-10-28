@@ -29,6 +29,7 @@ class DownloadCenterServiceTest {
     @BeforeEach void setup() throws Exception {
         jdbc = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:downloads" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", ""));
         jdbc.execute(new String(getClass().getResourceAsStream("/db/migration/V169__download_center.sql").readAllBytes(), StandardCharsets.UTF_8));
+        jdbc.execute(new String(getClass().getResourceAsStream("/db/migration/V170__download_delivery_metadata.sql").readAllBytes(), StandardCharsets.UTF_8));
         tenants = mock(TenantContextResolver.class); sources = mock(DownloadSourceResolver.class); storage = mock(ObjectStorageService.class);
         archives = mock(DownloadArchiveService.class);
         clock = new MutableClock(Instant.parse("2026-10-28T00:00:00Z"));
@@ -37,7 +38,8 @@ class DownloadCenterServiceTest {
         when(sources.normalize(1L, request.sources())).thenReturn(request.sources());
         when(sources.resolve(1L, request.sources())).thenReturn(List.of(new DownloadSourceResolver.File("图片.png", () -> new ByteArrayInputStream(new byte[]{1,2,3}))));
         when(archives.generate(anyString(),anyList(),any())).thenReturn(100L);
-        when(storage.resource(anyString())).thenReturn(new ByteArrayResource(new byte[]{1}));
+        when(storage.downloadUrl(anyString(),anyString(),any())).thenReturn("https://storage.example/signed");
+        when(storage.metadata(anyString())).thenAnswer(call->new com.antshorttv.storage.StoredObject(call.getArgument(0),100L,"image/png","etag","STANDARD"));
     }
     @Test void expiryStartsAtSuccessfulCompletionAndDeletesActualArchive() {
         var task=service.create(1L,request); assertThat(task.status()).isEqualTo("QUEUED"); assertThat(task.expiresAt()).isNull();
@@ -48,7 +50,7 @@ class DownloadCenterServiceTest {
         clock.advance(Duration.ofHours(24));
         assertThatThrownBy(()->service.download(1L,task.id())).isInstanceOf(BusinessException.class);
         assertThat(service.detail(1L,task.id()).status()).isEqualTo("EXPIRED");
-        service.cleanup(); verify(storage).delete("download-archives/1/2/"+task.id()+".zip");
+        service.cleanup(); verify(storage).delete("download-archives/1/2/"+task.id()+".file");
         service.cleanup(); verify(storage,times(1)).delete(anyString());
         assertThat(service.detail(1L,task.id()).status()).isEqualTo("EXPIRED");
     }
@@ -77,6 +79,37 @@ class DownloadCenterServiceTest {
         var task=service.create(1L,request); assertThat(service.claim(task.id())).isTrue();assertThat(service.claim(task.id())).isFalse();
         clock.advance(Duration.ofMinutes(6));service.cleanup();assertThat(service.detail(1L,task.id()).status()).isEqualTo("FAILED");
         service.generate(task.id());assertThat(service.detail(1L,task.id()).status()).isEqualTo("FAILED");
+    }
+    @Test void legacyZipTasksKeepTheirExistingObjectPathAndFilename() {
+        var task=service.create(1L,request);
+        jdbc.update("update download_task set output_format=null,file_name=null,content_type=null where id=?",task.id());
+        service.claim(task.id());service.generate(task.id());
+        assertThat(service.detail(1L,task.id()).outputFormat()).isEqualTo("ZIP");
+        assertThat(service.detail(1L,task.id()).fileName()).isEqualTo("测试下载.zip");
+        service.download(1L,task.id());
+        verify(storage).downloadUrl(eq("download-archives/1/2/"+task.id()+".zip"),eq("测试下载.zip"),any());
+    }
+    @Test void signedDeliveryIsBoundedByExpiryAndCachedFilesStillRequireAuthorization() {
+        var task=service.create(1L,request);service.claim(task.id());service.generate(task.id());
+        assertThat(service.detail(1L,task.id()).fileName()).isEqualTo("图片.png");
+        var delivery=service.delivery(1L,task.id());
+        assertThat(delivery.outputFormat()).isEqualTo("FILE");assertThat(delivery.cacheKey()).startsWith("/__download-cache/1/2/");
+        verify(storage).downloadUrl(anyString(),eq("图片.png"),eq(clock.instant().plusSeconds(60)));
+        clock.advance(Duration.ofHours(24).minusSeconds(10));service.delivery(1L,task.id());
+        verify(storage).downloadUrl(anyString(),eq("图片.png"),eq(clock.instant().plusSeconds(10)));
+        when(sources.resolve(1L,request.sources())).thenThrow(new BusinessException(com.antshorttv.common.ErrorCode.FORBIDDEN,"无权访问"));
+        assertThatThrownBy(()->service.delivery(1L,task.id())).isInstanceOf(BusinessException.class);
+    }
+    @Test void multipleResolvedFilesUseReadableTimestampedZipNames() {
+        var inputs=List.of(new DownloadTask.Source("IMAGE",8L,9L,null),new DownloadTask.Source("IMAGE",8L,10L,null));
+        when(sources.normalize(1L,inputs)).thenReturn(inputs);
+        when(sources.resolve(1L,inputs)).thenReturn(List.of(new DownloadSourceResolver.File("人物.png",()->null),new DownloadSourceResolver.File("场景.png",()->null)));
+        when(sources.bundleName(1L,inputs,"资产图片")).thenReturn("星河_资产图片");
+        var task=service.create(1L,new DownloadTask.Request("资产图片",inputs));
+        assertThat(task.outputFormat()).isEqualTo("ZIP");assertThat(task.fileCount()).isEqualTo(2);
+        assertThat(task.fileName()).startsWith("星河_资产图片_20261028_080000_").endsWith(".zip");
+        service.claim(task.id());service.generate(task.id());
+        verify(archives).generate(eq("download-archives/1/2/"+task.id()+".zip"),anyList(),any());
     }
     static class MutableClock extends Clock {
         Instant value;MutableClock(Instant value){this.value=value;}void advance(Duration delta){value=value.plus(delta);}

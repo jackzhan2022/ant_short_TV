@@ -131,7 +131,9 @@ export function DownloadList({ tenant }: { tenant: number }) {
       width: 260,
       render: (name: string, task) => (
         <div>
-          <div className={styles.taskName}>{name}.zip</div>
+          <div className={styles.taskName}>
+            {task.fileName || `${name}.zip`}
+          </div>
           <span className={styles.secondary}>
             {sourceLabels[task.sourceType] || '文件下载'} · {task.fileCount}{' '}
             个文件
@@ -169,7 +171,7 @@ export function DownloadList({ tenant }: { tenant: number }) {
         <div>
           {dateText(value)}
           {effectiveStatus(task) === 'EXPIRED' && (
-            <div className={styles.secondary}>已失效，压缩包自动清理</div>
+            <div className={styles.secondary}>已失效，临时文件自动清理</div>
           )}
         </div>
       ),
@@ -189,11 +191,15 @@ export function DownloadList({ tenant }: { tenant: number }) {
             disabled={Boolean(busy) && busy !== task.id}
             onClick={() => void action(task)}
           >
-            {status === 'READY' ? '下载 ZIP' : '重新生成'}
+            {status === 'READY' ? '下载文件' : '重新生成'}
           </Button>
         ) : (
           <span className={styles.secondary}>
-            {status === 'QUEUED' ? '等待生成' : '正在打包'}
+            {status === 'QUEUED'
+              ? '等待准备'
+              : task.outputFormat === 'FILE'
+                ? '正在准备'
+                : '正在打包'}
           </span>
         );
       },
@@ -206,7 +212,7 @@ export function DownloadList({ tenant }: { tenant: number }) {
           <h1>
             <DownloadOutlined /> 下载中心
           </h1>
-          <p>统一管理下载任务，文件异步打包完成后在此领取。</p>
+          <p>统一管理下载任务，单文件保留原格式，多文件打包为 ZIP。</p>
         </div>
         <Button
           icon={<ReloadOutlined />}
@@ -219,8 +225,8 @@ export function DownloadList({ tenant }: { tenant: number }) {
       <Alert
         type="info"
         showIcon
-        title="ZIP 压缩包自生成成功起保留 24 小时"
-        description="到期后立即停止下载，并自动从服务器清除压缩包。原始素材不受影响；如需再次下载，可重新生成。"
+        title="下载文件自准备成功起保留 24 小时"
+        description="到期后立即停止下载，并自动清理临时文件。原始素材不受影响；如需再次下载，可重新生成。"
       />
       <section className={styles.content} aria-label="下载任务列表">
         <div className={styles.filters}>

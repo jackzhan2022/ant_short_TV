@@ -37,11 +37,16 @@ public class DownloadCenterService {
     public DownloadTask create(Long tenant,DownloadTask.Request request) {
         var context=tenants.requireActiveMember(tenant);
         if(request==null||request.name()==null||request.name().isBlank()||request.name().length()>160)throw invalid("请填写不超过 160 字的任务名称。");
-        var normalized=sources.normalize(tenant,request.sources());sources.resolve(tenant,normalized);
+        var normalized=sources.normalize(tenant,request.sources());var files=sources.resolve(tenant,normalized);
         String id=UUID.randomUUID().toString();String name=request.name().strip();
         var saved=new DownloadTask.Request(name,normalized);
-        jdbc.update("insert into download_task(id,tenant_id,user_id,name,source_type,request_json,status,file_count,created_at) values(?,?,?,?,?,?,'QUEUED',?,?)",
-            id,tenant,context.userId(),name,normalized.get(0).kind(),encode(saved),normalized.size(),now());
+        boolean single=files.size()==1;
+        String bundle=sources.bundleName(tenant,normalized,name);
+        if(bundle==null || bundle.isBlank())bundle=name;
+        String stamp=java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(ZoneId.of("Asia/Shanghai")).format(clock.instant());
+        String fileName=DownloadArchiveService.uniqueName(single?files.get(0).name():DownloadFileNames.stem(bundle)+"_"+stamp+"_"+id.substring(0,8)+".zip",new HashSet<>());
+        jdbc.update("insert into download_task(id,tenant_id,user_id,name,source_type,request_json,status,file_count,created_at,output_format,file_name,content_type) values(?,?,?,?,?,?,'QUEUED',?,?,?,?,?)",
+            id,tenant,context.userId(),name,normalized.get(0).kind(),encode(saved),files.size(),now(),single?"FILE":"ZIP",fileName,single?files.get(0).contentType():"application/zip");
         return detail(tenant,id);
     }
     public DownloadTask.Page list(Long tenant,String status,String keyword,int page,int pageSize) {
@@ -62,18 +67,47 @@ public class DownloadCenterService {
         if(!Set.of("FAILED","EXPIRED").contains(row.task().status()))throw invalid("仅失败或过期任务可以重新生成。");
         return create(tenant,row.request());
     }
-    public record Download(Resource resource,String fileName,long size) {}
+    public record Delivery(String fileName,String contentType,String outputFormat,long fileSize,Instant expiresAt,
+        String url,String cacheKey,String eTag,String sourceUrl) {}
     public DownloadTask prepare(Long tenant,String id) {return authorizedDownload(tenant,id).task();}
-    public Download download(Long tenant,String id) {
-        var row=authorizedDownload(tenant,id);
-        return new Download(storage.resource(key(row)),DownloadArchiveService.uniqueName(row.task().name(),new HashSet<>())+".zip",row.task().fileSize());
+    public String download(Long tenant,String id) {
+        var row=authorizedDownload(tenant,id);return signed(row);
+    }
+    private String signed(Row row) {
+        if(!row.task().expiresAt().isAfter(clock.instant()))throw invalid("文件已过期，请重新生成。");
+        Instant limit=clock.instant().plusSeconds(60);
+        if(row.task().expiresAt().isBefore(limit))limit=row.task().expiresAt();
+        return storage.downloadUrl(key(row),row.task().fileName(),limit);
+    }
+    public Delivery delivery(Long tenant,String id) {
+        var row=authorizedDownload(tenant,id);var task=row.task();String cacheKey=null,eTag=null,sourceUrl=null;
+        if("FILE".equals(task.outputFormat()) && task.fileSize()<=64L*1024*1024) {
+            var snapshot=storage.metadata(key(row));eTag=snapshot.eTag();
+            var file=sources.resolve(tenant,row.request().sources()).get(0);
+            String identity=key(row);
+            if(file.objectKey()!=null) {
+                try {
+                    var original=storage.metadata(file.objectKey());
+                    if(eTag!=null && !eTag.isBlank() && Objects.equals(original.eTag(),eTag) && original.size()==snapshot.size()) {
+                        identity=file.objectKey();sourceUrl=storage.publicUrl(file.objectKey());
+                    }
+                }catch(BusinessException ignored) {
+                    // Optional preview-cache lookup must not prevent delivery of the valid snapshot.
+                }
+            }
+            try {
+                String digest=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest((identity+"\n"+eTag).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                cacheKey="/__download-cache/"+row.tenant()+"/"+row.user()+"/"+digest;
+            }catch(java.security.NoSuchAlgorithmException ex){throw new IllegalStateException(ex);}
+        }
+        return new Delivery(task.fileName(),task.contentType(),task.outputFormat(),task.fileSize(),task.expiresAt(),signed(row),cacheKey,eTag,sourceUrl);
     }
     private Row authorizedDownload(Long tenant,String id) {
         var row=owned(tenant,id);
-        if(!row.task().status().equals("READY"))throw invalid("压缩包尚未生成或已过期，请重新生成。");
+        if(!row.task().status().equals("READY"))throw invalid("文件尚未准备完成或已过期，请重新生成。");
         sources.resolve(tenant,row.request().sources());
         // Re-check after authorization; expiry must not depend on the cleanup scheduler.
-        if(!row.task().expiresAt().isAfter(clock.instant()))throw invalid("压缩包已过期，请重新生成。");
+        if(!row.task().expiresAt().isAfter(clock.instant()))throw invalid("文件已过期，请重新生成。");
         return row;
     }
     public List<String> queued(int limit) {
@@ -137,12 +171,15 @@ public class DownloadCenterService {
     private DownloadTask present(ResultSet row)throws SQLException {
         Instant expires=instant(row,"expires_at");String status=row.getString("status");
         if(status.equals("READY")&&expires!=null&&!expires.isAfter(clock.instant()))status="EXPIRED";
-        return new DownloadTask(row.getString("id"),row.getString("name"),row.getString("source_type"),status,row.getInt("file_count"),row.getObject("file_size",Long.class),row.getString("error_message"),instant(row,"created_at"),instant(row,"completed_at"),expires);
+        return new DownloadTask(row.getString("id"),row.getString("name"),row.getString("source_type"),status,row.getInt("file_count"),row.getObject("file_size",Long.class),row.getString("error_message"),instant(row,"created_at"),instant(row,"completed_at"),expires,
+            Objects.toString(row.getString("output_format"),"ZIP"),
+            Objects.toString(row.getString("file_name"),DownloadArchiveService.uniqueName(DownloadFileNames.stem(row.getString("name"))+".zip",new HashSet<>())),
+            Objects.toString(row.getString("content_type"),"application/zip"));
     }
     private static Instant instant(ResultSet row,String column)throws SQLException{var value=row.getTimestamp(column);return value==null?null:value.toInstant();}
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception ex){throw new IllegalStateException(ex);}}
     private record Row(Long tenant,Long user,DownloadTask task,DownloadTask.Request request) {}
-    private String key(Row row){return "download-archives/"+row.tenant()+"/"+row.user()+"/"+row.task().id()+".zip";}
+    private String key(Row row){return "download-archives/"+row.tenant()+"/"+row.user()+"/"+row.task().id()+("FILE".equals(row.task().outputFormat())?".file":".zip");}
     private Timestamp now(){return timestamp(clock.instant());}
     private static Timestamp timestamp(Instant value){return Timestamp.from(value);}
     private static BusinessException invalid(String message){return new BusinessException(ErrorCode.VALIDATION_ERROR,message);}

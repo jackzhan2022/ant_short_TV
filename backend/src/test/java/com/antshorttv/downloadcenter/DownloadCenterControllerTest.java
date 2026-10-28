@@ -28,8 +28,11 @@ class DownloadCenterControllerTest extends com.antshorttv.support.RegistrationTe
     @Autowired JdbcTemplate jdbc;
     @Autowired DownloadCenterService service;
     @Autowired ObjectStorageService storage;
+    @Autowired com.qcloud.cos.COS cos;
 
     @Test void persistsZipDownloadsThenPhysicallyDeletesOnlyTheExpiredArchive() throws Exception {
+        org.mockito.Mockito.when(cos.generatePresignedUrl(org.mockito.ArgumentMatchers.any(com.qcloud.cos.model.GeneratePresignedUrlRequest.class),org.mockito.ArgumentMatchers.eq(true)))
+            .thenReturn(java.net.URI.create("https://cos.example/file?q-signature=test").toURL());
         String mobile="13800028781";
         String token=register(mobile);
         long tenant=((Number)JsonPath.read(mvc.perform(post("/api/tenants").with(authenticated(token)).contentType(MediaType.APPLICATION_JSON)
@@ -38,7 +41,7 @@ class DownloadCenterControllerTest extends com.antshorttv.support.RegistrationTe
         jdbc.update("insert into project(tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,'download-project','download-project',?,'ACTIVE',?,now(),now())",tenant,user,user);
         long project=jdbc.queryForObject("select id from project where tenant_id=?",Long.class,tenant);
         String original="materials/"+tenant+"/"+project+"/test/202610/1/v1/original.png";
-        putStoredObject(original,"原始文件".getBytes(StandardCharsets.UTF_8),"text/plain");
+        putStoredObject(original,"原始文件".getBytes(StandardCharsets.UTF_8),"image/png");
         jdbc.update("insert into ai_image_result(tenant_id,project_id,target_type,target_id,image_url,storage_path,mime_type,file_size,is_selected,status,created_at,updated_at) values (?,?,'VISUAL_VARIANT',1,?,?,'image/png',12,false,'ACTIVE',now(),now())",tenant,project,"/"+original,original);
         long image=jdbc.queryForObject("select id from ai_image_result where project_id=?",Long.class,project);
         mvc.perform(get("/api/downloads").header("X-Tenant-Id",tenant)).andExpect(status().isUnauthorized());
@@ -53,12 +56,15 @@ class DownloadCenterControllerTest extends com.antshorttv.support.RegistrationTe
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("READY")).andReturn().getResponse().getContentAsString();
         Instant completed=Instant.parse(JsonPath.read(ready,"$.data.completedAt"));Instant expires=Instant.parse(JsonPath.read(ready,"$.data.expiresAt"));
         assertThat(Duration.between(completed,expires)).isEqualTo(Duration.ofHours(24));
+        String snapshot="download-archives/"+tenant+"/"+user+"/"+id+".file";
         for(int i=0;i<2;i++) {
-            byte[] bytes=mvc.perform(get(file).param("tenantId",String.valueOf(tenant)).with(authenticated(token)))
-                .andExpect(status().isOk()).andExpect(content().contentType("application/zip"))
-                .andExpect(header().string("Cache-Control","no-store")).andReturn().getResponse().getContentAsByteArray();
-            try(var zip=new ZipInputStream(new ByteArrayInputStream(bytes),StandardCharsets.UTF_8)) {
-                assertThat(zip.getNextEntry().getName()).isEqualTo("图片_"+image+".png");assertThat(new String(zip.readAllBytes(),StandardCharsets.UTF_8)).isEqualTo("原始文件");
+            mvc.perform(get(file).param("tenantId",String.valueOf(tenant)).with(authenticated(token)))
+                .andExpect(status().isFound()).andExpect(header().string("Cache-Control","no-store"));
+            mvc.perform(get("/api/downloads/"+id+"/delivery").with(authenticated(token)).header("X-Tenant-Id",tenant))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.outputFormat").value("FILE"))
+                .andExpect(jsonPath("$.data.fileName").value("download-project_图片_"+image+".png"));
+            try(var input=storage.resource(snapshot).getInputStream()) {
+                assertThat(new String(input.readAllBytes(),StandardCharsets.UTF_8)).isEqualTo("原始文件");
             }
         }
         String other=register("13800028782");
@@ -68,7 +74,7 @@ class DownloadCenterControllerTest extends com.antshorttv.support.RegistrationTe
         mvc.perform(get("/api/downloads").param("status","EXPIRED").with(authenticated(token)).header("X-Tenant-Id",tenant))
             .andExpect(jsonPath("$.data.total").value(1)).andExpect(jsonPath("$.data.items[0].status").value("EXPIRED"));
         service.cleanup();
-        assertThatThrownBy(()->storage.resource("download-archives/"+tenant+"/"+user+"/"+id+".zip")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->storage.resource("download-archives/"+tenant+"/"+user+"/"+id+".file")).isInstanceOf(BusinessException.class);
         try(var input=storage.resource(original).getInputStream()) {assertThat(new String(input.readAllBytes(),StandardCharsets.UTF_8)).isEqualTo("原始文件");}
         mvc.perform(post("/api/downloads/"+id+"/retry").with(authenticated(token)).header("X-Tenant-Id",tenant))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("QUEUED"))

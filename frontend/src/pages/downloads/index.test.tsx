@@ -70,11 +70,11 @@ it('shows completion-based expiry and only enables ready archives', async () => 
   expect(screen.getByText('已过期')).toBeInTheDocument();
   expect(screen.getByText('正在打包')).toBeInTheDocument();
   expect(
-    screen.getByText('ZIP 压缩包自生成成功起保留 24 小时'),
+    screen.getByText('下载文件自准备成功起保留 24 小时'),
   ).toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: '下载 ZIP' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: '下载文件' })).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: '重新生成' })).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button', { name: '下载 ZIP' }));
+  fireEvent.click(screen.getByRole('button', { name: '下载文件' }));
   await waitFor(() =>
     expect(mocks.receive).toHaveBeenCalledWith(
       1,

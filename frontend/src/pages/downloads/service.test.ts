@@ -88,3 +88,63 @@ it('blocks native file delivery when current source permissions have been revoke
     click.mockRestore();
   }
 });
+
+it('uses the prepared original filename instead of forcing a zip suffix', async () => {
+  vi.mocked(request).mockResolvedValue({
+    success: true,
+    data: {
+      fileName: '星河_第01集_分镜003_视频.mp4',
+      outputFormat: 'FILE',
+      fileSize: 100000000,
+      expiresAt: '2099-01-01T00:00:00Z',
+      url: 'https://bucket.cos.example/file',
+    },
+  });
+  let downloaded = '';
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, 'click')
+    .mockImplementation(function (this: HTMLAnchorElement) {
+      downloaded = this.download;
+    });
+  try {
+    await receiveDownload(8, {
+      id: 'single',
+      name: '视频',
+      status: 'READY',
+      sourceType: 'VIDEO',
+      fileCount: 1,
+      createdAt: '2026-10-28T00:00:00Z',
+    });
+    expect(downloaded).toBe('星河_第01集_分镜003_视频.mp4');
+    expect(request).toHaveBeenCalledWith(
+      '/api/downloads/single/delivery',
+      expect.anything(),
+    );
+  } finally {
+    click.mockRestore();
+  }
+});
+
+it('checks server permission before opening any local file cache', async () => {
+  const open = vi.fn();
+  vi.stubGlobal('caches', { open });
+  vi.mocked(request).mockResolvedValue({
+    success: false,
+    errorMessage: '任务已过期或无权访问',
+  });
+  try {
+    await expect(
+      receiveDownload(8, {
+        id: 'cached',
+        name: '图片',
+        status: 'READY',
+        sourceType: 'IMAGE',
+        fileCount: 1,
+        createdAt: '2026-10-28T00:00:00Z',
+      }),
+    ).rejects.toThrow('任务已过期或无权访问');
+    expect(open).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

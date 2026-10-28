@@ -23,11 +23,11 @@ public class DownloadCenterController {
     @GetMapping("/{id}") public ApiResponse<DownloadTask> detail(HttpServletRequest request,@PathVariable String id){return ApiResponse.success(service.detail(TenantRequestSupport.tenantId(request),id));}
     @PostMapping("/{id}/retry") public ApiResponse<DownloadTask> retry(HttpServletRequest request,@PathVariable String id){return ApiResponse.success(service.retry(TenantRequestSupport.tenantId(request),id));}
     @GetMapping("/{id}/prepare") public ApiResponse<DownloadTask> prepare(HttpServletRequest request,@PathVariable String id){return ApiResponse.success(service.prepare(TenantRequestSupport.tenantId(request),id));}
-    @GetMapping("/{id}/file") public ResponseEntity<Resource> download(@RequestParam Long tenantId,@PathVariable String id)throws IOException {
-        var file=service.download(tenantId,id);
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL,"no-store")
-            .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(file.fileName(),StandardCharsets.UTF_8).build().toString())
-            .contentType(MediaType.parseMediaType("application/zip")).contentLength(file.size())
-            .body(new InputStreamResource(file.resource().getInputStream()));
+    @GetMapping("/{id}/delivery") public ResponseEntity<ApiResponse<DownloadCenterService.Delivery>> delivery(HttpServletRequest request,@PathVariable String id) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(service.delivery(TenantRequestSupport.tenantId(request),id)));
+    }
+    @GetMapping("/{id}/file") public ResponseEntity<Void> download(@RequestParam Long tenantId,@PathVariable String id) {
+        return ResponseEntity.status(HttpStatus.FOUND).cacheControl(CacheControl.noStore())
+            .header(HttpHeaders.LOCATION,service.download(tenantId,id)).build();
     }
 }

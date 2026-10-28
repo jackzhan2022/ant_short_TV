@@ -10,7 +10,7 @@ export default function DownloadCenterEntry() {
       message.success({
         content: (
           <span>
-            已加入下载中心，文件将打包为 ZIP。{' '}
+            已加入下载中心，文件准备完成后即可下载。{' '}
             <button
               type="button"
               className="ant-short-download-link"

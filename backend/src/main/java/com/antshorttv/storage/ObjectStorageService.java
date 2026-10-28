@@ -267,6 +267,28 @@ public class ObjectStorageService {
         return cdnSigner().sign(keys.objectKey(storagePath), expiresAt);
     }
 
+    /** COS performs the copy internally; original bytes never traverse the application host. */
+    public StoredObject copyForDownload(String sourcePath,String targetPath) {
+        String target=keys.objectKey(targetPath);
+        if(!target.matches("download-archives/[0-9]+/[0-9]+/[0-9a-f-]{36}[.]file"))throw new IllegalArgumentException("下载快照路径不合法");
+        return copyVerifiedObject(metadata(sourcePath),target,"download_snapshot");
+    }
+
+    public String downloadUrl(String storagePath,String fileName,Instant expiresAt) {
+        if(expiresAt==null || !expiresAt.isAfter(Instant.now()))throw new IllegalArgumentException("下载地址已过期");
+        try {
+            GeneratePresignedUrlRequest request=new GeneratePresignedUrlRequest(properties.getBucket(),keys.objectKey(storagePath),HttpMethodName.GET);
+            request.setExpiration(Date.from(expiresAt));request.setSignPrefixMode(false);
+            var overrides=new com.qcloud.cos.model.ResponseHeaderOverrides();
+            overrides.setContentDisposition(org.springframework.http.ContentDisposition.attachment().filename(fileName,java.nio.charset.StandardCharsets.UTF_8).build().toString());
+            overrides.setCacheControl("private, no-store");request.setResponseHeaders(overrides);
+            String host="%s.cos.%s.myqcloud.com".formatted(properties.getBucket(),properties.getRegion());
+            request.putCustomRequestHeader("Host",host);
+            java.net.URI signed=cos.generatePresignedUrl(request,true).toURI();
+            return "https://"+host+signed.getRawPath()+"?"+signed.getRawQuery();
+        }catch(Exception ex){throw storageFailure("下载地址生成失败",ex);}
+    }
+
     public String modelAccessUrl(String storagePath, Duration validFor) {
         if (validFor == null || validFor.isZero() || validFor.isNegative()) {
             throw new IllegalArgumentException("模型访问链接有效期必须大于 0。");

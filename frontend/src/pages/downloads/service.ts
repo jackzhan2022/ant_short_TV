@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import { cachedDownload, type DownloadDelivery } from './file-cache';
 
 export type DownloadStatus =
   | 'QUEUED'
@@ -19,6 +20,9 @@ export type DownloadTask = {
   status: DownloadStatus;
   fileCount: number;
   fileSize?: number;
+  outputFormat?: 'FILE' | 'ZIP';
+  fileName?: string;
+  contentType?: string;
   errorMessage?: string;
   createdAt: string;
   completedAt?: string;
@@ -95,20 +99,29 @@ export const retryDownloadTask = (tenant: number, id: string) =>
     headers: { 'X-Tenant-Id': String(tenant) },
   });
 export async function receiveDownload(tenant: number, task: DownloadTask) {
-  const current = await read<DownloadTask>(
-    `/api/downloads/${task.id}/prepare`,
+  const delivery = await read<DownloadDelivery>(
+    `/api/downloads/${task.id}/delivery`,
     {
       headers: { 'X-Tenant-Id': String(tenant) },
+      cache: 'no-store',
     },
   );
-  if (effectiveStatus(current) !== 'READY')
-    throw new Error('压缩包尚未生成或已过期，请重新生成');
+  if (!(Date.parse(delivery.expiresAt) > Date.now()))
+    throw new Error('文件已过期，请重新生成');
+  const blob = await cachedDownload(delivery);
+  if (!(Date.parse(delivery.expiresAt) > Date.now()))
+    throw new Error('文件已过期，请重新生成');
+  const objectUrl = blob ? URL.createObjectURL(blob) : undefined;
   const link = document.createElement('a');
-  link.href = `/api/downloads/${encodeURIComponent(task.id)}/file?tenantId=${tenant}`;
-  link.download = `${task.name}.zip`;
+  // The server checks access again and redirects; it never proxies file bytes.
+  link.href =
+    objectUrl ||
+    `/api/downloads/${encodeURIComponent(task.id)}/file?tenantId=${tenant}`;
+  link.download = delivery.fileName;
   document.body.appendChild(link);
   link.click();
   link.remove();
+  if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 }
 export function effectiveStatus(
   task: Pick<DownloadTask, 'status' | 'expiresAt'>,
