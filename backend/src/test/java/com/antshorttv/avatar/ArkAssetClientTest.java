@@ -73,4 +73,31 @@ class ArkAssetClientTest {
         } finally {server.stop(0);}
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={200,400,503})
+    void retainsSafeProviderDiagnosticsWithoutLeakingSignedUrlsOrCredentials(int status) throws Exception {
+        var mapper = new ObjectMapper();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var error = Map.of("ResponseMetadata", Map.of("RequestId", "req-download-123", "Error", Map.of(
+                "Code", "InvalidParameter.DownloadFailed",
+                "Message", "Download returned HTTP 403: https://cos.example/original.jpg?q-signature=private-sign&x-cos-security-token=private-token AK=test-ak SK=test-sk\nretry later")));
+            byte[] bytes = mapper.writeValueAsBytes(error);
+            exchange.sendResponseHeaders(status, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var client = new ArkAssetClient(mapper, "test-ak", "test-sk", "cn-beijing", "default", "http://127.0.0.1:" + server.getAddress().getPort());
+            assertThatThrownBy(() -> client.createAsset("group-1", "pose", "https://cos.example/source.png"))
+                .isInstanceOfSatisfying(ArkAssetClient.ProviderException.class, error -> {
+                    assertThat(error.code()).isEqualTo("InvalidParameter.DownloadFailed");
+                    assertThat(error.definitive()).isEqualTo(status<500);
+                    assertThat(error.getMessage()).contains("HTTP 403", "req-download-123")
+                        .doesNotContain("https://", "private-sign", "private-token", "test-ak", "test-sk", "\n");
+                });
+        } finally { server.stop(0); }
+    }
+
 }

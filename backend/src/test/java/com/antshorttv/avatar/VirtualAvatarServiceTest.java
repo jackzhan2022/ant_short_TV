@@ -116,4 +116,35 @@ class VirtualAvatarServiceTest {
         assertThat(jdbc.queryForObject("select virtual_avatar_asset_id from asset_visual_variant where id=9920",String.class)).isEqualTo("fresh-asset");
     }
 
+    @Test void storesSafeProviderDiagnosticsAndRetriesWithTheCurrentSourceUrl() throws Exception {
+        var failure = new ArkAssetClient.ProviderException("InvalidParameter.DownloadFailed", true) {
+            @Override public String getMessage() { return "素材库请求失败（InvalidParameter.DownloadFailed）。HTTP 403 请求编号：req-download-123"; }
+        };
+        when(client.createAsset(anyString(), anyString(), anyString())).thenThrow(failure).thenReturn("asset-retry");
+        long id = ((Number) service.create(9901, 9902, List.of(9920L)).get(0).get("id")).longValue();
+        service.process(id);
+        assertThat(jdbc.queryForObject("select error_message from virtual_avatar_task where id=?", String.class, id))
+            .contains("HTTP 403", "req-download-123");
+        assertThat(jdbc.queryForObject("select retryable from virtual_avatar_task where id=?", Boolean.class, id)).isTrue();
+        when(storage.sourceUrl(anyString(), anyString())).thenReturn("https://example.com/fresh-signed-source.png");
+        service.retry(9901, 9902, id);
+        service.process(id);
+        verify(client).createAsset(eq("group-1"), anyString(), eq("https://example.com/fresh-signed-source.png"));
+        assertThat(jdbc.queryForObject("select provider_asset_id from virtual_avatar_task where id=?", String.class, id)).isEqualTo("asset-retry");
+    }
+
+    @Test void retainsDiagnosticsForUncertainSubmissionWithoutAllowingResubmission() throws Exception {
+        when(client.createAsset(anyString(), anyString(), anyString())).thenThrow(new ArkAssetClient.ProviderException("ServiceUnavailable", false) {
+            @Override public String getMessage() { return "素材库请求失败（ServiceUnavailable）。HTTP 503 请求编号：req-uncertain-123"; }
+        });
+        long id = ((Number) service.create(9901, 9902, List.of(9920L)).get(0).get("id")).longValue();
+        service.process(id);
+        assertThat(jdbc.queryForObject("select error_code from virtual_avatar_task where id=?", String.class, id)).isEqualTo("SUBMISSION_UNKNOWN");
+        assertThat(jdbc.queryForObject("select retryable from virtual_avatar_task where id=?", Boolean.class, id)).isFalse();
+        assertThat(jdbc.queryForObject("select error_message from virtual_avatar_task where id=?", String.class, id))
+            .contains("HTTP 503", "req-uncertain-123", "禁止直接重提");
+        assertThatThrownBy(() -> service.retry(9901, 9902, id)).isInstanceOf(com.antshorttv.common.BusinessException.class);
+        verify(client, times(1)).createAsset(anyString(), anyString(), anyString());
+    }
+
 }

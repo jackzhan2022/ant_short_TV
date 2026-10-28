@@ -1,4 +1,4 @@
-import '@root/tests/mockPointEstimate';
+import { recordedPointEstimates } from '@root/tests/mockPointEstimate';
 import '@testing-library/jest-dom/vitest';
 import {
   act,
@@ -404,4 +404,26 @@ it('shows subtitle erasure content and retries the same task from the task cente
   render(<Tasks />); await screen.findByText('擦除结果');
   fireEvent.click(await screen.findByRole('button', { name: /重\s*试/ }));
   await waitFor(() => expect(mocks.control).toHaveBeenCalledWith(1, 'SUBTITLE_ERASE:4', 'RETRY', expect.any(String)));
+});
+
+
+it.each(['VIRTUAL_AVATAR', 'SUBTITLE_ERASE'])('retries %s without requesting an unsupported point estimate', async (type) => {
+  const taskKey = `${type}:9`;
+  window.history.replaceState({}, '', `/tasks?task=${taskKey}`);
+  mocks.detail.mockResolvedValue({ taskKey, type, title: '免费素材处理', statusGroup: 'FAILED', childCounts: { total: 0 }, allowedActions: ['RETRY'] });
+  mocks.control.mockResolvedValue({ taskKey });
+  render(<Tasks />);
+  const retry = await screen.findByRole('button', { name: /重\s*试/ });
+  expect(recordedPointEstimates().at(-1)?.operations).toEqual([]);
+  expect(retry).toBeEnabled();
+  fireEvent.click(retry);
+  await waitFor(() => expect(mocks.control).toHaveBeenCalledWith(1, taskKey, 'RETRY', expect.any(String)));
+});
+
+it('continues estimating points for paid task retries', async () => {
+  window.history.replaceState({}, '', '/tasks?task=REVIEW:1');
+  mocks.detail.mockResolvedValue({ taskKey: 'REVIEW:1', type: 'REVIEW', title: '审核重试', statusGroup: 'FAILED', childCounts: { total: 0 }, allowedActions: ['RETRY'] });
+  render(<Tasks />);
+  await screen.findByRole('button', { name: /重\s*试/ });
+  expect(recordedPointEstimates().at(-1)?.operations).toEqual([{ url: '/api/tenants/1/production-tasks/REVIEW%3A1/retry' }]);
 });

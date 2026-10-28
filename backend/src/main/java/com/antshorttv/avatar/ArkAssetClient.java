@@ -90,7 +90,10 @@ public class ArkAssetClient {
     public static class ProviderException extends Exception {
         private final String code;
         private final boolean definitive;
-        public ProviderException(String code,boolean definitive) {super("素材库请求失败（"+code+"）。");this.code=code;this.definitive=definitive;}
+        public ProviderException(String code,boolean definitive) {this(code,definitive,"");}
+        private ProviderException(String code,boolean definitive,String detail) {
+            super("素材库请求失败（"+code+"）。"+detail);this.code=code;this.definitive=definitive;
+        }
         public boolean definitive() {return definitive;}
         public String code() {return code;}
     }
@@ -116,8 +119,22 @@ public class ArkAssetClient {
         if(root==null || !root.isObject()) throw new ProviderException("INVALID_RESPONSE",false);
         var error=root.path("ResponseMetadata").path("Error");
         if(response.statusCode()!=200 || !error.isMissingNode() && !error.isNull())
-            throw new ProviderException(safeCode(error.path("Code").asText("HTTP_"+response.statusCode())),response.statusCode()<500 && !error.path("Code").asText().isBlank());
+            throw new ProviderException(safeCode(error.path("Code").asText("HTTP_"+response.statusCode())),
+                response.statusCode()<500 && !error.path("Code").asText().isBlank(),providerDiagnostic(root,error));
         return root.has("Result")?root.get("Result"):root;
+    }
+    private String providerDiagnostic(JsonNode root,JsonNode error) {
+        String message=error.path("Message").asText("");
+        if(!ak.isBlank())message=message.replace(ak,"[已隐藏]");
+        if(!sk.isBlank())message=message.replace(sk,"[已隐藏]");
+        message=message.replaceAll("(?i)https?://[^\\s<>\"']+","[地址已隐藏]")
+            .replaceAll("(?i)(authorization\\s*[:=]\\s*)(?:Bearer\\s+)?[^\\s,;]+","$1[已隐藏]")
+            .replaceAll("(?i)((?:q-signature|x-cos-security-token|q-ak|api[_-]?key|access[_-]?key|secret[_-]?key|token|signature)\\s*[:=]\\s*)[^\\s,;]+","$1[已隐藏]")
+            .replaceAll("[\\p{Cntrl}\\p{Zl}\\p{Zp}]+"," ").strip();
+        String requestId=root.path("ResponseMetadata").path("RequestId").asText("")
+            .replaceAll("[^a-zA-Z0-9_.-]","_");
+        return (message.isBlank()?"":" 服务商信息："+limit(message,500))
+            +(requestId.isBlank()?"":" 请求编号："+limit(requestId,128));
     }
     static String safeCode(String code) {
         String safe=code.replaceAll("[^a-zA-Z0-9_.-]", "_");

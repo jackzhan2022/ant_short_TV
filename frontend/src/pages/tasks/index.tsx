@@ -609,7 +609,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
                 .map((action) => (
                   <PointEstimateButton
                     tenantId={tenant}
-                    operations={action === 'CANCEL' || detail.type === 'SUBTITLE_ERASE' ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
+                    operations={action === 'CANCEL' || ['VIRTUAL_AVATAR', 'SUBTITLE_ERASE'].includes(detail.type) ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
                     key={action}
                     loading={busy}
                     onClick={() => void run(detail, action)}

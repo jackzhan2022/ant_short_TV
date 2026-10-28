@@ -163,7 +163,9 @@ public class VirtualAvatarService {
             boolean submitting=Set.of("创建素材组","提交素材").contains(phase);
             String code=submitting ? e instanceof ArkAssetClient.ProviderException p && p.definitive() ? p.code() : "SUBMISSION_UNKNOWN"
                 : phase.equals("保存素材结果") ? "STORAGE_FAILED" : phase.equals("准备素材") ? "SOURCE_URL_FAILED" : "QUERY_FAILED";
-            fail(id,token,code,code.equals("SUBMISSION_UNKNOWN")?"提交响应未确认，请先在火山控制台核实，禁止直接重提。":phase+"失败（"+code+"）。",!code.equals("SUBMISSION_UNKNOWN"));
+            String message=code.equals("SUBMISSION_UNKNOWN")?"提交响应未确认，请先在火山控制台核实，禁止直接重提。":phase+"失败（"+code+"）。";
+            if(e instanceof ArkAssetClient.ProviderException p)message+=p.getMessage();
+            fail(id,token,code,message,!code.equals("SUBMISSION_UNKNOWN"));
         } finally {
             jdbc.update("update virtual_avatar_task set claim_token=null,claimed_at=null,next_poll_at=? where id=? and claim_token=?",LocalDateTime.now().plusSeconds(15),id,token);
             cache.invalidateAfterCommit(QueryResultCache.Scope.tenant(number(task,"tenant_id")),QueryResultCache.Region.TASKS);
