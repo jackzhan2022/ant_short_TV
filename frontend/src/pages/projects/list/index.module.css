@@ -6,6 +6,18 @@
   margin-bottom: 24px;
 }
 
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.statusFilter {
+  width: 240px;
+  max-width: 100%;
+}
+
 .title {
   margin: 0;
   color: var(--app-color-text);

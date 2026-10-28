@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,14 +42,35 @@ public class TeamPointService {
     }
 
     public TeamPointTransactionPageResponse transactions(Long tenantId, Integer current, Integer pageSize) {
+        return transactions(tenantId, current, pageSize, null);
+    }
+
+    public TeamPointTransactionPageResponse transactions(
+        Long tenantId, Integer current, Integer pageSize, TeamPointTransactionType transactionType
+    ) {
         tenantContextResolver.requireActiveMember(tenantId);
         int safeCurrent = current == null || current < 1 ? 1 : current;
         int safePageSize = pageSize == null || pageSize < 1 ? DEFAULT_PAGE_SIZE : Math.min(pageSize, MAX_PAGE_SIZE);
+        String filter = " where l.tenant_id = ? ";
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(tenantId);
+        if (transactionType != null) {
+            // Grant labels distinguish paid entitlements from manual/trial grants.
+            filter += """
+                 and (case when l.entry_type = 'GRANT' then
+                     case when l.idempotency_key like 'order:%' or l.idempotency_key like 'subscription:%'
+                         then 'ENTITLEMENT_GRANT' else 'ADJUST_GRANT' end
+                     else l.entry_type end) = ?
+                """;
+            parameters.add(transactionType.name());
+        }
         Long total = jdbcTemplate.queryForObject(
-            "select count(*) from point_ledger where tenant_id = ?",
+            "select count(*) from point_ledger l" + filter,
             Long.class,
-            tenantId
+            parameters.toArray()
         );
+        parameters.add(safePageSize);
+        parameters.add((safeCurrent - 1) * safePageSize);
         List<TeamPointTransactionResponse> records = jdbcTemplate.query("""
             select l.id, l.tenant_id, l.user_id, l.entry_type, l.amount, l.available_balance_after,
                    l.business_type, l.business_id, l.idempotency_key, l.description, l.created_at,
@@ -61,7 +83,7 @@ public class TeamPointService {
               left join ai_execution_task e on e.id = coalesce(l.execution_id, r.execution_id)
                   and e.tenant_id = l.tenant_id
               left join project p on p.id = e.project_id and p.tenant_id = l.tenant_id
-             where l.tenant_id = ?
+            """ + filter + """
              order by l.created_at desc, l.id desc
              limit ? offset ?
             """,
@@ -77,9 +99,7 @@ public class TeamPointService {
                 usageDescription(rs),
                 toLocalDateTime(rs.getTimestamp("created_at"))
             ),
-            tenantId,
-            safePageSize,
-            (safeCurrent - 1) * safePageSize
+            parameters.toArray()
         );
         return new TeamPointTransactionPageResponse(records, total == null ? 0 : total, safeCurrent, safePageSize);
     }

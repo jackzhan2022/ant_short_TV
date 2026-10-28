@@ -189,7 +189,7 @@ it('loads content only for the open task and renders its saved sections', async 
   fireEvent.click(await screen.findByText('审核任务一'));
   await waitFor(() => expect(mocks.content).toHaveBeenCalledWith(1, 'REVIEW:1', expect.anything()));
   expect(await screen.findByText('保存的提示词')).toBeInTheDocument();
-  expect(screen.getByText('来源版本：REVIEW:1@2026-09-12')).toBeInTheDocument();
+  expect(screen.getByText('来源版本：剧本审核 #1 · 2026-09-12')).toBeInTheDocument();
   expect(screen.getByText('生成结果')).toBeInTheDocument();
   expect(screen.getByAltText('生成结果 1')).not.toHaveAttribute(
     'src',
@@ -406,6 +406,43 @@ it('shows subtitle erasure content and retries the same task from the task cente
   await waitFor(() => expect(mocks.control).toHaveBeenCalledWith(1, 'SUBTITLE_ERASE:4', 'RETRY', expect.any(String)));
 });
 
+it('shows every saved reference, translates enums, and groups drawer fields in bordered descriptions', async () => {
+  mocks.detail.mockResolvedValue({
+    taskKey: 'VIDEO:46', type: 'VIDEO', title: '视频生成 #46', projectName: '测试项目', creatorName: '张三',
+    childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED', phase: 'SUCCEEDED',
+    createdAt: '2026-10-26T16:48:05',
+  });
+  mocks.content.mockResolvedValue({ schemaVersion: 1, taskKey: 'VIDEO:46', contentRevision: '1', sections: [
+    { key: 'settings', title: '生成设置', kind: 'FIELDS', availability: 'AVAILABLE',
+      fields: [{ label: '服务商', value: 'VOLCENGINE_ARK' }, { label: '运动强度', value: 'MEDIUM' },
+        { label: '镜头运动', value: 'PAN' }, { label: '生成音频', value: 'true' }], items: [], hasMore: false },
+    { key: 'references', title: '参考素材', kind: 'IMAGE', availability: 'AVAILABLE',
+      sourceVersion: 'VIDEO:46@2026-10-26T16:48:05', fields: [], hasMore: false, items: [
+        { id: 1, mediaType: 'IMAGE', displayName: '王大山 / 默认形态', role: 'reference_image', thumbnailUrl: '/api/image/thumbnail', url: '/api/image/display' },
+        { id: 2, mediaType: 'VIDEO', displayName: '动作参考', role: 'reference_video', url: '/api/video/playback' },
+        { id: 3, mediaType: 'AUDIO', displayName: '角色音色', role: 'reference_audio', url: '/api/audio/playback' },
+      ] },
+  ] });
+  render(<Tasks />);
+  fireEvent.click(await screen.findByText('审核任务一'));
+  expect(await screen.findByText('王大山 / 默认形态')).toBeInTheDocument();
+  expect(screen.getByText('动作参考')).toBeInTheDocument();
+  expect(screen.getByText('角色音色')).toBeInTheDocument();
+  expect(screen.getByAltText('参考素材 1')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '播放参考素材 2' })).toBeInTheDocument();
+  expect(screen.getByLabelText('角色音色')).toHaveAttribute('preload', 'none');
+  expect(screen.getByText('火山引擎')).toBeInTheDocument();
+  expect(screen.getByText('中')).toBeInTheDocument();
+  expect(screen.getByText('平移')).toBeInTheDocument();
+  expect(screen.getByText('是')).toBeInTheDocument();
+  expect(screen.getByText('参考图片')).toBeInTheDocument();
+  expect(screen.getByText('来源版本：视频生成 #46 · 2026-10-26 16:48:05')).toBeInTheDocument();
+  expect(document.querySelectorAll('.ant-descriptions-bordered').length).toBeGreaterThanOrEqual(2);
+  for (const value of ['VOLCENGINE_ARK', 'MEDIUM', 'PAN', 'SUCCEEDED', 'reference_image']) {
+    expect(screen.queryByText(value)).not.toBeInTheDocument();
+  }
+  expect(screen.queryByRole('link', { name: '下载' })).not.toBeInTheDocument();
+});
 
 it.each(['VIRTUAL_AVATAR', 'SUBTITLE_ERASE'])('retries %s without requesting an unsupported point estimate', async (type) => {
   const taskKey = `${type}:9`;

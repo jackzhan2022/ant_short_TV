@@ -4,6 +4,11 @@ import com.antshorttv.common.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 @com.antshorttv.rbac.RequirePermission("MENU:FREE_CREATION")
@@ -29,5 +34,15 @@ public class FreeCreationController {
     }
     @GetMapping("/{id}/outputs/{outputId}/download") public ApiResponse<Map<String,Object>> download(HttpServletRequest request,@PathVariable Long id,@PathVariable Long outputId) {
         return ApiResponse.success(service.download(TenantRequestSupport.tenantId(request),id,outputId));
+    }
+    @GetMapping("/{id}/outputs/{outputId}/download-file")
+    public ResponseEntity<Resource> downloadFile(HttpServletRequest request,@PathVariable Long id,@PathVariable Long outputId) throws IOException {
+        var file=service.downloadFile(TenantRequestSupport.tenantId(request),id,outputId);
+        var response=ResponseEntity.ok().contentType(MediaType.parseMediaType(file.contentType()))
+            .header(HttpHeaders.CACHE_CONTROL,"no-store")
+            .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment()
+                .filename(file.fileName(),StandardCharsets.UTF_8).build().toString());
+        if(file.fileSize()!=null && file.fileSize()>0)response.contentLength(file.fileSize());
+        return response.body(new InputStreamResource(file.resource().getInputStream()));
     }
 }

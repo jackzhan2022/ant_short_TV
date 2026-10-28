@@ -921,7 +921,7 @@ const StoryboardCard = ({
     .replace(/VO$/i, '').trim();
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [voiceSubmitting, setVoiceSubmitting] = useState(false);
-  const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME' | 'SCENE'>('VIDEO');
+  const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME'>('VIDEO');
   const [previewVersion, setPreviewVersion] = useState<AiVideoResult>();
   useEffect(() => {
     setPreviewVersion(undefined);
@@ -1118,8 +1118,10 @@ const StoryboardCard = ({
   const previewSources = [
     { key: 'FIRST_FRAME' as const, label: '首帧', url: item.firstFrameThumbnailUrl || thumbnailFor(imageTasks, 'STORYBOARD', item.id) },
     { key: 'VIDEO' as const, label: '视频', url: video.coverUrl },
-    { key: 'SCENE' as const, label: '场景', url: sceneImage },
   ].filter((source) => source.url);
+  const visiblePreviewSources = previewSources.filter(
+    (source) => source.key !== 'VIDEO' || (!videoVersions.length && !videoHistory?.data.length),
+  );
   const selectedPreview = previewSources.find((source) => source.key === previewKey);
   const visualSourceLabel = (source?: string | null) => {
     if (source === 'EPISODE_PREFERRED') return '剧集首选形象';
@@ -1740,55 +1742,57 @@ const StoryboardCard = ({
             onPreview={(result) => { setPreviewVersion(result); setPreviewKey('VIDEO'); }}
             onLoad={(current, pageSize, signal) => onLoadVideoCandidates(item.id, current, pageSize, signal)}
           />
-          <Flex
-            justify="center"
-            gap={10}
-            style={{ height: 54, paddingTop: 12 }}
-          >
-            {previewSources.filter((source) => source.key !== 'VIDEO' || (!videoVersions.length && !videoHistory?.data.length)).map((source) => (
-              <Button
-                key={source.key}
-                type="text"
-                aria-label={`查看分镜${index + 1}${source.label}`}
-                onClick={() => setPreviewKey(source.key)}
-                style={{
-                  position: 'relative',
-                  width: 42,
-                  height: 40,
-                  padding: 0,
-                  borderRadius: 6,
-                  border:
-                    previewKey === source.key
-                      ? '2px solid #5454ff'
-                      : '1px solid #dfe5f2',
-                  overflow: 'hidden',
-                }}
-              >
-                <PreviewPoster
-                  src={source.url || undefined}
-                  title={`分镜${index + 1}${source.label}缩略图`}
-                />
-                {previewKey === source.key && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 16,
-                      background: '#5454ff',
-                      color: '#fff',
-                      fontSize: 10,
-                      textAlign: 'center',
-                      lineHeight: '16px',
-                    }}
-                  >
-                    当前预览
-                  </span>
-                )}
-              </Button>
-            ))}
-          </Flex>
+          {visiblePreviewSources.length > 0 && (
+            <Flex
+              justify="center"
+              gap={10}
+              style={{ height: 54, paddingTop: 12 }}
+            >
+              {visiblePreviewSources.map((source) => (
+                <Button
+                  key={source.key}
+                  type="text"
+                  aria-label={`查看分镜${index + 1}${source.label}`}
+                  onClick={() => setPreviewKey(source.key)}
+                  style={{
+                    position: 'relative',
+                    width: 42,
+                    height: 40,
+                    padding: 0,
+                    borderRadius: 6,
+                    border:
+                      previewKey === source.key
+                        ? '2px solid #5454ff'
+                        : '1px solid #dfe5f2',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <PreviewPoster
+                    src={source.url || undefined}
+                    title={`分镜${index + 1}${source.label}缩略图`}
+                  />
+                  {previewKey === source.key && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 16,
+                        background: '#5454ff',
+                        color: '#fff',
+                        fontSize: 10,
+                        textAlign: 'center',
+                        lineHeight: '16px',
+                      }}
+                    >
+                      当前预览
+                    </span>
+                  )}
+                </Button>
+              ))}
+            </Flex>
+          )}
           {video.resultId ? (
             <Flex className="storyboard-preview-binding" justify="center">
               {video.selected ? <Tag color="success">当前分镜视频</Tag> : (

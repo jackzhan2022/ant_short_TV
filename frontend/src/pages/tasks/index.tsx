@@ -19,6 +19,8 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import styles from './index.module.css';
+import { displayEnum, displayField, displaySourceVersion, displayTime } from './presentation';
 import ClickToPlayVideo from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
 import PointEstimateButton from '@/components/PointEstimateButton';
@@ -69,7 +71,7 @@ const actions: Record<string, string> = {
 const active = (task: Task) => ['QUEUED', 'RUNNING'].includes(task.statusGroup);
 const taskStatus = (task: Task) => task.type === 'VIDEO' && active(task)
   ? task.phase === '智能虚拟化中' ? '智能虚拟化中' : '生成中'
-  : statuses[task.statusGroup] || task.statusGroup;
+  : statuses[task.statusGroup] || displayEnum(task.statusGroup);
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : '任务加载失败，请重试';
 const availability: Record<ContentSection['availability'], string> = {
@@ -88,6 +90,7 @@ const resultLabels: Record<string, string> = {
 };
 function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
   const media = ['IMAGE', 'VIDEO', 'AUDIO'].includes(section.kind);
+  const references = section.key.startsWith('references');
   const [copying, setCopying] = useState(false);
   const [items, setItems] = useState(section.items);
   const [itemsPage, setItemsPage] = useState(1);
@@ -148,21 +151,49 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
       if (!abort.signal.aborted) setExpanding(false);
     }
   };
-  return <section style={{ marginTop: 20 }}>
-    <Typography.Title level={5} style={{ marginBottom: 8 }}>
-      {section.title} <Tag>{availability[section.availability]}</Tag>
-    </Typography.Title>
-    {section.sourceVersion && <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>来源版本：{section.sourceVersion}</Typography.Paragraph>}
+  return <section className={styles.contentSection} aria-label={section.title}>
+    <div className={styles.sectionHeading}>
+      <Typography.Title level={5}><span>{section.title}</span></Typography.Title>
+      {media && items.length > 0 && <Tag>{items.length} 项{itemsMore ? '+' : ''}</Tag>}
+      {section.availability !== 'AVAILABLE' && <Tag>{availability[section.availability]}</Tag>}
+    </div>
+    {section.sourceVersion && <p className={styles.sourceVersion}>来源版本：{displaySourceVersion(section.sourceVersion)}</p>}
     {sectionError && <Alert type="warning" title={sectionError} />}
-    {displayText && <Typography.Paragraph copyable={textMore ? false : { text: displayText }} style={{ whiteSpace: 'pre-wrap' }}>{displayText}</Typography.Paragraph>}
+    {displayText && <Typography.Paragraph copyable={textMore ? false : { text: displayText }} className={styles.textContent}>{displayText}</Typography.Paragraph>}
     {section.kind === 'TEXT' && (textMore || section.hasMore) && <div><Typography.Text type="secondary">内容较长，按需读取后续内容。</Typography.Text>{textMore && <Button type="link" size="small" loading={expanding} onClick={expandText}>继续展开</Button>}<Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
     {section.hasMore && !textMore && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
-    {section.fields.length > 0 && <Descriptions size="small" column={1} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: field.value }))} />}
-    {media && items.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-      {items.map((item, index) => section.kind === 'IMAGE' ? <div key={String(item.id ?? index)}><LazyMediaImage width={160} height={90} src={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} />{typeof item.role === 'string' && <Tag>{item.role}</Tag>}{item.selected && <Tag color="success">当前采用</Tag>}<a href={String(item.downloadUrl ?? '')} download>下载</a></div> : section.kind === 'AUDIO' ? <div key={String(item.id ?? index)}><audio controls preload="none" src={String(item.url ?? '')} aria-label={String(item.fileName ?? section.title)}><track kind="captions" /></audio><a href={String(item.downloadUrl ?? '')} download>下载音频</a></div> : <div key={String(item.id ?? index)}><ClickToPlayVideo src={String(item.url ?? '')} poster={String(item.thumbnailUrl ?? '')} alt={`${section.title} ${index + 1}`} style={{ width: 320, maxWidth: '100%' }} /><a href={String(item.downloadUrl ?? '')} download>下载</a></div>)}
+    {section.fields.length > 0 && <Descriptions className={styles.fieldTable} bordered layout="vertical" size="small" column={{ xs: 1, sm: 2 }} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: displayField(field.label, field.value) }))} />}
+    {media && items.length > 0 && <div className={references ? styles.mediaGrid + ' ' + styles.referenceGrid : styles.mediaGrid}>
+      {items.map((item, index) => {
+        const kind = String(item.mediaType || section.kind);
+        const name = String(item.displayName || item.fileName || item.label || (section.title + ' ' + (index + 1)));
+        const alt = section.title + ' ' + (index + 1);
+        const url = typeof item.url === 'string' ? item.url : '';
+        const thumbnail = typeof item.thumbnailUrl === 'string' ? item.thumbnailUrl : '';
+        const download = typeof item.downloadUrl === 'string' ? item.downloadUrl : '';
+        return <article className={styles.mediaCard} key={String(item.id ?? index)}>
+          <div className={styles.mediaPreview}>
+            {kind === 'IMAGE' ? <LazyMediaImage width="100%" height="100%" src={thumbnail} alt={alt}
+              imageStyle={{ objectFit: 'contain' }} preview={url ? { src: url } : false}
+              placeholderFallback={<span className={styles.mediaFallback}>缩略图暂不可用</span>} />
+              : kind === 'AUDIO' && url ? <audio controls preload="none" src={url} aria-label={name}><track kind="captions" /></audio>
+              : kind === 'VIDEO' && url ? <ClickToPlayVideo src={url} poster={thumbnail} alt={alt} style={{ width: '100%', height: '100%' }} />
+              : <span className={styles.mediaFallback}>素材暂不可预览</span>}
+          </div>
+          <div className={styles.mediaMeta}>
+            <div className={styles.mediaName}>{name}</div>
+            <div className={styles.mediaActions}>
+              <Tag>{displayEnum(typeof item.role === 'string' ? item.role : kind)}</Tag>
+              {item.selected && <Tag color="success">当前采用</Tag>}
+              {kind === 'IMAGE' && !thumbnail && url && <a href={url} target="_blank" rel="noreferrer">查看原图</a>}
+              {download && <a href={download} download>{kind === 'AUDIO' ? '下载音频' : '下载'}</a>}
+            </div>
+          </div>
+        </article>;
+      })}
     </div>}
     {itemsMore && !textMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
-    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl', 'downloadUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${String(value)}`).join(' · ')}</Typography.Text></List.Item>} />}
+    {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl', 'downloadUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${displayField(resultLabels[key] ?? key, value)}`).join(' · ')}</Typography.Text></List.Item>} />}
   </section>;
 }
 function queryFromUrl(): Query {
@@ -408,7 +439,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         t.progress != null ? (
           <Progress percent={Number(t.progress)} size="small" />
         ) : (
-          t.phase || '—'
+          displayEnum(t.phase)
         ),
     },
     { title: '创建时间', dataIndex: 'createdAt' },
@@ -417,7 +448,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
     { title: '任务', key: 'title', render: (_: unknown, task: Task) => <Button type="link" onClick={() => select(task, true)}>{task.title}</Button> },
     { title: '类型', render: (_: unknown, task: Task) => types[task.type] || '分集任务' },
     { title: '状态', render: (_: unknown, task: Task) => taskStatus(task) },
-    { title: '进度', render: (_: unknown, task: Task) => task.progress != null ? <Progress percent={Number(task.progress)} size="small" /> : task.phase || '—' },
+    { title: '进度', render: (_: unknown, task: Task) => task.progress != null ? <Progress percent={Number(task.progress)} size="small" /> : displayEnum(task.phase) },
     { title: '创建时间', dataIndex: 'createdAt' },
   ];
   return (
@@ -560,7 +591,8 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       <Drawer
         title={detail?.title || '任务详情'}
         open={Boolean(selected)}
-        size={720}
+        size={760}
+        classNames={{ body: styles.drawerBody }}
         onClose={() => { setSelected(null); setParentTask(null); }}
       >
         {detailError && (
@@ -574,26 +606,20 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         )}
         {detail && (
           <>
-            <p>
-              {taskStatus(detail)} ·{' '}
-              {detail.phase || statuses[detail.statusGroup]}
-            </p>
-            {detail.progress != null && (
-              <Progress percent={Number(detail.progress)} />
-            )}
-            <p>{detail.resultSummary}</p>
-            {detail.warningSummary && (
-              <Alert type="warning" title={detail.warningSummary} />
-            )}
-            {detail.restricted && (
-              <p>当前无项目访问权限，仅展示任务状态和时间。</p>
-            )}
-            <p>
-              创建时间：{detail.createdAt} · 完成时间：
-              {detail.completedAt || '—'}
-            </p>
+            <Descriptions className={styles.fieldTable} title="任务信息" bordered layout="vertical" size="small" column={{ xs: 1, sm: 2 }} items={[
+              { key: 'status', label: '任务状态', children: <Tag color={detail.statusGroup === 'SUCCEEDED' ? 'success' : active(detail) ? 'processing' : 'default'}>{taskStatus(detail)}</Tag> },
+              { key: 'phase', label: '当前阶段', children: displayEnum(detail.phase) },
+              { key: 'project', label: '所属项目', children: detail.projectName || '—' },
+              { key: 'creator', label: '创建人', children: detail.creatorName || '—' },
+              { key: 'created', label: '创建时间', children: displayTime(detail.createdAt) },
+              { key: 'completed', label: '完成时间', children: displayTime(detail.completedAt) },
+            ]} />
+            {detail.progress != null && <Progress percent={Number(detail.progress)} />}
+            {detail.resultSummary && <Typography.Paragraph style={{ marginTop: 12 }}>{detail.resultSummary}</Typography.Paragraph>}
+            {detail.warningSummary && <Alert type="warning" title={detail.warningSummary} />}
+            {detail.restricted && <p>当前无项目访问权限，仅展示任务状态和时间。</p>}
             {detail.type === 'FREE_CREATION' && <p>重试和重新生成会按原参数新建任务并确认积分。取消后停止跟踪结果，供应商已产生的用量仍会结算。</p>}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div className={styles.taskActions}>
               {parentTask && <Button onClick={() => { setSelected(parentTask); setParentTask(null); }}>返回批次</Button>}
               {detail.destination && (
                 <Button

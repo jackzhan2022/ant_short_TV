@@ -20,6 +20,7 @@ class FreeCreationLogicalStateTest {
     AiExecutionService executions=mock(AiExecutionService.class);
     Map<Long,AiExecutionTaskEntity> tasks=new HashMap<>();
     Map<Long,FreeCreationEntity> records=new HashMap<>();
+    com.antshorttv.storage.ObjectStorageService storage=mock(com.antshorttv.storage.ObjectStorageService.class);
     FreeCreationService service;
     FreeCreationEntity root,child;
     TenantContext context=new TenantContext(2L,1L,3L,"OWNER");
@@ -34,7 +35,7 @@ class FreeCreationLogicalStateTest {
         when(executions.requireTask(anyLong())).thenAnswer(call->tasks.get(call.getArgument(0)));
         when(creations.selectById(anyLong())).thenAnswer(call->records.get(call.getArgument(0)));
         service=new FreeCreationService(creations,mediaMapper,media,tenants,mock(com.antshorttv.ai.AiModelRouter.class),executions,
-            mock(AiVideoTaskService.class),mock(SeedanceVideoRequestValidator.class),mock(com.antshorttv.storage.ObjectStorageService.class),new ObjectMapper(),jdbc,mock(jakarta.validation.Validator.class));
+            mock(AiVideoTaskService.class),mock(SeedanceVideoRequestValidator.class),storage,new ObjectMapper(),jdbc,mock(jakarta.validation.Validator.class));
         service.setAvatarRecovery(new FreeCreationAvatarRecoveryService(jdbc,creations,executions,null,null,true),mock(com.antshorttv.avatar.ArkAssetPool.class),mock(ModelAccessibleVideoUrlResolver.class));
         root=record(3,10,null);child=record(4,11,3L);task(10,"FAILED","QUERY");task(11,"PENDING","SUBMIT");
         jdbc.update("insert into seedance_avatar_recovery values(1,3,1,'PENDING','等待素材处理完成',null,null)");
@@ -83,7 +84,13 @@ class FreeCreationLogicalStateTest {
     }
     @Test void originalRecordCanDownloadItsLinkedSuccessfulOutput() {
         recovered("SUCCEEDED");assertThat(service.download(1L,3L,30L)).containsEntry("url","/download.mp4");
+        output.objectKey="materials/1/free-creations/linked/original.mp4";output.mimeType="video/mp4";
+        var resource=new org.springframework.core.io.ByteArrayResource(new byte[]{1,2,3});
+        when(storage.resource(output.objectKey)).thenReturn(resource);
+        assertThat(service.downloadFile(1L,3L,30L).resource()).isSameAs(resource);
+        verify(storage).resource(output.objectKey);
         output.creationId=99L;assertThatThrownBy(()->service.download(1L,3L,30L)).isInstanceOf(com.antshorttv.common.BusinessException.class);
+        assertThatThrownBy(()->service.downloadFile(1L,3L,30L)).isInstanceOf(com.antshorttv.common.BusinessException.class);
     }
     @Test void listCountsAndFiltersTheLogicalRootInsteadOfItsAutomaticChild() {
         var preparing=service.list(1L,"mine","VIDEO","RUNNING",null,1,20);

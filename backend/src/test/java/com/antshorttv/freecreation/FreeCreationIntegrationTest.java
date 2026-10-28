@@ -105,6 +105,13 @@ class FreeCreationIntegrationTest extends com.antshorttv.support.RegistrationTes
         long output=detail.path("outputs").get(0).path("id").asLong();
         assertThat(detail.path("outputs").get(0).path("previewUrl").asText()).contains("materials/").doesNotContain("127.0.0.1");
         assertThat(getJson(colleague,tenant,"/api/free-creations/"+id+"/outputs/"+output+"/download").path("data").path("url").asText()).contains("materials/");
+        mvc.perform(get("/api/free-creations/"+id+"/outputs/"+output+"/download-file")
+            .with(authenticated(colleague.token)).header("X-Tenant-Id",tenant))
+            .andExpect(status().isOk()).andExpect(content().bytes(png)).andExpect(content().contentType("image/png"))
+            .andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.startsWith("attachment;")))
+            .andExpect(header().string("Cache-Control","no-store")).andExpect(header().doesNotExist("Location"));
+        mvc.perform(get("/api/free-creations/"+id+"/outputs/"+output+"/download-file")
+            .with(authenticated(author.token)).header("X-Tenant-Id",other)).andExpect(status().isNotFound());
         assertThat(getJson(colleague,tenant,"/api/free-creations?scope=team").path("data").path("total").asInt()).isEqualTo(1);
         assertThat(getJson(colleague,tenant,"/api/free-creations?scope=mine").path("data").path("total").asInt()).isZero();
         assertThat(getJson(colleague,tenant,"/api/free-creations?scope=team&keyword=自由作者").path("data").path("total").asInt()).isEqualTo(1);

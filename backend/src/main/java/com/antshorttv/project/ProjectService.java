@@ -98,8 +98,9 @@ public class ProjectService {
         this.coverImages = coverImages;
     }
 
-    public MediaPage<ProjectResponse> list(Long tenantId, Integer current, Integer pageSize, String keyword) {
-        MediaPage<ProjectAccessContext> page = projectAccessResolver.accessibleProjectPage(tenantId, current, pageSize, keyword);
+    public MediaPage<ProjectResponse> list(Long tenantId, Integer current, Integer pageSize, String keyword,
+        List<ProjectStatus> statuses) {
+        MediaPage<ProjectAccessContext> page = projectAccessResolver.accessibleProjectPage(tenantId, current, pageSize, keyword, statuses);
         List<ProjectAccessContext> accesses = page.data();
         List<ProjectEntity> projects = accesses.stream().map(ProjectAccessContext::project).toList();
         if (projects.isEmpty()) {

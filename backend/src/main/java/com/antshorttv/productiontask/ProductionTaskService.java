@@ -39,8 +39,10 @@ public class ProductionTaskService {
     private final TenantContextResolver tenants;
     private final RbacPermissionService permissions;
     private final ObjectMapper mapper;
+    private final ProductionTaskReferenceReader referenceReader;
     public ProductionTaskService(JdbcTemplate jdbc, TenantContextResolver tenants, RbacPermissionService permissions,ObjectMapper mapper) {
         this.jdbc=jdbc; this.sql=new NamedParameterJdbcTemplate(jdbc); this.tenants=tenants; this.permissions=permissions;this.mapper=mapper;
+        this.referenceReader=new ProductionTaskReferenceReader(jdbc,mapper);
     }
 
     public record Page(List<Map<String,Object>> items, long total, int page, int pageSize, boolean canViewTeamTasks) {}
@@ -385,13 +387,13 @@ public class ProductionTaskService {
     }
 
     private List<Map<String,Object>> imageSections(long tenant,long id) {
-        Map<String,Object> task=one("select project_id,prompt,negative_prompt,reference_images,model,provider_code,aspect_ratio,image_count,style,quality,seed,status,error_message from ai_image_task where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select project_id,prompt,negative_prompt,reference_images,model,provider_code,(select name from ai_model where id=ai_image_task.model_id) model_name,(select name from ai_provider where code=ai_image_task.provider_code limit 1) provider_name,aspect_ratio,image_count,style,quality,seed,status,error_message from ai_image_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
         List<Map<String,Object>> results=sql.queryForList("select id,image_url,thumbnail_url,width,height,file_size,is_selected,status from ai_image_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",id));
         boolean resultsMore=results.size()>20;
-        List<Map<String,Object>> references=referenceItems(task.get("reference_images"));
+        List<Map<String,Object>> references=referenceReader.imageReferences(task.get("reference_images"));
         return List.of(section("submission","保存的生成提示词","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
-            section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"比例",task.get("aspect_ratio"),"数量",task.get("image_count"),"风格",task.get("style"),"质量",task.get("quality"),"种子",task.get("seed")),List.of(),false),
+            section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model_name")==null?task.get("model"):task.get("model_name"),"服务商",task.get("provider_name")==null?task.get("provider_code"):task.get("provider_name"),"比例",task.get("aspect_ratio"),"数量",task.get("image_count"),"风格",task.get("style"),"质量",task.get("quality"),"种子",task.get("seed")),List.of(),false),
             section("results","生成结果","IMAGE",results.isEmpty()?"PENDING":"AVAILABLE",null,List.of(),
                 media(firstPage(results),"image_url",number(task,"project_id"),"IMAGE"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
@@ -411,15 +413,14 @@ public class ProductionTaskService {
     }
 
     private List<Map<String,Object>> videoSections(long tenant,long id,long resultTask) {
-        Map<String,Object> task=one("select project_id,prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
+        Map<String,Object> task=one("select project_id,prompt,negative_prompt,first_frame_url,last_frame_url,reference_images,model,provider_code,(select name from ai_model where id=ai_video_task.model_id) model_name,(select name from ai_provider where code=ai_video_task.provider_code limit 1) provider_name,duration_seconds,aspect_ratio,resolution,motion_strength,camera_movement,random_seed from ai_video_task where tenant_id=? and id=?",tenant,id);
         String prompt=text(task.get("prompt"));
         List<Map<String,Object>> results=sql.queryForList("select id,video_url,cover_url thumbnail_url,duration_seconds,width,height,file_size,format,is_selected,status from ai_video_result where tenant_id=:tenant and task_id=:task order by id limit 21",Map.of("tenant",tenant,"task",resultTask));
         boolean resultsMore=results.size()>20;
-        List<Map<String,Object>> references=new ArrayList<>();
-        addReference(references,task.get("first_frame_url"),"首帧");addReference(references,task.get("last_frame_url"),"尾帧");
-        for(Map<String,Object> reference:referenceItems(task.get("reference_images"))) if(references.size()<20) references.add(reference);
+        List<Map<String,Object>> references=referenceReader.videoReferences(tenant,number(task,"project_id"),id,
+            task.get("first_frame_url"),task.get("last_frame_url"),task.get("reference_images"));
         return List.of(section("submission","本次提交","TEXT",available(prompt),prompt,fields("负向提示词",task.get("negative_prompt")),List.of(),more(prompt)),
-            section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model"),"服务商",task.get("provider_code"),"时长（秒）",task.get("duration_seconds"),"比例",task.get("aspect_ratio"),"分辨率",task.get("resolution"),"运动强度",task.get("motion_strength"),"镜头运动",task.get("camera_movement"),"随机种子",task.get("random_seed")),List.of(),false),
+            section("settings","生成设置","FIELDS","AVAILABLE",null,fields("模型",task.get("model_name")==null?task.get("model"):task.get("model_name"),"服务商",task.get("provider_name")==null?task.get("provider_code"):task.get("provider_name"),"时长（秒）",task.get("duration_seconds"),"比例",task.get("aspect_ratio"),"分辨率",task.get("resolution"),"运动强度",task.get("motion_strength"),"镜头运动",task.get("camera_movement"),"随机种子",task.get("random_seed")),List.of(),false),
             section("results","生成结果","VIDEO",mediaAvailability(results,"video_url"),null,List.of(),
                 media(firstPage(results),"video_url",number(task,"project_id"),"VIDEO"),resultsMore),
             section("references","参考素材","IMAGE",references.isEmpty()?"NOT_RECORDED":"AVAILABLE",null,List.of(),references,false));
@@ -576,25 +577,6 @@ public class ProductionTaskService {
             item.put("width",row.get("width")); item.put("height",row.get("height"));
             item.put("selected",truth(row.get("is_selected"))); return item;
         }).toList();
-    }
-    private List<Map<String,Object>> referenceItems(Object stored) {
-        if(stored==null || String.valueOf(stored).isBlank()) return List.of();
-        try {
-            List<Map<String,Object>> items=new ArrayList<>();
-            for(var node:mapper.readTree(String.valueOf(stored))) {
-                String url=node.isTextual()?node.asText():node.path("url").asText("");
-                String thumbnail=com.antshorttv.material.CompressedImageReferences.thumbnail(url);
-                if(thumbnail!=null) {
-                    items.add(Map.of("url",thumbnail,"thumbnailUrl",thumbnail));
-                    if(items.size()==20) break;
-                }
-            }
-            return items;
-        } catch(Exception ignored) { return List.of(); }
-    }
-    private static void addReference(List<Map<String,Object>> items,Object value,String role) {
-        String thumbnail=com.antshorttv.material.CompressedImageReferences.thumbnail(text(value));
-        if(thumbnail!=null&&items.size()<20) items.add(Map.of("url",thumbnail,"thumbnailUrl",thumbnail,"role",role));
     }
     private static List<Map<String,Object>> firstPage(List<Map<String,Object>> rows) { return rows.size()>20?rows.subList(0,20):rows; }
     private static List<Map<String,Object>> bounded(List<Map<String,Object>>... groups) {

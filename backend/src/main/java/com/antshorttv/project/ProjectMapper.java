@@ -15,6 +15,10 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
         p.tenant_id = #{tenantId} and p.deleted_at is null
         and (#{keyword} is null or p.name like concat('%', #{keyword}, '%')
              or p.code like concat('%', #{keyword}, '%'))
+        <if test="statuses != null and !statuses.isEmpty()">
+            and p.status in
+            <foreach collection="statuses" item="status" open="(" separator="," close=")">#{status}</foreach>
+        </if>
         and (#{wide} = true or exists (
             select 1 from project_member pm
             join project_role pr on pr.id = pm.role_id and pr.project_id = p.id
@@ -26,11 +30,12 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
                 and pm.user_id = #{userId} and pm.status = 'ACTIVE'))
         """;
 
-    @Select("select count(*) from project p where " + VISIBLE)
+    @Select("<script>select count(*) from project p where " + VISIBLE + "</script>")
     long countVisible(@Param("tenantId") Long tenantId, @Param("userId") Long userId,
-        @Param("wide") boolean wide, @Param("keyword") String keyword);
+        @Param("wide") boolean wide, @Param("keyword") String keyword, @Param("statuses") List<String> statuses);
 
     @Select("""
+        <script>
         select p.id, p.tenant_id, p.name, p.code, p.description,
                case when p.cover_url is null or p.cover_url = '' then null else 'present' end as cover_url,
                p.cover_source, p.cover_version, p.cover_status,
@@ -39,9 +44,10 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
                p.script_type, p.breakdown_strength, p.visual_style, p.created_by,
                p.created_at, p.updated_at, p.deleted_at
           from project p where
-        """ + VISIBLE + " order by p.created_at desc, p.id desc limit #{bounds.pageSize} offset #{bounds.offset}")
+        """ + VISIBLE + " order by p.created_at desc, p.id desc limit #{bounds.pageSize} offset #{bounds.offset}</script>")
     List<ProjectEntity> selectVisiblePage(@Param("tenantId") Long tenantId, @Param("userId") Long userId,
-        @Param("wide") boolean wide, @Param("keyword") String keyword, @Param("bounds") PageBounds bounds);
+        @Param("wide") boolean wide, @Param("keyword") String keyword, @Param("statuses") List<String> statuses,
+        @Param("bounds") PageBounds bounds);
 
     @Select("""
         <script>

@@ -230,15 +230,17 @@ export default function Records({
   const download = (recordId: number, outputId: number) =>
     void action(async (signal) => {
       const result = await getCreationDownload(recordId, outputId, signal);
-      if (signal.aborted) return;
       const link = document.createElement('a');
-      link.href = result.url;
-      link.download = result.fileName;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      try {
+        if (signal.aborted) return;
+        link.href = result.url;
+        link.download = result.fileName;
+        document.body.appendChild(link);
+        link.click();
+      } finally {
+        link.remove();
+        URL.revokeObjectURL(result.url);
+      }
     });
   const filter = (values: Partial<CreationQuery>) =>
     setQuery((current) => ({ ...current, ...values, current: 1 }));

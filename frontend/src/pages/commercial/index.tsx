@@ -1,6 +1,6 @@
 import { LeftOutlined, WalletOutlined } from '@ant-design/icons';
 import { history, useAccess, useModel } from '@umijs/max';
-import { App, Button, Empty, Spin, Table, Tag } from 'antd';
+import { App, Button, Empty, Select, Spin, Table, Tag } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount, queryTeamPointTransactions } from '@/services/account-team/points';
@@ -24,12 +24,12 @@ import {
 import styles from './index.less';
 
 const pointTransactionTypeText: Record<string, string> = {
+  RELEASE: '预扣释放',
+  SETTLE: '积分消耗',
+  RESERVE: '积分预扣',
   ENTITLEMENT_GRANT: '权益发放',
   ADJUST_GRANT: '手动增加',
-  RESERVE: '积分预扣',
   INCREMENTAL_RESERVE: '追加预扣',
-  SETTLE: '积分消耗',
-  RELEASE: '预扣释放',
   REFUND: '积分退回',
   SETTLEMENT_REVIEW: '结算待核对',
 };
@@ -69,6 +69,10 @@ const CommercialPage = () => {
   const [current, setCurrent] = useState<TeamSubscription | null>(null);
   const [queued, setQueued] = useState<TeamSubscription[]>([]);
   const [pointTransactions, setPointTransactions] = useState<TeamPointTransaction[]>([]);
+  const [pointQuery, setPointQuery] = useState({ tenantId, current: 1, pageSize: 20, transactionType: '' });
+  const [pointTotal, setPointTotal] = useState(0);
+  const [pointsLoading, setPointsLoading] = useState(false);
+  const [pointRevision, setPointRevision] = useState(0);
   const [orders, setOrders] = useState<CommercialOrder[]>([]);
   const [balance, setBalance] = useState(0);
   const [trialBalance, setTrialBalance] = useState(0);
@@ -79,13 +83,12 @@ const CommercialPage = () => {
     if (!tenantId || currentTenantRef.current !== tenantId) return;
     const scope = scopeRef.current;
     setLoading(true);
-    const [catalogResult, currentResult, queuedResult, ordersResult, pointsResult, transactionsResult] = await Promise.allSettled([
+    const [catalogResult, currentResult, queuedResult, ordersResult, pointsResult] = await Promise.allSettled([
       queryCommercialCatalog(tenantId),
       queryCurrentSubscription(tenantId),
       queryQueuedSubscriptions(tenantId),
       queryActiveCommercialOrders(tenantId),
       queryTeamPointAccount(tenantId),
-      queryTeamPointTransactions(tenantId),
     ]);
     if (scope !== scopeRef.current || currentTenantRef.current !== tenantId) return;
     if (catalogResult.status === 'fulfilled') {
@@ -102,9 +105,7 @@ const CommercialPage = () => {
       setBalance(pointsResult.value.data?.balance ?? 0);
       setTrialBalance(pointsResult.value.data?.trialBalance ?? 0);
     }
-    if (transactionsResult.status === 'fulfilled') {
-      setPointTransactions(transactionsResult.value.data?.records ?? []);
-    }
+    setPointRevision((revision) => revision + 1);
     setLoading(false);
   }, [tenantId]);
 
@@ -121,11 +122,37 @@ const CommercialPage = () => {
     setBalance(0);
     setTrialBalance(0);
     setPointTransactions([]);
+    setPointTotal(0);
+    setPointRevision(0);
+    setPointQuery({ tenantId, current: 1, pageSize: 20, transactionType: '' });
     setPayment(undefined);
     setSubmitting(false);
     void load();
     return () => { scopeRef.current += 1; };
   }, [tenantId, load]);
+
+  useEffect(() => {
+    if (!tenantId || pointQuery.tenantId !== tenantId || pointRevision === 0) return;
+    let disposed = false;
+    setPointsLoading(true);
+    setPointTransactions([]);
+    setPointTotal(0);
+    void queryTeamPointTransactions(tenantId, {
+      current: pointQuery.current,
+      pageSize: pointQuery.pageSize,
+      transactionType: pointQuery.transactionType || undefined,
+    }).then((response) => {
+      if (disposed || currentTenantRef.current !== tenantId) return;
+      setPointTransactions(response.data?.records ?? []);
+      setPointTotal(response.data?.total ?? 0);
+    }).catch((error) => {
+      if (disposed || currentTenantRef.current !== tenantId) return;
+      messageRef.current.error(errorText(error, '积分明细加载失败'));
+    }).finally(() => {
+      if (!disposed && currentTenantRef.current === tenantId) setPointsLoading(false);
+    });
+    return () => { disposed = true; };
+  }, [tenantId, pointQuery, pointRevision]);
 
   useEffect(() => {
     if (!tenantId || !payment || !['PENDING_PAYMENT', 'ENTITLEMENT_PENDING'].includes(payment.status)) return undefined;
@@ -275,11 +302,32 @@ const CommercialPage = () => {
         </section>
 
         <section className={styles.accountSection} aria-label="积分明细" id="point-history">
-          <h2>积分明细</h2>
+          <div className={styles.pointHistoryHeader}>
+            <h2>积分明细</h2>
+            <Select
+              aria-label="变化类型"
+              className={styles.pointTypeSelect}
+              size="small"
+              value={pointQuery.transactionType}
+              options={[{ label: '全部', value: '' }, ...Object.entries(pointTransactionTypeText).map(([value, label]) => ({ value, label }))]}
+              onChange={(transactionType: string) => setPointQuery((query) => ({ ...query, current: 1, transactionType }))}
+            />
+          </div>
           <Table<TeamPointTransaction>
             rowKey="id"
             size="small"
-            pagination={false}
+            loading={pointsLoading}
+            pagination={{
+              current: pointQuery.current,
+              pageSize: pointQuery.pageSize,
+              total: pointTotal,
+              showSizeChanger: true,
+              pageSizeOptions: [20, 50, 100],
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (current, pageSize) => setPointQuery((query) => ({
+                ...query, current: pageSize === query.pageSize ? current : 1, pageSize,
+              })),
+            }}
             dataSource={pointTransactions}
             columns={[
               { title: '变化类型', dataIndex: 'transactionType', render: (value: string) => pointTransactionTypeText[value] ?? value },

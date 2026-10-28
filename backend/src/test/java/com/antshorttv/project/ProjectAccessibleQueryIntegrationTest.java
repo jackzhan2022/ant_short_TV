@@ -55,18 +55,18 @@ class ProjectAccessibleQueryIntegrationTest {
                 select ?,?,?,id,current_timestamp from permission where code='MENU:PROJECTS'
                 """, tenantId, id, role);
         }
-        assertThat(projectMapper.countVisible(tenantId, userId, false, null)).isEqualTo(3);
-        var page = projectMapper.selectVisiblePage(tenantId, userId, false, null, PageBounds.of(2, 2));
+        assertThat(projectMapper.countVisible(tenantId, userId, false, null, null)).isEqualTo(3);
+        var page = projectMapper.selectVisiblePage(tenantId, userId, false, null, null, PageBounds.of(2, 2));
         assertThat(page).hasSize(1);
         assertThat(page.get(0).code).isEqualTo("BROWSE_0");
-        assertThat(projectMapper.countVisible(tenantId, userId, true, null)).isEqualTo(4);
-        assertThat(projectMapper.selectVisiblePage(tenantId, userId, true, "BROWSE_3", PageBounds.of(1, 20)))
+        assertThat(projectMapper.countVisible(tenantId, userId, true, null, null)).isEqualTo(4);
+        assertThat(projectMapper.selectVisiblePage(tenantId, userId, true, "BROWSE_3", null, PageBounds.of(1, 20)))
             .hasSize(1);
         ProjectMemberEntity removed = new ProjectMemberEntity();
         removed.status = "REMOVED";
         projectMemberMapper.update(removed, new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ProjectMemberEntity>()
             .eq("tenant_id", tenantId));
-        assertThat(projectMapper.countVisible(tenantId, userId, false, null)).isZero();
+        assertThat(projectMapper.countVisible(tenantId, userId, false, null, null)).isZero();
     }
 
     @Test

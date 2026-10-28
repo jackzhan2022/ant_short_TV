@@ -50,13 +50,14 @@ vi.mock('antd', () => ({
   }),
   Modal: ({ children, open, title }: any) => open ? <section role="dialog" aria-label={title}>{children}</section> : null,
   QRCode: ({ value }: any) => <div data-testid="qr-code">{value}</div>,
+  Select: ({ options, value, onChange, 'aria-label': label }: { options: { label: string; value: string }[]; value: string; onChange: (value: string) => void; 'aria-label': string }) => <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   Space: ({ children }: any) => <div>{children}</div>,
   Spin: ({ children }: any) => <div>{children}</div>,
   Statistic: ({ value, suffix }: any) => <div>{value} {suffix}</div>,
-  Table: ({ dataSource = [], columns = [] }: any) => <div>{dataSource.map((record: any) => <div key={record.id}>{columns.map((column: any, index: number) => <span key={column.dataIndex ?? index}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>,
+  Table: ({ dataSource = [], columns = [], pagination }: any) => <div>{pagination && <nav aria-label="积分分页"><span>{pagination.showTotal(pagination.total)}</span><span>第 {pagination.current} 页</span><button type="button" disabled={pagination.current * pagination.pageSize >= pagination.total} onClick={() => pagination.onChange(pagination.current + 1, pagination.pageSize)}>下一页</button><button type="button" onClick={() => pagination.onChange(1, 50)}>每页50条</button></nav>}<table><tbody>{dataSource.map((record: any) => <tr key={record.id}>{columns.map((column: any, index: number) => <td key={column.dataIndex ?? index}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</td>)}</tr>)}</tbody></table></div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Tabs: ({ items, onChange, activeKey }: any) => <div role="tablist">{items.map((item: any) => <button role="tab" aria-selected={activeKey === item.key} type="button" key={item.key} onClick={() => onChange(item.key)}>{item.label}</button>)}</div>,
-  Radio: { Group: ({ options, value, onChange }: any) => <fieldset aria-label="会员周期">{options.map((item: any) => <button type="button" aria-pressed={value === item.value} key={item.value} onClick={() => onChange({ target: { value: item.value } })}>{item.label}</button>)}</fieldset> },
+  Radio: { Group: ({ options, value, onChange, 'aria-label': label }: any) => <fieldset aria-label={label ?? "会员周期"}>{options.map((item: any) => <button type="button" aria-pressed={value === item.value} key={item.value} onClick={() => onChange({ target: { value: item.value } })}>{item.label}</button>)}</fieldset> },
   Typography: { Text: ({ children }: any) => <span>{children}</span>, Title: ({ children }: any) => <h1>{children}</h1>, Paragraph: ({ children }: any) => <p>{children}</p> },
 }));
 vi.mock('@ant-design/icons', () => ({ CheckOutlined: () => null, LeftOutlined: () => null, LockOutlined: () => null, WalletOutlined: () => null, CreditCardOutlined: () => null, SafetyCertificateOutlined: () => null }));
@@ -97,6 +98,67 @@ describe('CommercialPage', () => {
     vi.useRealTimers();
   });
 
+  it('paginates all records and resets to page one when filtering by type', async () => {
+    mocks.pointTransactions.mockImplementation(async (_tenant, query) => ({ data: {
+      records: [{ id: query.current, transactionType: query.transactionType ?? 'RESERVE',
+        changeAmount: -10, balanceAfter: 100, description: `记录-${query.transactionType ?? '全部'}-${query.current}` }],
+      total: query.transactionType ? 25 : 61, current: query.current, pageSize: query.pageSize,
+    } }));
+    render(<CommercialPage />);
+    await screen.findByText('记录-全部-1');
+    const filter = screen.getByRole('combobox', { name: '变化类型' });
+    expect(filter).toHaveValue('');
+    expect(within(filter).getAllByRole('option')).toHaveLength(9);
+    expect(screen.getByText('共 61 条')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await screen.findByText('记录-全部-2');
+    expect(mocks.pointTransactions).toHaveBeenLastCalledWith(10, { current: 2, pageSize: 20, transactionType: undefined });
+    fireEvent.change(filter, { target: { value: 'RELEASE' } });
+    await screen.findByText('记录-RELEASE-1');
+    expect(screen.getByText('共 25 条')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await screen.findByText('记录-RELEASE-2');
+    expect(mocks.pointTransactions).toHaveBeenLastCalledWith(10, { current: 2, pageSize: 20, transactionType: 'RELEASE' });
+    fireEvent.click(screen.getByRole('button', { name: '每页50条' }));
+    await waitFor(() => expect(mocks.pointTransactions).toHaveBeenLastCalledWith(10, { current: 1, pageSize: 50, transactionType: 'RELEASE' }));
+    fireEvent.change(filter, { target: { value: '' } });
+    await waitFor(() => expect(mocks.pointTransactions).toHaveBeenLastCalledWith(10, { current: 1, pageSize: 50, transactionType: undefined }));
+    expect(mocks.catalog).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a stale filter response and clears records when the query fails', async () => {
+    let resolveOld: (value: unknown) => void = () => {};
+    render(<CommercialPage />);
+    await screen.findByText('会员周期积分发放');
+    mocks.pointTransactions.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    fireEvent.change(screen.getByRole('combobox', { name: '变化类型' }), { target: { value: 'RELEASE' } });
+    mocks.pointTransactions.mockResolvedValueOnce({ data: { records: [], total: 0 } });
+    fireEvent.change(screen.getByRole('combobox', { name: '变化类型' }), { target: { value: 'SETTLE' } });
+    await screen.findByText('共 0 条');
+    await act(async () => resolveOld({ data: { records: [{ id: 99, description: '过期结果' }], total: 99 } }));
+    expect(screen.queryByText('过期结果')).not.toBeInTheDocument();
+    mocks.pointTransactions.mockRejectedValueOnce(new Error('查询失败'));
+    fireEvent.change(screen.getByRole('combobox', { name: '变化类型' }), { target: { value: 'REFUND' } });
+    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith('查询失败'));
+    expect(screen.getByText('共 0 条')).toBeInTheDocument();
+  });
+
+  it('resets the filter and page when switching teams and ignores the old team response', async () => {
+    const { rerender } = render(<CommercialPage />);
+    await screen.findByText('会员周期积分发放');
+    let resolveOld: (value: unknown) => void = () => {};
+    mocks.pointTransactions.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    fireEvent.change(screen.getByRole('combobox', { name: '变化类型' }), { target: { value: 'RESERVE' } });
+    mocks.pointTransactions.mockResolvedValue({ data: { records: [], total: 0 } });
+    mocks.tenantId = 20;
+    rerender(<CommercialPage />);
+    await waitFor(() => expect(mocks.pointTransactions).toHaveBeenLastCalledWith(20, { current: 1, pageSize: 20, transactionType: undefined }));
+    expect(screen.getByRole('combobox', { name: '变化类型' })).toHaveValue('');
+    await act(async () => resolveOld({ data: { records: [{ id: 99, description: '旧团队记录' }], total: 99 } }));
+    expect(screen.queryByText('旧团队记录')).not.toBeInTheDocument();
+    expect(screen.getByText('共 0 条')).toBeInTheDocument();
+  });
+
   it('uses the workbench logo in its brand entry and keeps home navigation', async () => {
     render(<CommercialPage />);
     await screen.findByText('2,140');
@@ -114,19 +176,20 @@ describe('CommercialPage', () => {
     render(<CommercialPage />);
 
     await waitFor(() => expect(mocks.catalog).toHaveBeenCalledWith(10));
-    expect(mocks.pointTransactions).toHaveBeenCalledWith(10);
+    await waitFor(() => expect(mocks.pointTransactions).toHaveBeenCalledWith(10, { current: 1, pageSize: 20, transactionType: undefined }));
+    await screen.findByText('会员周期积分发放');
     expect(mocks.grants).not.toHaveBeenCalled();
     expect(await screen.findAllByText('专业版月卡')).not.toHaveLength(0);
     expect(screen.getByText('专业版季卡', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('2,140')).toBeInTheDocument();
     expect(screen.getByText('积分明细')).toBeInTheDocument();
-    expect(screen.getByText('权益发放')).toBeInTheDocument();
-    expect(screen.getByText('手动增加')).toBeInTheDocument();
-    expect(screen.getByText('积分预扣')).toBeInTheDocument();
-    expect(screen.getByText('追加预扣')).toBeInTheDocument();
-    expect(screen.getByText('积分消耗')).toBeInTheDocument();
-    expect(screen.getByText('预扣释放')).toBeInTheDocument();
-    expect(screen.getByText('积分退回')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('权益发放')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('手动增加')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('积分预扣')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('追加预扣')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('积分消耗')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('预扣释放')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('积分退回')).toBeInTheDocument();
     expect(screen.getByText('LOYALTY_BONUS')).toBeInTheDocument();
     expect(screen.getByText('4,000')).toBeInTheDocument();
     expect(screen.getByText('会员周期积分发放')).toBeInTheDocument();
@@ -151,7 +214,7 @@ describe('CommercialPage', () => {
       balanceAfter: 100, description, createdAt: '2026-10-20T16:42:00',
     }] } });
     render(<CommercialPage />);
-    expect(await screen.findByText('结算待核对')).toBeInTheDocument();
+    expect(await within(screen.getByRole('table')).findByText('结算待核对')).toBeInTheDocument();
     expect(screen.getByText(description)).toBeInTheDocument();
     expect(screen.queryByText('SETTLEMENT_REVIEW')).not.toBeInTheDocument();
   });

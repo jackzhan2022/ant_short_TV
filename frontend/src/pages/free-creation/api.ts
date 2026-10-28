@@ -134,10 +134,32 @@ export async function getCreationDownload(
   outputId: number,
   signal?: AbortSignal,
 ) {
-  return unwrap(
-    await request<Response<{ url: string; fileName: string }>>(
-      `/api/free-creations/${id}/outputs/${outputId}/download`,
-      { method: 'GET', signal, skipErrorHandler: true },
-    ),
+  const tenantId = localStorage.getItem('currentTenantId');
+  const response = await fetch(
+    `/api/free-creations/${id}/outputs/${outputId}/download-file`,
+    {
+      method: 'GET', credentials: 'same-origin', cache: 'no-store',
+      redirect: 'error', signal,
+      headers: tenantId ? { 'X-Tenant-Id': tenantId } : {},
+    },
   );
+  const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!response.ok || !(type.startsWith('image/') || type.startsWith('video/') || type === 'application/octet-stream')) {
+    let detail = `下载失败，请重试（${response.status}）。`;
+    if (type === 'application/json') {
+      const error = await response.json().catch(() => undefined);
+      if (typeof error?.errorMessage === 'string') detail = error.errorMessage;
+    }
+    throw new Error(detail);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  let fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `作品_${outputId}`;
+  if (encoded) {
+    try { fileName = decodeURIComponent(encoded); } catch { fileName = `作品_${outputId}`; }
+  }
+  const blob = await response.blob();
+  signal?.throwIfAborted();
+  if (!blob.size) throw new Error('下载文件为空，请重试。');
+  return { url: URL.createObjectURL(blob), fileName };
 }

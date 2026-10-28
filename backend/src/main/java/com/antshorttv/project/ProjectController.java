@@ -31,8 +31,9 @@ public class ProjectController {
     public ApiResponse<MediaPage<ProjectResponse>> list(HttpServletRequest request,
         @RequestParam(required = false) Integer current,
         @RequestParam(required = false) Integer pageSize,
-        @RequestParam(required = false) String keyword) {
-        return ApiResponse.success(projectService.list(tenantId(request), current, pageSize, keyword));
+        @RequestParam(required = false) String keyword,
+        @RequestParam(required = false) List<ProjectStatus> statuses) {
+        return ApiResponse.success(projectService.list(tenantId(request), current, pageSize, keyword, statuses));
     }
 
     @PostMapping

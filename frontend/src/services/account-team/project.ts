@@ -47,7 +47,7 @@ export type ProjectRoleFormValues = {
 export const canUseProjectFeatures = (project: Project) =>
   project.effectivePermissions.some((code) => ['MENU:PROJECTS', 'MENU:SHORT_DRAMA_CREATION'].includes(code));
 
-export async function queryProjects(params: MediaPageParams & { keyword?: string } = {}, signal?: AbortSignal) {
+export async function queryProjects(params: MediaPageParams & { keyword?: string; statuses?: string } = {}, signal?: AbortSignal) {
   return request<ApiResponse<MediaPage<Project>>>('/api/projects', { params, signal });
 }
 

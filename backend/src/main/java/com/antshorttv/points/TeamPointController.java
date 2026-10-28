@@ -35,9 +35,10 @@ public class TeamPointController {
     public ApiResponse<TeamPointTransactionPageResponse> transactions(
         @PathVariable Long tenantId,
         @RequestParam(defaultValue = "1") Integer current,
-        @RequestParam(defaultValue = "20") Integer pageSize
+        @RequestParam(defaultValue = "20") Integer pageSize,
+        @RequestParam(required = false) TeamPointTransactionType transactionType
     ) {
-        return ApiResponse.success(teamPointService.transactions(tenantId, current, pageSize));
+        return ApiResponse.success(teamPointService.transactions(tenantId, current, pageSize, transactionType));
     }
 
     @GetMapping("/tenants/{tenantId}/points/reconciliation")

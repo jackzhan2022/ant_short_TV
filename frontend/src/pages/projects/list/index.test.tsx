@@ -57,6 +57,12 @@ vi.mock('antd', () => ({
   ),
   Empty: ({ description, children }: any) => <div>{description}{children}</div>,
   Pagination: ({ current, onChange }: any) => <button type="button" aria-label="下一页" onClick={() => onChange(current + 1, 20)}>下一页</button>,
+  Select: ({ value, options, onChange, 'aria-label': label }: any) => (
+    <><select multiple aria-label={label} value={value}
+      onChange={(event) => onChange(Array.from(event.target.selectedOptions, option => option.value))}>
+      {options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select><button type="button" aria-label="清空项目状态" onClick={() => onChange([])}>清空</button></>
+  ),
   Space: ({ children }: any) => <div>{children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
 }));
@@ -240,6 +246,8 @@ describe('ProjectList', () => {
   it('offers a first-project action when the selected team has no projects', async () => {
     mocks.queryProjects.mockResolvedValue({ success: true, data: [] });
     render(<ProjectList />);
+    await screen.findByText('暂无符合所选状态的项目');
+    fireEvent.click(screen.getByRole('button', { name: '清空项目状态' }));
     const button = await screen.findByRole('button', { name: '创建第一个项目' });
     expect(screen.getByText('创建你的第一个短剧项目')).toBeInTheDocument();
     fireEvent.click(button);
@@ -250,7 +258,7 @@ describe('ProjectList', () => {
     mocks.canCreateProject = false;
     mocks.queryProjects.mockResolvedValue({ success: true, data: [] });
     render(<ProjectList />);
-    await screen.findByText('暂无项目，请联系团队管理员创建项目');
+    await screen.findByText('暂无符合所选状态的项目');
     expect(screen.queryByRole('button', { name: '创建第一个项目' })).not.toBeInTheDocument();
   });
 
@@ -263,13 +271,50 @@ describe('ProjectList', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('defaults to pending and active projects with exactly three status options', async () => {
+    render(<ProjectList />);
+    await screen.findByText('测试短剧');
+    const selector = screen.getByRole('listbox', { name: '项目状态' }) as HTMLSelectElement;
+    expect(Array.from(selector.options, option => option.text)).toEqual(['未开始', '进行中', '已归档']);
+    expect(Array.from(selector.selectedOptions, option => option.value)).toEqual(['NOT_STARTED', 'IN_PROGRESS']);
+    expect(mocks.queryProjects).toHaveBeenCalledWith(
+      { current: 1, pageSize: 20, statuses: 'NOT_STARTED,IN_PROGRESS' }, expect.anything(),
+    );
+  });
+
+  it('resets to page one when changing status and clears the server filter when deselected', async () => {
+    render(<ProjectList />);
+    await screen.findByText('测试短剧');
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() => expect(mocks.queryProjects).toHaveBeenLastCalledWith(
+      { current: 2, pageSize: 20, statuses: 'NOT_STARTED,IN_PROGRESS' }, expect.anything(),
+    ));
+    const selector = screen.getByRole('listbox', { name: '项目状态' }) as HTMLSelectElement;
+    Array.from(selector.options).forEach(option => { option.selected = option.value === 'ARCHIVED'; });
+    fireEvent.change(selector);
+    await waitFor(() => expect(mocks.queryProjects).toHaveBeenLastCalledWith(
+      { current: 1, pageSize: 20, statuses: 'ARCHIVED' }, expect.anything(),
+    ));
+    fireEvent.click(screen.getByRole('button', { name: '清空项目状态' }));
+    await waitFor(() => expect(mocks.queryProjects).toHaveBeenLastCalledWith(
+      { current: 1, pageSize: 20, statuses: undefined }, expect.anything(),
+    ));
+  });
+
+  it('shows a filter empty state without claiming that the team has never created projects', async () => {
+    mocks.queryProjects.mockResolvedValue({ success: true, data: [] });
+    render(<ProjectList />);
+    await screen.findByText('暂无符合所选状态的项目');
+    expect(screen.queryByRole('button', { name: '创建第一个项目' })).not.toBeInTheDocument();
+  });
+
   it('requests the next server page and displays its authorized total', async () => {
     mocks.queryProjects.mockResolvedValue({ success: true,
       data: { data: [], current: 1, pageSize: 20, total: 45 } });
     render(<ProjectList />);
     await screen.findByText('共 45 个项目');
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
-    await waitFor(() => expect(mocks.queryProjects).toHaveBeenCalledWith({ current: 2, pageSize: 20 }, expect.anything()));
+    await waitFor(() => expect(mocks.queryProjects).toHaveBeenCalledWith({ current: 2, pageSize: 20, statuses: 'NOT_STARTED,IN_PROGRESS' }, expect.anything()));
   });
   it('keeps only edit and status actions without showing the internal project code', async () => {
     const response = await mocks.queryProjects();

@@ -7,7 +7,7 @@ import {
   PageContainer,
 } from '@ant-design/pro-components';
 import { history, useAccess } from '@umijs/max';
-import { App, Button, Empty, Pagination, Tag } from 'antd';
+import { App, Button, Empty, Pagination, Select, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import ProjectCoverImage from '@/components/ProjectCoverImage';
 import { getCurrentTenantId } from '@/services/account-team/auth';
@@ -151,6 +151,7 @@ const ProjectList = () => {
   const [current, setCurrent] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [statuses, setStatuses] = useState<ProjectStatus[]>(['NOT_STARTED', 'IN_PROGRESS']);
   const projectRequestId = useRef(0);
 
   const loadOptions = async () => {
@@ -164,7 +165,7 @@ const ProjectList = () => {
     const requestId = ++projectRequestId.current;
     setLoading(true);
     try {
-      const response = await queryProjects({ current, pageSize }, signal);
+      const response = await queryProjects({ current, pageSize, statuses: statuses.length ? statuses.join(',') : undefined }, signal);
       if (signal?.aborted || requestId !== projectRequestId.current) return;
       setProjects(response.data.data);
       setTotal(response.data.total);
@@ -185,7 +186,7 @@ const ProjectList = () => {
       if (!controller.signal.aborted) setProjects([]);
     });
     return () => controller.abort();
-  }, [tenantId, current, pageSize]);
+  }, [tenantId, current, pageSize, statuses]);
 
   if (!tenantId) {
     return (
@@ -202,15 +203,28 @@ const ProjectList = () => {
           <h1 className={styles.title}>项目列表</h1>
           <span className={styles.count}>共 {total} 个项目</span>
         </div>
-        {access.canCreateProject && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => history.push('/short-drama-creation')}
-          >
-            创建项目
-          </Button>
-        )}
+        <div className={styles.toolbarActions}>
+          <Select<ProjectStatus[]>
+            aria-label="项目状态"
+            className={styles.statusFilter}
+            mode="multiple"
+            allowClear
+            showSearch={false}
+            placeholder="全部状态"
+            value={statuses}
+            options={(['NOT_STARTED', 'IN_PROGRESS', 'ARCHIVED'] as const).map(value => ({ value, label: statusText[value] }))}
+            onChange={(values) => { setStatuses(values); setCurrent(1); }}
+          />
+          {access.canCreateProject && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => history.push('/short-drama-creation')}
+            >
+              创建项目
+            </Button>
+          )}
+        </div>
       </div>
       {loading ? (
         <div className={styles.loading}>加载项目中...</div>
@@ -230,9 +244,9 @@ const ProjectList = () => {
         </div>
       ) : (
         <Empty
-          description={total > 0 ? '当前页暂无项目' : access.canCreateProject ? '创建你的第一个短剧项目' : '暂无项目，请联系团队管理员创建项目'}
+          description={total > 0 ? '当前页暂无项目' : statuses.length ? '暂无符合所选状态的项目' : access.canCreateProject ? '创建你的第一个短剧项目' : '暂无项目，请联系团队管理员创建项目'}
         >
-          {total === 0 && access.canCreateProject && (
+          {total === 0 && statuses.length === 0 && access.canCreateProject && (
             <>
               <p>从一个故事想法开始，逐步完成剧本、分镜和成片。</p>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => history.push('/short-drama-creation')}>

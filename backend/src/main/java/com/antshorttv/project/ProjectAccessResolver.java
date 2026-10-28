@@ -113,15 +113,16 @@ public class ProjectAccessResolver {
     }
 
     public MediaPage<ProjectAccessContext> accessibleProjectPage(Long tenantId, Integer current,
-        Integer pageSize, String keyword) {
+        Integer pageSize, String keyword, List<ProjectStatus> statuses) {
         TenantContext tenant = tenantContextResolver.requireActiveMember(tenantId);
         Set<String> permissions = permissionService.permissionCodes(tenant);
         if (!MenuAuthorization.canReadProject(permissions)) throw denied();
         boolean wide = permissionService.canAccessAllProjects(tenant);
         PageBounds bounds = PageBounds.of(current, pageSize);
         String search = keyword == null || keyword.isBlank() ? null : keyword.trim();
-        long total = projectMapper.countVisible(tenantId, tenant.userId(), wide, search);
-        List<ProjectEntity> projects = projectMapper.selectVisiblePage(tenantId, tenant.userId(), wide, search, bounds);
+        List<String> statusNames = statuses == null ? List.of() : statuses.stream().map(ProjectStatus::name).distinct().toList();
+        long total = projectMapper.countVisible(tenantId, tenant.userId(), wide, search, statusNames);
+        List<ProjectEntity> projects = projectMapper.selectVisiblePage(tenantId, tenant.userId(), wide, search, statusNames, bounds);
         if (projects.isEmpty()) return new MediaPage<>(List.of(), bounds.current(), bounds.pageSize(), total);
         Map<Long, List<ProjectBrowsePermission>> rows = wide ? Map.of() : projectMapper.selectBrowsePermissions(
             tenantId, tenant.userId(), projects.stream().map(project -> project.id).toList())

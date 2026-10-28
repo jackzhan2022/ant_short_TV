@@ -49,6 +49,45 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void filtersStatusesBeforePaginationAndCountsOnlyMatchingProjects() throws Exception {
+        String token = registerUser("13800011981", "Status Filter Owner");
+        Long tenantId = createTenant(token, "Status Filter Team");
+        Long ownerId = userIdByMobile("13800011981");
+        Long pending = createProject(token, tenantId, ownerId, "Pending", "FILTER_PENDING");
+        Long running = createProject(token, tenantId, ownerId, "Running", "FILTER_RUNNING");
+        Long archived = createProject(token, tenantId, ownerId, "Archived", "FILTER_ARCHIVED");
+        jdbcTemplate.update("update project set status='IN_PROGRESS' where id=?", running);
+        jdbcTemplate.update("update project set status='ARCHIVED' where id=?", archived);
+
+        mockMvc.perform(get("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .param("statuses", "NOT_STARTED,IN_PROGRESS").param("pageSize", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total", is(2)))
+            .andExpect(jsonPath("$.data.data", hasSize(1)))
+            .andExpect(jsonPath("$.data.data[0].id", is(running.intValue())));
+        mockMvc.perform(get("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId)
+                .param("statuses", "NOT_STARTED,IN_PROGRESS").param("pageSize", "1").param("current", "2"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total", is(2)))
+            .andExpect(jsonPath("$.data.data[0].id", is(pending.intValue())));
+        mockMvc.perform(get("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).param("statuses", "ARCHIVED"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total", is(1)))
+            .andExpect(jsonPath("$.data.data[0].id", is(archived.intValue())));
+        mockMvc.perform(get("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total", is(3)));
+    }
+
+    @Test
     void createsProjectWithDefaultRolesOwnerMemberAndAllowsProjectMemberAccessOnly() throws Exception {
         String ownerToken = registerUser("13800011002", "Project Owner");
         Long tenantId = createTenant(ownerToken, "项目访问团队");

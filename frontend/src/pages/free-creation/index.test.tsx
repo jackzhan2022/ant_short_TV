@@ -588,3 +588,26 @@ describe('自由创作页面', () => {
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ prompt: '草稿二', parameters: expect.objectContaining({ count: 4 }) }), expect.any(AbortSignal)));
   });
 });
+
+it('saves the original as a file and releases the temporary URL', async () => {
+  mocks.list.mockResolvedValue({ records: [{
+    id: 14, mediaType: 'IMAGE', status: 'SUCCEEDED', prompt: '下载作品',
+    creatorId: 1, creatorName: '作者', createdAt: '2026-10-28T10:00:00',
+    modelId: 1, modelName: '图片模型', parameters: {}, references: [], outputs: [{ id: 20 }],
+  }], total: 1, current: 1, pageSize: 10 });
+  mocks.download.mockResolvedValue({ url: 'blob:creation-download', fileName: '作品.png' });
+  const revoke = vi.fn();
+  vi.stubGlobal('URL', class extends URL { static revokeObjectURL = revoke; });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+  try {
+    render(<FreeCreationPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '下载' }));
+    await waitFor(() => expect(click).toHaveBeenCalledOnce());
+    expect(mocks.download).toHaveBeenCalledWith(14, 20, expect.any(AbortSignal));
+    expect(click.mock.instances[0]).toHaveProperty('href', 'blob:creation-download');
+    expect(click.mock.instances[0]).toHaveProperty('download', '作品.png');
+    expect(click.mock.instances[0]).toHaveProperty('target', '');
+    expect(revoke).toHaveBeenCalledWith('blob:creation-download');
+    expect(document.querySelector('a[download]')).toBeNull();
+  } finally { click.mockRestore(); vi.unstubAllGlobals(); }
+});

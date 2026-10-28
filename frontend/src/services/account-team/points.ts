@@ -11,8 +11,12 @@ export async function queryTeamPointAccount(tenantId: number) {
   );
 }
 
-export async function queryTeamPointTransactions(tenantId: number) {
+export async function queryTeamPointTransactions(
+  tenantId: number,
+  params?: { current?: number; pageSize?: number; transactionType?: string },
+) {
   return request<ApiResponse<TeamPointTransactionPage>>(
     `/api/tenants/${tenantId}/points/transactions`,
+    { params },
   );
 }

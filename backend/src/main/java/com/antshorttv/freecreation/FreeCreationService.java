@@ -326,9 +326,19 @@ public class FreeCreationService {
         var item=creations.selectById(id); if(item==null || !context.tenantId().equals(item.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"自由创作记录不存在。");return item;
     }
     public Map<String,Object> download(Long tenantId,Long id,Long outputId) {
-        var context=authorize(tenantId); var creation=require(context,id);
+        var context=authorize(tenantId); var output=downloadOutput(context,id,outputId);
+        return Map.of("url",media.grant(context,output,false),"fileName",output.fileName);
+    }
+    public CreationDownload downloadFile(Long tenantId,Long id,Long outputId) {
+        var output=downloadOutput(authorize(tenantId),id,outputId);
+        return new CreationDownload(storage.resource(output.objectKey),output.fileName,
+            output.mimeType==null?"application/octet-stream":output.mimeType,output.fileSize);
+    }
+    public record CreationDownload(org.springframework.core.io.Resource resource,String fileName,String contentType,Long fileSize) {}
+    private FreeCreationMediaEntity downloadOutput(TenantContext context,Long id,Long outputId) {
+        var creation=require(context,id);
         for(int depth=0;avatarRecovery!=null;depth++) {
-            var recovery=avatarRecovery.get(tenantId,creation.id);
+            var recovery=avatarRecovery.get(context.tenantId(),creation.id);
             if(recovery==null || !"SUCCEEDED".equals(recovery.get("status")))break;
             if(depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS)throw new BusinessException(ErrorCode.NOT_FOUND,"关联视频链超过安全上限。");
             creation=linkedCreation(context,creation,recovery);
@@ -336,8 +346,8 @@ public class FreeCreationService {
         }
         if (!"SUCCEEDED".equals(executions.requireTask(creation.executionId).status)) throw new BusinessException(ErrorCode.NOT_FOUND,"作品尚未发布。");
         var output=mediaMapper.selectById(outputId);
-        if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !tenantId.equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
-        return Map.of("url",media.grant(context,output,false),"fileName",output.fileName);
+        if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !context.tenantId().equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
+        return output;
     }
     Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0);}
     private Map<String,Object> present(TenantContext context,FreeCreationEntity item,int depth) {

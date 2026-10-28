@@ -1,0 +1,128 @@
+.drawerBody {
+  background: var(--app-color-bg-container);
+}
+.contentSection {
+  margin-top: 24px;
+  min-width: 0;
+}
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sectionHeading h5 {
+  margin: 0;
+}
+.sectionHeading :global(.ant-tag) {
+  margin-inline-end: 0;
+}
+.sourceVersion {
+  margin: -4px 0 12px;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.fieldTable {
+  margin-top: 12px;
+}
+.fieldTable :global(.ant-descriptions-view) {
+  overflow: hidden;
+  border-radius: 8px;
+}
+.fieldTable :global(.ant-descriptions-item-label) {
+  color: var(--app-color-text-secondary);
+  background: var(--app-color-fill-quaternary, #fafafa);
+}
+.fieldTable :global(.ant-descriptions-item-content) {
+  overflow-wrap: anywhere;
+}
+.textContent {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--app-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+  background: var(--app-color-fill-quaternary, #fafafa);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mediaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.referenceGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mediaCard {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--app-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+.mediaPreview {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--app-color-fill-tertiary, #f5f5f5);
+}
+.mediaPreview audio {
+  width: 100%;
+  min-width: 0;
+}
+.mediaFallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+}
+.mediaMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.mediaName {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+}
+.mediaActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.mediaActions a {
+  margin-left: auto;
+}
+.mediaActions :global(.ant-tag) {
+  margin: 0;
+}
+.taskActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+@media (max-width: 600px) {
+  .referenceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 400px) {
+  .mediaGrid {
+    grid-template-columns: 1fr;
+  }
+}

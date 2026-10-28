@@ -5,6 +5,21 @@
       "tailwindDirectives": true
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.module.css"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnknownPseudoClass": {
+              "level": "error",
+              "options": { "ignore": ["global", "local"] }
+            }
+          }
+        }
+      }
+    }
+  ],
   "files": {
     "ignoreUnknown": true,
     "includes": [
