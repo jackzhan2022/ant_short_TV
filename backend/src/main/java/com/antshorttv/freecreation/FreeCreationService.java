@@ -309,7 +309,7 @@ public class FreeCreationService {
         if(status!=null && !Set.of("QUEUED","RUNNING","SUCCEEDED","FAILED","CANCELED").contains(status)) throw invalid("任务状态无效。");
         if(current<1 || pageSize<1 || pageSize>100 || current>100000) throw invalid("分页参数无效。");
         String base=" from free_creation f join ai_execution_task e on e.id=f.execution_id left join app_user u on u.id=f.creator_id"
-            +RECOVERY_JOINS+" where f.tenant_id=? and f.avatar_recovery_source_creation_id is null";
+            +(status==null?"":RECOVERY_JOINS)+" where f.tenant_id=? and f.avatar_recovery_source_creation_id is null";
         List<Object> args=new ArrayList<>(List.of(tenantId));
         if("mine".equals(scope)) { base+=" and f.creator_id=?"; args.add(context.userId()); }
         if(type!=null) {base+=" and f.media_type=?";args.add(type);}
@@ -318,7 +318,15 @@ public class FreeCreationService {
         Long total=jdbc.queryForObject("select count(*)"+base,Long.class,args.toArray());
         args.add(pageSize); args.add((current-1)*pageSize);
         var ids=jdbc.queryForList("select f.id"+base+" order by f.created_at desc,f.id desc limit ? offset ?",Long.class,args.toArray());
-        return Map.of("records",ids.stream().map(id->present(context,creations.selectById(id))).toList(),"total",total,"current",current,"pageSize",pageSize);
+        Map<Long,FreeCreationMediaEntity> selectedMedia=new LinkedHashMap<>();
+        Map<Long,Map<String,Object>> mediaViews=new HashMap<>();
+        var records=ids.stream().map(id->present(context,creations.selectById(id),0,item->{
+            selectedMedia.putIfAbsent(item.id,item);
+            return mediaViews.computeIfAbsent(item.id,ignored->new LinkedHashMap<>());
+        })).toList();
+        if(!selectedMedia.isEmpty()) media.presentAll(context,new ArrayList<>(selectedMedia.values()))
+            .forEach((id,view)->mediaViews.get(id).putAll(view));
+        return Map.of("records",records,"total",total,"current",current,"pageSize",pageSize);
     }
 
     public Map<String,Object> detail(Long tenantId,Long id) { var context=authorize(tenantId);return present(context,require(context,id)); }
@@ -361,14 +369,15 @@ public class FreeCreationService {
         if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !context.tenantId().equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
         return output;
     }
-    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0);}
-    private Map<String,Object> present(TenantContext context,FreeCreationEntity item,int depth) {
+    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0,value->media.present(context,value));}
+    private Map<String,Object> present(TenantContext context,FreeCreationEntity item,int depth,
+        java.util.function.Function<FreeCreationMediaEntity,Map<String,Object>> mediaPresenter) {
         var task=executions.requireTask(item.executionId); Map<String,Object> result=new LinkedHashMap<>();
         result.put("id",item.id); result.put("executionId",item.executionId); result.put("mediaType",item.mediaType);
         result.put("status",status(task,item));result.put("phase",task.phase);result.put("prompt",item.prompt);result.put("creatorId",item.creatorId);
         result.put("creatorName",jdbc.queryForObject("select nickname from app_user where id=?",String.class,item.creatorId));
         result.put("createdAt",item.createdAt); result.put("modelId",item.modelId); result.put("modelName",item.modelName);
-        result.put("parameters",read(item.parametersJson)); result.put("references",media.items(item.id,"REFERENCE").stream().map(ref->media.present(context,ref)).toList());
+        result.put("parameters",read(item.parametersJson)); result.put("references",media.items(item.id,"REFERENCE").stream().map(mediaPresenter).toList());
         result.put("taskKey","FREE_CREATION:"+item.id);
         var recovery=avatarRecovery==null?null:avatarRecovery.get(item.tenantId,item.id);
         result.put("avatarRecovery",recovery);
@@ -376,7 +385,7 @@ public class FreeCreationService {
         boolean recovering=recovery!=null && Set.of("PENDING","RUNNING","SUCCEEDED").contains(recovery.get("status"));
         result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status).stream()
             .filter(action->!recovering || !"RETRY".equals(action)).toList():List.of());
-        result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(output->media.present(context,output)).toList():List.of());
+        result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(mediaPresenter).toList():List.of());
         result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?errorMessage(item,task):null);
         if(recovery!=null) {
             result.put("originalExecutionId",item.executionId);result.put("originalStatus",status(task,item));
@@ -388,7 +397,7 @@ public class FreeCreationService {
                 if(linked==null || depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS) {
                     result.put("status","FAILED");result.put("errorMessage","关联视频不可用，请查看任务记录。");result.put("allowedActions",List.of());
                 } else {
-                    var current=present(context,linked,depth+1);
+                    var current=present(context,linked,depth+1,mediaPresenter);
                     for(String key:List.of("executionId","phase","taskKey","allowedActions","outputs","errorMessage"))result.put(key,current.get(key));
                     if(current.get("avatarRecovery")!=null)result.put("avatarRecovery",current.get("avatarRecovery"));
                     result.put("status","QUEUED".equals(current.get("status"))?"RUNNING":current.get("status"));

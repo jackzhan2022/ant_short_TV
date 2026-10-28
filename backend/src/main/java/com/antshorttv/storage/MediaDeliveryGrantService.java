@@ -6,6 +6,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -63,6 +68,37 @@ public class MediaDeliveryGrantService {
             store.update(entity);
         }
         return new DeliveryGrant(signer.sign(request.objectKey(), expiresAt), expiresAt);
+    }
+
+    /** One user/tenant per batch. No signed URLs or permissions are cached between requests. */
+    @Transactional
+    public Map<String, DeliveryGrant> issueAll(List<DeliveryGrantRequest> requests) {
+        if (requests.isEmpty()) return Map.of();
+        var first = requests.get(0);
+        validate(first);
+        Map<String, DeliveryGrantRequest> unique = new TreeMap<>();
+        for (var request : requests) {
+            validate(request);
+            if (!Objects.equals(first.userId(), request.userId()) || !Objects.equals(first.tenantId(), request.tenantId()))
+                throw new IllegalArgumentException("Media grant batch must belong to one user and tenant");
+            unique.merge(request.objectKey(), request, (old, next) -> next.video() ? next : old);
+        }
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS);
+        Map<String, MediaDeliveryGrantEntity> existing = new HashMap<>();
+        store.findAll(first.userId(), unique.keySet().stream().map(MediaDeliveryGrantService::objectKeyHash).toList())
+            .forEach(entity -> existing.put(entity.objectKeyHash, entity));
+        Map<String, DeliveryGrant> result = new HashMap<>();
+        for (var request : unique.values()) {
+            var entity = existing.get(objectKeyHash(request.objectKey()));
+            long threshold = request.video() ? properties.getVideoRenewalThresholdSeconds() : 0;
+            if (entity != null && entity.expiryInstant().isAfter(now.plusSeconds(threshold))) {
+                result.put(request.objectKey(), new DeliveryGrant(signer.sign(request.objectKey(), entity.expiryInstant()), entity.expiryInstant()));
+            } else {
+                // Runs inside this transaction and rechecks under the existing row lock.
+                result.put(request.objectKey(), issue(request));
+            }
+        }
+        return result;
     }
 
     static String objectKeyHash(String objectKey) {

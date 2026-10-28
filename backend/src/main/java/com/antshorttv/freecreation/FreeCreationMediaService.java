@@ -259,6 +259,59 @@ public class FreeCreationMediaService {
         }
     }
 
+    /** Batch list presentation keeps original URLs, thumbnails and grant expiry behavior identical to detail. */
+    public Map<Long,Map<String,Object>> presentAll(TenantContext context,List<FreeCreationMediaEntity> items) {
+        if(items.isEmpty()) return Map.of();
+        for(var item:items) if(!context.tenantId().equals(item.tenantId))
+            throw new BusinessException(ErrorCode.NOT_FOUND,"\u7d20\u6750\u4e0d\u5b58\u5728\u3002");
+        var outputIds=items.stream().filter(item->"OUTPUT".equals(item.role) && !"AUDIO".equals(item.kind))
+            .map(item->item.creationId).distinct().toList();
+        Map<String,Map<String,Object>> renditions=new HashMap<>();
+        if(!outputIds.isEmpty()) {
+            var args=new ArrayList<Object>();args.add(context.tenantId());args.addAll(outputIds);
+            String slots=String.join(",",Collections.nCopies(outputIds.size(),"?"));
+            for(var row:jdbc.queryForList("select asset_id,asset_type,version_id,rendition_type,object_key,status from media_object "
+                +"where tenant_id=? and project_id is null and asset_type in ('FREE_CREATION_OUTPUT','FREE_CREATION_VIDEO_COVER') "
+                +"and asset_id in ("+slots+") and rendition_type in ('DISPLAY_IMAGE_SLIM','LIST_THUMBNAIL')",args.toArray()))
+                renditions.put(row.get("asset_type")+":"+row.get("asset_id")+":"+row.get("version_id")+":"+row.get("rendition_type"),row);
+        }
+        var requests=new ArrayList<DeliveryGrantRequest>();
+        Map<Long,Map<String,Object>> results=new LinkedHashMap<>();
+        for(var item:items) {
+            String identity=("VIDEO".equals(item.kind)?"FREE_CREATION_VIDEO_COVER":"FREE_CREATION_OUTPUT")+":"+item.creationId+":output-"+item.position;
+            String preview=item.objectKey;
+            if("IMAGE".equals(item.kind) && item.thumbnailKey!=null) {
+                if("OUTPUT".equals(item.role)) {
+                    var display=renditions.get(identity+":DISPLAY_IMAGE_SLIM");
+                    if(display!=null && "READY".equals(display.get("status"))) preview=(String)display.get("object_key");
+                } else preview=item.thumbnailKey;
+            }
+            String thumbnail=null;Map<String,Object> result=new LinkedHashMap<>();
+            result.put("id",item.id);result.put("referenceId",item.id);result.put("kind",item.kind);
+            result.put("fileName",item.fileName);result.put("durationSeconds",item.durationSeconds);
+            boolean output="OUTPUT".equals(item.role) && !"AUDIO".equals(item.kind);
+            if(output) {
+                var rendition=renditions.get(identity+":LIST_THUMBNAIL");
+                result.put("thumbnailStatus",rendition==null?"PENDING":rendition.get("status"));
+                if(rendition!=null && "READY".equals(rendition.get("status"))) thumbnail=(String)rendition.get("object_key");
+            } else if(!"AUDIO".equals(item.kind) && ("IMAGE".equals(item.kind) || item.thumbnailKey!=null)) {
+                thumbnail=item.thumbnailKey==null?item.objectKey:item.thumbnailKey;
+            }
+            requests.add(new DeliveryGrantRequest(context.tenantId(),null,context.userId(),"FREE_CREATION_MEDIA",item.id,
+                "v1","IMAGE".equals(item.kind)?"THUMBNAIL":"ORIGINAL",preview,"VIDEO".equals(item.kind)));
+            if(thumbnail!=null) requests.add(new DeliveryGrantRequest(context.tenantId(),null,context.userId(),"FREE_CREATION_MEDIA",item.id,
+                "v1","THUMBNAIL",thumbnail,!output && "VIDEO".equals(item.kind)));
+            result.put("previewUrl",preview);result.put("thumbnailUrl",thumbnail);
+            result.put("downloadUrl","/api/free-creations/"+item.creationId+"/outputs/"+item.id+"/download");results.put(item.id,result);
+        }
+        var signed=grants.issueAll(requests);
+        for(var result:results.values()) for(String field:List.of("previewUrl","thumbnailUrl")) {
+            String key=(String)result.get(field);
+            if(key!=null) result.put(field,signed.get(key).url());
+        }
+        return results;
+    }
+
     public Map<String,Object> present(TenantContext context,FreeCreationMediaEntity item) {
         Map<String,Object> result=new LinkedHashMap<>(); result.put("id",item.id); result.put("referenceId",item.id);
         result.put("kind",item.kind); result.put("fileName",item.fileName); result.put("durationSeconds",item.durationSeconds);
