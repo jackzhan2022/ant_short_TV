@@ -677,11 +677,11 @@ public class StoryboardToolDataService {
             select reference.storyboard_id,reference.asset_type,reference.asset_id,reference.variant_id,
                    reference.reference_role,reference.sort_order,reference.resolution_status,
                    reference.source_name,reference.created_by,
-                   coalesce(character.name,scene.name,prop.name,reference.source_name) asset_name,
+                   coalesce(character_asset_row.name,scene.name,prop.name,reference.source_name) asset_name,
                    variant.name variant_name
               from storyboard_asset_reference reference
-              left join character_asset character on reference.asset_type='CHARACTER'
-                and character.id=reference.asset_id
+              left join character_asset character_asset_row on reference.asset_type='CHARACTER'
+                and character_asset_row.id=reference.asset_id
               left join scene_asset scene on reference.asset_type='SCENE' and scene.id=reference.asset_id
               left join prop_asset prop on reference.asset_type='PROP' and prop.id=reference.asset_id
               left join asset_visual_variant variant on variant.id=reference.variant_id
