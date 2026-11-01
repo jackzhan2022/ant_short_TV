@@ -14,6 +14,24 @@ class StoryboardNormalizerTest {
     private final EpisodeSourceSegmenter segmenter = new EpisodeSourceSegmenter();
 
     @Test
+    void cumulativeEndAnchorKeepsSpeechOnTheSpeakingShotInsteadOfTheExitShot() throws Exception {
+        var segments = segmenter.segment("▲王大山拿起衣服站起。\n王大山：俺马上去！\n▲王大山冲出门。");
+        var submitted = json.readTree("""
+            [{"sourceTo":"S0003","shots":[
+              {"durationSeconds":4,"sourceAnchor":"S0002","action":"拿衣起身并同期说话"},
+              {"durationSeconds":2,"sourceAnchor":"S0003","action":"背面跟随出门"}
+            ]}]
+            """);
+        var normalized = new StoryboardNormalizer(json).normalize(submitted, segments,
+            com.antshorttv.project.StoryboardSkillVersion.V2);
+        var shots = normalized.storyboards().get(0).path("shots");
+        assertThat(shots.get(0).path("soundSegmentIds").toString()).isEqualTo("[\"S0002\"]");
+        assertThat(shots.get(1).path("soundSegmentIds").isEmpty()).isTrue();
+        assertThat(shots.get(0).path("durationSeconds").asInt()).isEqualTo(4);
+        assertThat(shots.get(1).path("durationSeconds").asInt()).isEqualTo(2);
+    }
+
+    @Test
     void v2PreservesLongDialogueShotsAndSingleShotCountWhileLegacyKeepsItsCap() throws Exception {
         var segments = segmenter.segment("Serena: Stay here.");
         JsonNode submitted = json.readTree("""
