@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSupport {
     @Autowired private com.antshorttv.rbac.RbacService menuRoles;
+    @Autowired private com.antshorttv.workflowagent.run.WorkflowAgentRunner storyboardRunner;
 
     @Autowired
     private MockMvc mockMvc;
@@ -182,6 +183,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                     {
                       "name":"独立菜单短剧",
                       "code":"SHORT_DRAMA_CREATION",
+                      "storyboardSkillVersion":"V2",
                       "description":"从短剧创作入口创建",
                       "ownerId":%d,
                       "aspectRatio":"16:9",
@@ -205,17 +207,23 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
             .andExpect(jsonPath("$.data.fileFormat", is("SCRIPT")))
             .andExpect(jsonPath("$.data.scriptType", is("PREMIUM_DRAMA")))
             .andExpect(jsonPath("$.data.breakdownStrength", is("MEDIUM")))
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V2")))
             .andExpect(jsonPath("$.data.coverSource", is("FIRST_FRAME")))
             .andExpect(jsonPath("$.data.visualStyle", is("3D风格-高清真实渲染")))
             .andExpect(jsonPath("$.data.initialScriptContent", is("第一场，雨夜重逢。")))
             .andReturn();
 
         Number createdId = JsonPath.read(richResult.getResponse().getContentAsString(), "$.data.id");
+        org.assertj.core.api.Assertions.assertThat(storyboardRunner.freezeFormal(
+            "short-drama-storyboard", tenantId, createdId.longValue()).skillSnapshots())
+            .extracting(com.antshorttv.workflowagent.run.WorkflowAgentSkillSnapshot::code)
+            .containsExactly("short-drama-storyboard-production-v2");
         mockMvc.perform(get("/api/projects")
                 .with(com.antshorttv.support.SessionTestSupport.authenticated(ownerToken))
                 .header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.data[0].initialScriptContent").doesNotExist())
+            .andExpect(jsonPath("$.data.data[0].storyboardSkillVersion", is("V2")))
             .andExpect(jsonPath("$.data.current", is(1)))
             .andExpect(jsonPath("$.data.pageSize", is(20)));
         MvcResult workspace = mockMvc.perform(get("/api/projects/%d/script-page-workspace".formatted(createdId.longValue()))
@@ -266,6 +274,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.aspectRatio", is("9:16")))
             .andExpect(jsonPath("$.data.videoResolution", is("480p")))
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V2")))
             .andExpect(jsonPath("$.data.videoGenerateAudio", is(true)))
             .andExpect(jsonPath("$.data.videoWatermark", is(false)));
 
@@ -278,6 +287,7 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
                     """.formatted(ownerUserId)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name", is("旧入口项目")))
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V1")))
             .andExpect(jsonPath("$.data.videoResolution", is("720p")))
             .andExpect(jsonPath("$.data.videoGenerateAudio", is(true)))
             .andExpect(jsonPath("$.data.videoWatermark", is(false)));

@@ -38,6 +38,8 @@ public class ProjectEntity {
     public String fileFormat;
     public String scriptType;
     public String breakdownStrength;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    public String storyboardSkillVersion;
     public String visualStyle;
     public String initialScriptContent;
     public Long createdBy;

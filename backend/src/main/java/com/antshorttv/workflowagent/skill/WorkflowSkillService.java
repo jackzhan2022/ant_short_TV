@@ -59,6 +59,9 @@ public class WorkflowSkillService {
     }
 
     public void delete(String code) {
+        if (TenantStoryboardSkillPolicy.EDITABLE_CODES.contains(code)) {
+            throw new BusinessException(ErrorCode.WORKFLOW_SKILL_IN_USE, "项目创建可选的内置分镜 Skill 不能删除。");
+        }
         if (tenantSkills != null && tenantSkills.hasOverrides(code)) {
             throw new BusinessException(ErrorCode.WORKFLOW_SKILL_IN_USE, "Skill 存在团队定制版本，不能删除系统来源。");
         }

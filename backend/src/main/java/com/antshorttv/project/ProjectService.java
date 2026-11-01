@@ -153,6 +153,7 @@ public class ProjectService {
         project.fileFormat = request.fileFormat();
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
+        project.storyboardSkillVersion = StoryboardSkillVersion.resolve(request.storyboardSkillVersion()).name();
         project.visualStyle = request.visualStyle();
         project.initialScriptContent = request.initialScriptContent();
         project.createdBy = context.userId();
@@ -670,6 +671,7 @@ public class ProjectService {
             project.fileFormat,
             project.scriptType,
             project.breakdownStrength,
+            StoryboardSkillVersion.resolve(project.storyboardSkillVersion).name(),
             project.visualStyle,
             project.initialScriptContent,
             memberCount,

@@ -52,6 +52,7 @@ import {
   breakdownStrengthOptions,
   fileFormatOptions,
   scriptTypeOptions,
+  storyboardSkillOptions,
 } from './options';
 import ScriptContentImport from './ScriptContentImport';
 import {
@@ -151,6 +152,7 @@ const ShortDramaCreationPage = () => {
     fileFormat: 'SCRIPT',
     scriptType: 'PREMIUM_DRAMA',
     breakdownStrength: 'MEDIUM',
+    storyboardSkillVersion: 'V1',
   });
 
   const loadInspirationPage = useCallback(
@@ -391,6 +393,7 @@ const ShortDramaCreationPage = () => {
         fileFormat: projectForm.fileFormat,
         scriptType: projectForm.scriptType,
         breakdownStrength: projectForm.breakdownStrength,
+        storyboardSkillVersion: projectForm.storyboardSkillVersion,
         visualStyle: projectForm.visualStyle || selectedStyle?.name,
         scriptName: projectForm.scriptName?.trim() || undefined,
         initialScriptContent: scriptDraft.trim() || undefined,
@@ -722,6 +725,30 @@ const ShortDramaCreationPage = () => {
               options={breakdownStrengthOptions}
               value={projectForm.breakdownStrength}
             />
+          </Flex>
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            分镜技能
+          </Typography.Text>
+          <Flex vertical gap={10}>
+            <Radio.Group
+              aria-label="分镜技能"
+              buttonStyle="solid"
+              optionType="button"
+              options={storyboardSkillOptions}
+              value={projectForm.storyboardSkillVersion}
+              onChange={(event) =>
+                updateForm({ storyboardSkillVersion: event.target.value })
+              }
+            />
+            <Typography.Text type="secondary">
+              {projectForm.storyboardSkillVersion === 'V2'
+                ? '按完整叙事片段拆分，通常每条3–4镜，支持4–15秒片段，细化光影与站位。镜头数量随剧情调整。'
+                : '沿用现有分镜方式，以中近景和特写推进剧情。'}
+              创建后，该项目的分镜生成将使用所选技能。
+            </Typography.Text>
           </Flex>
         </section>
 

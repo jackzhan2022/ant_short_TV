@@ -656,7 +656,7 @@ describe('ShortDramaCreationPage', () => {
       /剧本名称|画面比例|文件格式|剧本类型|剧本解析力度/,
     );
     expect(settingLabels[0]).toHaveTextContent('剧本名称');
-    expect(document.querySelectorAll('.ant-radio-group')).toHaveLength(4);
+    expect(screen.getByRole('radio', { name: '原分镜' })).toBeChecked();
     fireEvent.change(screen.getByRole('textbox', { name: '剧本名称' }), {
       target: { value: '雨夜归来' },
     });
@@ -672,6 +672,7 @@ describe('ShortDramaCreationPage', () => {
           videoResolution: '720p',
           videoGenerateAudio: true,
           videoWatermark: false,
+          storyboardSkillVersion: 'V1',
         }),
       );
       expect(mocks.historyPush).toHaveBeenCalledWith(
@@ -711,6 +712,19 @@ describe('ShortDramaCreationPage', () => {
     const payload = mocks.createProject.mock.calls[0][0];
     expect(payload).not.toHaveProperty('reviewProjectId');
     expect(payload).not.toHaveProperty('reviewVersionId');
+  });
+
+  it('submits the chosen V2 storyboard skill when creating a project', async () => {
+    mocks.createProject.mockResolvedValue({ data: { id: 9 } });
+    render(<App><ShortDramaCreationPage /></App>);
+    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    fireEvent.click(screen.getByRole('radio', { name: '分镜技能2.0' }));
+    expect(screen.getByRole('radio', { name: '分镜技能2.0' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledWith(
+      expect.objectContaining({ storyboardSkillVersion: 'V2' }),
+    ));
   });
 
   it('uploads a cover through a controlled session and never persists its data URL', async () => {

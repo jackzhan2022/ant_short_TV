@@ -24,7 +24,8 @@ record CreateProjectRequest(
     String breakdownStrength,
     String visualStyle,
     @Size(max = 200) String scriptName,
-    String initialScriptContent
+    String initialScriptContent,
+    String storyboardSkillVersion
 ) {
 }
 

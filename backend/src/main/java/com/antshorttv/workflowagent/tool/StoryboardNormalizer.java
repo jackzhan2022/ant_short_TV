@@ -2,6 +2,7 @@ package com.antshorttv.workflowagent.tool;
 
 import com.antshorttv.workflowagent.tool.EpisodeSourceSegmenter.EpisodeSourceSegment;
 import com.antshorttv.workflowagent.tool.EpisodeSourceSegmenter.SourceSegmentType;
+import com.antshorttv.project.StoryboardSkillVersion;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -16,7 +17,6 @@ import java.util.Map;
 /** Canonicalizes bookkeeping fields that must not consume a model correction round. */
 final class StoryboardNormalizer {
     private static final BigDecimal MIN_SHOT_DURATION = new BigDecimal("1.5");
-    private static final BigDecimal MAX_SHOT_DURATION = new BigDecimal("4");
     private static final BigDecimal DEFAULT_SHOT_DURATION = new BigDecimal("3");
     private final ObjectMapper json;
 
@@ -25,6 +25,10 @@ final class StoryboardNormalizer {
     }
 
     Result normalize(JsonNode submitted, List<EpisodeSourceSegment> segments) {
+        return normalize(submitted, segments, StoryboardSkillVersion.V1);
+    }
+
+    Result normalize(JsonNode submitted, List<EpisodeSourceSegment> segments, StoryboardSkillVersion version) {
         ArrayNode boards = submitted.deepCopy();
         Map<String, IndexedSegment> byId = new LinkedHashMap<>();
         List<IndexedSegment> required = new ArrayList<>();
@@ -93,7 +97,7 @@ final class StoryboardNormalizer {
                     ? shot.path("durationSeconds").decimalValue() : DEFAULT_SHOT_DURATION;
                 String code = shot.path("durationSeconds").isNumber()
                     ? "SHOT_DURATION_CLAMPED" : "SHOT_DURATION_DEFAULTED";
-                BigDecimal bounded = duration.max(MIN_SHOT_DURATION).min(MAX_SHOT_DURATION);
+                BigDecimal bounded = duration.max(MIN_SHOT_DURATION).min(version.maximumShotDuration());
                 if (!shot.path("durationSeconds").isNumber()
                     || shot.path("durationSeconds").decimalValue().compareTo(bounded) != 0) {
                     shot.put("durationSeconds", bounded);

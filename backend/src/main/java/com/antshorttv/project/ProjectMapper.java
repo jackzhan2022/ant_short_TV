@@ -41,7 +41,7 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
                p.cover_source, p.cover_version, p.cover_status,
                p.owner_id, p.status, p.start_date, p.end_date, p.aspect_ratio, p.file_format,
                p.video_resolution, p.video_generate_audio, p.video_watermark,
-               p.script_type, p.breakdown_strength, p.visual_style, p.created_by,
+               p.script_type, p.breakdown_strength, p.storyboard_skill_version, p.visual_style, p.created_by,
                p.created_at, p.updated_at, p.deleted_at
           from project p where
         """ + VISIBLE + " order by p.created_at desc, p.id desc limit #{bounds.pageSize} offset #{bounds.offset}</script>")

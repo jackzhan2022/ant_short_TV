@@ -409,7 +409,8 @@ public class ScreenplayToolConfiguration {
         boardFields.set("usedAssetKeys", materialGroups(json));
         boardFields.set("unmatchedMaterials", materialNameGroups(json));
         ObjectNode shots = boardFields.putObject("shots").put("type", "array")
-            .put("minItems", 2).put("maxItems", 20);
+            .put("minItems", 1).put("maxItems", 20)
+            .put("description", "镜头数量与时长按项目所选分镜技能校验；2.0 可用单镜头表达完整短片段，不为凑数增加镜头。");
         ObjectNode shot = objectSchema(json);
         shot.putArray("required").add("positioning").add("action");
         ObjectNode shotFields = (ObjectNode) shot.path("properties");

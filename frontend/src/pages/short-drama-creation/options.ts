@@ -19,6 +19,11 @@ export const breakdownStrengthOptions = [
   { label: '高强度', value: 'HIGH' },
 ];
 
+export const storyboardSkillOptions = [
+  { label: '原分镜', value: 'V1' },
+  { label: '分镜技能2.0', value: 'V2' },
+];
+
 export const coverSourceOptions = [
   { label: '默认分镜首图', value: 'FIRST_FRAME' },
   { label: '上传图片', value: 'UPLOAD' },

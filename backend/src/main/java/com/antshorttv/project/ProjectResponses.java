@@ -26,6 +26,7 @@ record ProjectResponse(
     String fileFormat,
     String scriptType,
     String breakdownStrength,
+    String storyboardSkillVersion,
     String visualStyle,
     String initialScriptContent,
     Long memberCount,

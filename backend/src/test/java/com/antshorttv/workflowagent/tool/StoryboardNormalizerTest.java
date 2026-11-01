@@ -14,6 +14,21 @@ class StoryboardNormalizerTest {
     private final EpisodeSourceSegmenter segmenter = new EpisodeSourceSegmenter();
 
     @Test
+    void v2PreservesLongDialogueShotsAndSingleShotCountWhileLegacyKeepsItsCap() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.");
+        JsonNode submitted = json.readTree("""
+            [{"sourceTo":"S0001","shots":[{"durationSeconds":5.5}]}]
+            """);
+        var normalizer = new StoryboardNormalizer(json);
+        var v2 = normalizer.normalize(submitted, segments, com.antshorttv.project.StoryboardSkillVersion.V2);
+        assertThat(v2.storyboards().get(0).path("shots").size()).isEqualTo(1);
+        assertThat(v2.storyboards().get(0).path("shots").get(0).path("durationSeconds").decimalValue())
+            .isEqualByComparingTo("5.5");
+        assertThat(normalizer.normalize(submitted, segments).storyboards().get(0)
+            .path("shots").get(0).path("durationSeconds").decimalValue()).isEqualByComparingTo("4");
+    }
+
+    @Test
     void canonicalizesNumbersRangesAnchorsAndSoundOwnershipIdempotently() throws Exception {
         var segments = segmenter.segment("开场\nSerena: one\n转场\n旁白 VO: two\n结束");
         ArrayNode submitted = (ArrayNode) json.readTree("""

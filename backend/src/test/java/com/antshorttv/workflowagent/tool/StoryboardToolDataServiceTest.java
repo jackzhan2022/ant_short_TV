@@ -79,6 +79,36 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
+    void v2SavesShortSingleShotWithoutPaddingButLegacyRejectsIt() throws Exception {
+        JsonNode payload = validPayload();
+        ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+        while (shots.size() > 1) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 5.5);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+        jdbc.update("update project set storyboard_skill_version='V2' where id=?", projectId);
+        assertThat(service.saveEpisodeStoryboards(context(), payload).path("saved").asBoolean()).isTrue();
+        String plan = jdbc.queryForObject("select shot_plan_json from storyboard where episode_id=? and deleted_at is null",
+            String.class, episodeId);
+        JsonNode saved = json.readTree(plan);
+        assertThat(saved.path("shots").size()).isEqualTo(1);
+        assertThat(saved.path("shots").get(0).path("durationSeconds").decimalValue()).isEqualByComparingTo("5.5");
+        assertThat(saved.path("shots").get(0).path("dialogue").asText()).contains("Serena: No...");
+    }
+
+    @Test
+    void v2StillRejectsClipsBelowFourSecondsAndAboveFifteenSeconds() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V2' where id=?", projectId);
+        JsonNode payload = validPayload();
+        ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+        for (JsonNode shot : shots) ((ObjectNode) shot).put("durationSeconds", 4.5);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload)).hasMessageContaining("4 至 15");
+        while (shots.size() > 1) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 3);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload)).hasMessageContaining("4 至 15");
+    }
+
+    @Test
     void atomicallyReplacesEpisodeAndRendersConfirmedPromptWithRoundedCompatibilityDuration() throws Exception {
         JsonNode saved = service.saveEpisodeStoryboards(context(), validPayload());
 

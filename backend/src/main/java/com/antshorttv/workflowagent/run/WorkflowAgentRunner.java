@@ -71,6 +71,8 @@ public class WorkflowAgentRunner {
     private final StoryboardContextReducer storyboardContextReducer;
     private final StoryboardFallbackCompleter storyboardFallbackCompleter;
     private final EpisodeSplittingRunPolicy splitPolicy;
+    @Autowired
+    private com.antshorttv.workflowagent.skill.ProjectStoryboardSkillSelector storyboardSkills;
 
     @Autowired
     public WorkflowAgentRunner(
@@ -132,7 +134,7 @@ public class WorkflowAgentRunner {
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentRunInput input) {
-        return runFormal(freezeFormal(input.agentCode(), input.tenantId()), input);
+        return runFormal(freezeFormal(input.agentCode(), input.tenantId(), input.projectId()), input);
     }
 
     public WorkflowAgentExecutionPlan freezeFormal(String agentCode) {
@@ -140,8 +142,14 @@ public class WorkflowAgentRunner {
     }
 
     public WorkflowAgentExecutionPlan freezeFormal(String agentCode, Long tenantId) {
+        return freezeFormal(agentCode, tenantId, null);
+    }
+
+    public WorkflowAgentExecutionPlan freezeFormal(String agentCode, Long tenantId, Long projectId) {
         WorkflowAgentRecord agent = agents.loadForRun(agentCode);
-        return new WorkflowAgentExecutionPlan(agent, loadSkills(agent.skillCodes(), agentCode, tenantId), tenantId);
+        List<String> codes = storyboardSkills == null ? agent.skillCodes()
+            : storyboardSkills.select(agentCode, tenantId, projectId, agent.skillCodes());
+        return new WorkflowAgentExecutionPlan(agent, loadSkills(codes, agentCode, tenantId), tenantId);
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentExecutionPlan plan, WorkflowAgentRunInput input) {
@@ -158,7 +166,10 @@ public class WorkflowAgentRunner {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "冻结的 Agent 配置与运行 code 不匹配。");
         }
-        return execute(plan.agent(), "FORMAL", input, plan.skillSnapshots());
+        Map<String, Object> trustedState = new java.util.HashMap<>(input.trustedToolState());
+        trustedState.put("storyboardSkillV2", plan.skillSnapshots().stream().anyMatch(snapshot ->
+            com.antshorttv.project.StoryboardSkillVersion.V2.skillCode().equals(snapshot.code())));
+        return execute(plan.agent(), "FORMAL", input.withTrustedToolState(trustedState), plan.skillSnapshots());
     }
 
     public WorkflowAgentRunResult runTest(WorkflowAgentCommand temporary, WorkflowAgentRunInput input) {
@@ -499,6 +510,7 @@ public class WorkflowAgentRunner {
                     if ("short-drama-storyboard".equals(agent.code())
                         && "save_episode_storyboards".equals(call.code())
                         && storyboardSaveCorrections >= STORYBOARD_SAVE_CORRECTIONS
+                        && !Boolean.TRUE.equals(context.runState().get("storyboardSkillV2", Boolean.class))
                         && isCorrectableStoryboardSaveFailure(exception, toolReturned)
                         && exception instanceof WorkflowToolValidationException validation) {
                         ObjectNode fallbackArguments = storyboardFallbackCompleter.complete(

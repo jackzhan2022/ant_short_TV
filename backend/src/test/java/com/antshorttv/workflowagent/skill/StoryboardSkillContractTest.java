@@ -11,6 +11,17 @@ class StoryboardSkillContractTest {
     @Autowired private WorkflowSkillService skills;
 
     @Test
+    void discoversV2AsAnIndependentProjectSelectableSkill() {
+        String code = com.antshorttv.project.StoryboardSkillVersion.V2.skillCode();
+        assertThat(skills.detail(code).name()).isEqualTo("分镜技能2.0");
+        assertThat(skills.list(null)).extracting(WorkflowSkillView::code)
+            .contains(code, "short-drama-storyboard-production");
+        assertThat(TenantStoryboardSkillPolicy.canOverride("short-drama-storyboard", code)).isTrue();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> skills.delete(code))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class);
+    }
+
+    @Test
     void definesOneUnifiedProductionSkillWithDirectingAndMaterialContracts() {
         assertThat(com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap.SKILLS)
             .containsExactly("short-drama-storyboard-production");

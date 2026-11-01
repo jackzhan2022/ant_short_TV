@@ -209,6 +209,7 @@ export type Project = {
   fileFormat?: string | null;
   scriptType?: string | null;
   breakdownStrength?: string | null;
+  storyboardSkillVersion?: 'V1' | 'V2' | null;
   visualStyle?: string | null;
   initialScriptContent?: string | null;
   memberCount: number;

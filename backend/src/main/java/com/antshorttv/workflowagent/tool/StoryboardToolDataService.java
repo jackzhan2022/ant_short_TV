@@ -2,6 +2,7 @@ package com.antshorttv.workflowagent.tool;
 
 import com.antshorttv.common.BusinessException;
 import com.antshorttv.common.ErrorCode;
+import com.antshorttv.project.StoryboardSkillVersion;
 import com.antshorttv.script.StoryboardAssetReferenceEntity;
 import com.antshorttv.script.StoryboardAssetReferenceRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -103,12 +104,15 @@ public class StoryboardToolDataService {
         LockedMaterialSnapshot lockedMaterials = loadLockedMaterials(context);
         boolean materialOverwrite = Boolean.TRUE.equals(
             context.runState().get("materialOverwrite", Boolean.class));
-        StoryboardNormalizer.Result normalization = new StoryboardNormalizer(json).normalize(submitted, segments);
+        StoryboardSkillVersion skillVersion = StoryboardSkillVersion.resolve(jdbc.queryForObject(
+            "select storyboard_skill_version from project where id=? and tenant_id=? and deleted_at is null",
+            String.class, context.projectId(), context.tenantId()));
+        StoryboardNormalizer.Result normalization = new StoryboardNormalizer(json).normalize(submitted, segments, skillVersion);
         submitted = normalization.storyboards();
         List<ValidatedStoryboard> validated;
         try {
             validated = validateAll(context, source, segments, submitted, visualStyle,
-                lockedMaterials, materialOverwrite);
+                lockedMaterials, materialOverwrite, skillVersion);
         } catch (BusinessException error) {
             if (error instanceof WorkflowToolValidationException
                 || error.getErrorCode() != ErrorCode.WORKFLOW_AGENT_TOOL_INVALID) throw error;
@@ -250,7 +254,8 @@ public class StoryboardToolDataService {
         JsonNode submitted,
         String visualStyle,
         LockedMaterialSnapshot lockedMaterials,
-        boolean materialOverwrite
+        boolean materialOverwrite,
+        StoryboardSkillVersion skillVersion
     ) {
         List<ValidatedStoryboard> values = new ArrayList<>();
         Map<String, IndexedSegment> byId = new LinkedHashMap<>();
@@ -297,8 +302,8 @@ public class StoryboardToolDataService {
             expectedRequired += covered.size();
 
             JsonNode shots = board.path("shots");
-            if (!shots.isArray() || shots.size() < 2) {
-                throw invalid("每个正式分镜必须包含至少两个内部镜头。");
+            if (!shots.isArray() || shots.size() < skillVersion.minimumShots()) {
+                throw invalid("每个正式分镜必须包含至少 " + skillVersion.minimumShots() + " 个内部镜头。");
             }
             BigDecimal total = BigDecimal.ZERO;
             ObjectNode validatedBoard = board.deepCopy();
@@ -313,8 +318,8 @@ public class StoryboardToolDataService {
                 }
                 BigDecimal duration = shot.path("durationSeconds").decimalValue();
                 if (duration.compareTo(new BigDecimal("1.5")) < 0
-                    || duration.compareTo(new BigDecimal("4")) > 0) {
-                    throw invalid("内部镜头时长必须为 1.5 至 4 秒。");
+                    || duration.compareTo(skillVersion.maximumShotDuration()) > 0) {
+                    throw invalid("内部镜头时长必须为 1.5 至 " + skillVersion.maximumShotDuration() + " 秒。");
                 }
                 total = total.add(duration);
                 String action = requiredText(shot, "action");
@@ -333,9 +338,9 @@ public class StoryboardToolDataService {
                 injectSounds(shot, validatedShot, byId, submittedSounds, storyboardNo,
                     from.ordinal, to.ordinal);
             }
-            if (total.compareTo(BigDecimal.TEN) < 0 || total.compareTo(new BigDecimal("15")) > 0) {
+            if (total.compareTo(skillVersion.minimumBoardDuration()) < 0 || total.compareTo(new BigDecimal("15")) > 0) {
                 throw validation("STORYBOARD_DURATION_OUT_OF_RANGE", storyboardNo, null, null,
-                    "每个正式分镜总时长必须为 10 至 15 秒。");
+                    "每个正式分镜总时长必须为 " + skillVersion.minimumBoardDuration() + " 至 15 秒。");
             }
             MaterialSet materials = resolveMaterials(context, board, index);
             if (!materialOverwrite) {

@@ -1419,6 +1419,28 @@ class WorkflowAgentRunnerTest {
     }
 
     @Test
+    void storyboardSkillV2StopsAfterCorrectionInsteadOfInventingFallbackShots() throws Exception {
+        List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
+            "read_script_analysis", "read_project_context", "read_script_assets", "save_episode_storyboards");
+        List<WorkflowToolDefinition> definitions = new ArrayList<>();
+        codes.subList(0, 5).forEach(code -> definitions.add(storyboardRead(code, new ArrayList<>())));
+        AtomicInteger saves = new AtomicInteger();
+        definitions.add(storyboardSave(saves, true));
+        runner = runnerWith(definitions, 30);
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
+            .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
+        var snapshot = new WorkflowAgentSkillSnapshot("short-drama-storyboard-production-v2",
+            "分镜技能2.0", "v2", "保留必要镜头", "SYSTEM", null);
+        var plan = new WorkflowAgentExecutionPlan(storyboardAgent(codes), List.of(snapshot), 7L);
+        assertThatThrownBy(() -> runner.runFormal(plan, new WorkflowAgentRunInput(
+            "short-drama-storyboard", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L, 700L, 701L, 1, 8L))).isInstanceOf(BusinessException.class);
+        assertThat(saves).hasValue(2);
+        verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
+    }
+
+    @Test
     void storyboardCanCorrectV2BeforeCallingSaveExecutor() throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets",

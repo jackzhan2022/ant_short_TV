@@ -23,9 +23,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest(properties = "ai.workflow-agent.skill-root=target/tenant-workflow-skill-test")
+@SpringBootTest
 @AutoConfigureMockMvc
 class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
+    @org.springframework.test.context.DynamicPropertySource
+    static void isolatedSkills(org.springframework.test.context.DynamicPropertyRegistry registry) throws Exception {
+        Path root = Files.createTempDirectory("tenant-storyboard-skills-");
+        Path source = Path.of("skills");
+        try (var paths = Files.walk(source)) {
+            for (Path path : paths.toList()) {
+                Path target = root.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) Files.createDirectories(target);
+                else Files.copy(path, target);
+            }
+        }
+        registry.add("ai.workflow-agent.skill-root", () -> root.toString());
+    }
     private static final String PLANNING = "short-drama-storyboard-production";
     private static final AtomicLong MOBILE = new AtomicLong(13800004000L);
     @Autowired MockMvc mvc;
@@ -131,7 +144,7 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
                 .with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().isForbidden());
         mvc.perform(get(path(inTeam)).with(SessionTestSupport.authenticated(member.credential())))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", is(0)));
+            .andExpect(status().isForbidden());
         mvc.perform(put(path(inTeam) + "/" + PLANNING).with(SessionTestSupport.authenticated(member.credential()))
                 .contentType(MediaType.APPLICATION_JSON).content(payload("denied", skills.detail(PLANNING).revision())))
             .andExpect(status().isForbidden());
@@ -154,13 +167,28 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
                 .contentType(MediaType.APPLICATION_JSON).content(payload("denied", teamRevision)))
             .andExpect(status().isForbidden());
         mvc.perform(get(path(inTeam) + "/" + PLANNING).with(SessionTestSupport.authenticated(member.credential())))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.content", org.hamcrest.Matchers.containsString("管理员定制")));
+            .andExpect(status().isForbidden());
         jdbc.update("update tenant_member set status='REMOVED' where id=?", memberId);
         mvc.perform(get(path(inTeam) + "/" + PLANNING + "/template")
                 .with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().is4xxClientError());
         mvc.perform(get(path(inTeam)).with(SessionTestSupport.authenticated(member.credential())))
             .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void tenantCanCustomizeBothVersionsWithoutMixingTheirContent() throws Exception {
+        Actor owner = actor(null);
+        String v2 = com.antshorttv.project.StoryboardSkillVersion.V2.skillCode();
+        mvc.perform(get(path(owner) + "/" + v2 + "/template")
+                .with(SessionTestSupport.authenticated(owner.credential())))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.name", is("分镜技能2.0")));
+        save(owner, PLANNING, "旧版专属规则", TenantWorkflowSkillService.NEW_REVISION);
+        save(owner, v2, "新版专属规则", TenantWorkflowSkillService.NEW_REVISION);
+        assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, owner.tenantId(), v2).content())
+            .contains("新版专属规则").doesNotContain("旧版专属规则");
+        assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, owner.tenantId(), PLANNING).content())
+            .contains("旧版专属规则").doesNotContain("新版专属规则");
     }
 
     @Test
