@@ -1,0 +1,15 @@
+{
+  "commit": "bb0bbe28c4b59b09bb45ff7b081bad7e03a0ea31",
+  "previousSha256": "7e2e6e98c27b2b115cdd9a99bb267846e35d7f649a569b4a498c9ad1712d40eb",
+  "newSha256": "629326feb9ac998033b6a4d7f2bab47c732b468bfcd07754afd6fe99948d41be",
+  "change": "先规划镜头与时间，再按叙事边界组装；相邻分镜合并及镜头重新分组；末尾无效停留检查",
+  "targetProjectId": 72,
+  "targetEpisodes": [
+    1,
+    2,
+    3
+  ],
+  "published": true,
+  "backup": "/opt/antv/backups/20261101-storyboard-v2-regroup-053729",
+  "restartedBackend": false
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "episode": 34,
+    "id": "S0022",
+    "text": "众人（高声）：“好！”",
+    "type": "ACTION",
+    "requiredCoverage": true,
+    "classificationWarning": "SOURCE_SPEAKER_UNCONFIRMED"
+  },
+  {
+    "episode": 70,
+    "id": "S0022",
+    "text": "众人（齐声）：“中！”",
+    "type": "ACTION",
+    "requiredCoverage": true,
+    "classificationWarning": "SOURCE_SPEAKER_UNCONFIRMED"
+  }
+]

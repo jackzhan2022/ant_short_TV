@@ -1,0 +1,11 @@
+{
+  "commit": "044a5fe0e12e7addb56a8d0e3499b7b1cefca33e",
+  "previousSha256": "156b383e533ea53267877b3dfaeacd374a903980cdf0520e984e1df9614426c0",
+  "newSha256": "7e2e6e98c27b2b115cdd9a99bb267846e35d7f649a569b4a498c9ad1712d40eb",
+  "change": "紧凑节奏、工序省略、同期动作与对白并行、每镜累计截止锚点",
+  "targetEpisodes": [
+    1,
+    46,
+    51
+  ]
+}

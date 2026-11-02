@@ -1,0 +1,4067 @@
+[
+  {
+    "episode": 1,
+    "board": 5,
+    "shot": 1,
+    "seconds": 4.5,
+    "characters": 25,
+    "charsPerSecond": 5.56,
+    "voice": [
+      "王晓梅OS：“36桌酒席，360位客人，约好的开席时间已经过了十分钟。”"
+    ],
+    "shots": [
+      {
+        "action": "高位全景显示席面尚未开宴，客人等待；王晓梅OS完整起句：“36桌酒席，360位客人，约好的开席时间已经过了十分钟。”声音跨下镜连续。",
+        "camera": "固定高位纵深全景。",
+        "shotNo": 1,
+        "innerOs": "王晓梅OS：“36桌酒席，360位客人，约好的开席时间已经过了十分钟。”",
+        "performance": "王晓梅内心OS，所有客人不对该声音口型。",
+        "positioning": "宴会厅三十六桌，每桌十位客人，共三百六十位，座无虚席；客人甲坐近墙一桌，墙上有时钟。王晓梅不入画。",
+        "sourceAnchor": "S0030",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0030"
+        ]
+      },
+      {
+        "action": "中近景，客人甲不耐烦地抬眼看墙上时钟，保持等待状态；王晓梅上一镜OS继续至说完。保留厅内低低人声，不新增可辨台词。",
+        "camera": "固定斜侧构图，同时容纳客人甲视线与时钟。",
+        "shotNo": 2,
+        "performance": "客人甲抿嘴，未发声。",
+        "positioning": "客人甲坐在墙边，时钟在其侧后方上部。",
+        "sourceAnchor": "S0030",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9.0,
+    "effectiveCharsPerSecond": 2.78,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 1,
+    "board": 7,
+    "shot": 3,
+    "seconds": 4,
+    "characters": 26,
+    "charsPerSecond": 6.5,
+    "voice": [
+      "王晓梅（愤怒）：“就一个人晃了一下没站好！你就不管外头那三百六十个客人了？！”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅俯下身质问：“就一个人晃了一下没站好！你就不管外头那三百六十个客人了？！”整句跨下镜连续。",
+        "camera": "从胡百德肩后看王晓梅，保持同一轴侧。",
+        "shotNo": 3,
+        "dialogue": "王晓梅（愤怒）：“就一个人晃了一下没站好！你就不管外头那三百六十个客人了？！”",
+        "performance": "王晓梅同期对白，语气加重而不抢速。",
+        "positioning": "王晓梅立在靠椅前，胡百德低位坐着。",
+        "sourceAnchor": "S0042",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0042"
+        ]
+      },
+      {
+        "action": "双人侧面中景，王晓梅继续说完上一镜质问，胡百德闭嘴听，仍不抬头。",
+        "camera": "固定侧面双人镜头。",
+        "shotNo": 4,
+        "performance": "王晓梅声音延续，口型连续；不新增胡百德反应。",
+        "positioning": "王晓梅俯身姿态不变，胡百德仍在靠椅上。",
+        "sourceAnchor": "S0042",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.71,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 2,
+    "board": 1,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 28,
+    "charsPerSecond": 5.6,
+    "voice": [
+      "王大山（朴实）：“家里攒了两篮鸭蛋，俺给你捎来。恁客人那催菜声，俺在门口都听见嘞。”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王大山朴实解释：“家里攒了两篮鸭蛋，俺给你捎来。恁客人那催菜声，俺在门口都听见嘞。”台词跨下镜连续。",
+        "camera": "固定双人侧面中景。",
+        "shotNo": 2,
+        "dialogue": "王大山（朴实）：“家里攒了两篮鸭蛋，俺给你捎来。恁客人那催菜声，俺在门口都听见嘞。”",
+        "performance": "王大山同期起句，目光落向侄女，持篮不另加动作。",
+        "positioning": "王大山画左面对右侧王晓梅，两篮仍垂在双手，门在身后。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0004"
+        ]
+      },
+      {
+        "action": "近景接住王晓梅听话，王大山上一镜后半句声音持续至完整说完。",
+        "camera": "从王大山右肩后看王晓梅，固定，保持原轴线。",
+        "shotNo": 3,
+        "performance": "王大山现场画外续声；王晓梅嘴唇闭合，保持意外的注视，不新增回应。",
+        "positioning": "王晓梅在右前景，王大山在左侧近处，篮沿可见；胡百德仍在深处。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.11,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 2,
+    "board": 2,
+    "shot": 2,
+    "seconds": 4.5,
+    "characters": 25,
+    "charsPerSecond": 5.56,
+    "voice": [
+      "王大山（不满）：“咋的，你瞧不起俺们乡下人？俺给俺侄女送两篮鸭蛋碍着谁了？”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王大山皱眉，提篮上前一步站定，瞪眼直视胡百德，说：“咋的，你瞧不起俺们乡下人？俺给俺侄女送两篮鸭蛋碍着谁了？”声音跨下镜。",
+        "camera": "固定，身体推进产生压迫感。",
+        "shotNo": 2,
+        "dialogue": "王大山（不满）：“咋的，你瞧不起俺们乡下人？俺给俺侄女送两篮鸭蛋碍着谁了？”",
+        "performance": "王大山同期起句，抬眼反问，双篮随步伐轻晃但鸭蛋完整。",
+        "positioning": "王大山左、胡百德右面对面；王大山双手仍各持一篮，王晓梅在二人侧后方。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0008"
+        ]
+      },
+      {
+        "action": "过肩近景，王大山续完“俺给俺侄女送两篮鸭蛋碍着谁了？”胡百德迎着视线不退。",
+        "camera": "从王大山肩后看胡百德，固定。",
+        "shotNo": 3,
+        "performance": "王大山现场画外声音连续；胡百德闭嘴听，保持轻蔑，不重复台词。",
+        "positioning": "胡百德画右，王大山左前景肩背和篮把可见，二人距离缩至约半米。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.12,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 2,
+    "board": 4,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 25,
+    "charsPerSecond": 6.25,
+    "voice": [
+      "王大山（质问）：“行！俺是不懂你们城里的规矩！那你们搁这站着不开火是弄啥？”"
+    ],
+    "shots": [
+      {
+        "action": "中景，大山质问：“行！俺是不懂你们城里的规矩！那你们搁这站着不开火是弄啥？”声音跨下镜。",
+        "camera": "固定，人物与食材同框。",
+        "shotNo": 1,
+        "dialogue": "王大山（质问）：“行！俺是不懂你们城里的规矩！那你们搁这站着不开火是弄啥？”",
+        "performance": "大山同期前半句，眉头收紧，指向维持；胡百德听。",
+        "positioning": "大山在台左端，空手右臂指向食材；胡百德在对面画右，孙晴在台后。双篮放在台边不动。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0013"
+        ]
+      },
+      {
+        "action": "食材中近景交代备料已齐，王大山现场画外续完上一句后半句，将质问落在没有开火的后厨。",
+        "camera": "固定略俯机位，保留静止灶台背景。",
+        "shotNo": 2,
+        "performance": "大山续声，不重启对白；背景胡百德不对口型。",
+        "positioning": "近处为被指的整齐菜盘和鲜肉，背景胡百德站在未点火灶区前，锅静置。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，孙晴委屈地说：“他非要等所有人站到他满意才肯开火！”",
+        "camera": "固定，保持台面为空间锚点。",
+        "shotNo": 3,
+        "dialogue": "孙晴（委屈）：“他非要等所有人站到他满意才肯开火！”",
+        "performance": "同期对白，嘴角绷紧，眼睛看向大山。",
+        "positioning": "孙晴站在配菜台后，朝左侧王大山说话，胡百德在其右侧画外。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.12,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 2,
+    "board": 5,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "王大山（看向胡百德）：“恁是厨子，还是来军训嘞？客人花钱吃饭，没花钱看你摆谱！”"
+    ],
+    "shots": [
+      {
+        "action": "近景，王大山转眼看向胡百德，开口：“恁是厨子，还是来军训嘞？客人花钱吃饭，没花钱看你摆谱！”对白连续跨镜。",
+        "camera": "固定王大山近景。",
+        "shotNo": 1,
+        "dialogue": "王大山（看向胡百德）：“恁是厨子，还是来军训嘞？客人花钱吃饭，没花钱看你摆谱！”",
+        "performance": "同期前半句，反问时抬眉，眼神不让。",
+        "positioning": "王大山在画左台边，双手空着；胡百德画右，王晓梅在两人侧后。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      },
+      {
+        "action": "胡百德近景，王大山现场画外续完“客人花钱吃饭，没花钱看你摆谱！”胡百德脸部逐渐绷紧。",
+        "camera": "从大山肩后固定看胡百德。",
+        "shotNo": 2,
+        "performance": "胡百德闭嘴听，轻蔑转为恼怒；只有大山续声。",
+        "positioning": "胡百德在右侧正对大山，王大山左侧肩部在前景。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，胡百德怒斥：“一个乡下做大席的，也敢在我面前吠？”",
+        "camera": "固定侧面双人构图，呈现挑衅距离。",
+        "shotNo": 3,
+        "dialogue": "胡百德（愤怒）：“一个乡下做大席的，也敢在我面前吠？”",
+        "performance": "胡百德同期发声，瞪眼，身体微向前；大山不退不插话。",
+        "positioning": "二人仍左、右对峙，王晓梅位于侧后，未插进中间。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0016"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 8,
+    "board": 3,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 35,
+    "charsPerSecond": 7.0,
+    "voice": [
+      "王晓梅（急）：“顾总，笋干焖鸡有九只原料不对，还有龙虾，我们定了三十六只，缸里只有二十四只活的。”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅中近景，直接告知鸡肉原料及龙虾数量问题，未向顾总递交纸单。",
+        "camera": "顾总肩后看王晓梅，固定。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（急）：“顾总，笋干焖鸡有九只原料不对，还有龙虾，我们定了三十六只，缸里只有二十四只活的。”",
+        "performance": "王晓梅同期开始完整对白：“顾总，笋干焖鸡有九只原料不对，还有龙虾，我们定了三十六只，缸里只有二十四只活的。”本镜说到“还有龙虾”，余句跨镜连续。",
+        "positioning": "王晓梅画右面向左侧顾总，左手仍持采购单，孙晴在后侧。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0010"
+        ]
+      },
+      {
+        "action": "保持二人距离与纸单状态，王晓梅把订购数与活虾实数说完。",
+        "camera": "固定双人构图，让数量披露落在对峙关系中。",
+        "shotNo": 2,
+        "performance": "延续上一镜王晓梅的同一句声音，由“我们定了三十六只”至句末，王晓梅口型同步，顾总不发声。",
+        "positioning": "同轴侧面双人中景，顾总左、王晓梅右，采购单在她腰前。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景带下肢，顾总彻底停住脚步，抬眼紧盯王晓梅。",
+        "camera": "固定侧面机位。",
+        "shotNo": 3,
+        "performance": "顾总双眼睁大，嘴唇短暂绷住，不发声。",
+        "positioning": "顾总面对王晓梅，脚尖朝向她，孙晴在后方画外。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9.5,
+    "effectiveCharsPerSecond": 3.68,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 8,
+    "board": 5,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 35,
+    "charsPerSecond": 7.0,
+    "voice": [
+      "王晓梅（恳切）：“我已经让人去调货了，要是调不齐，咱这边给您补一道别的菜，龙虾钱全退，您看怎么样？”"
+    ],
+    "shots": [
+      {
+        "action": "近景，王晓梅压稳语气，提出调货与替代菜方案。",
+        "camera": "缓慢推近王晓梅，突出恳切沟通。",
+        "shotNo": 2,
+        "dialogue": "王晓梅（恳切）：“我已经让人去调货了，要是调不齐，咱这边给您补一道别的菜，龙虾钱全退，您看怎么样？”",
+        "performance": "王晓梅同期开始：“我已经让人去调货了，要是调不齐，咱这边给您补一道别的菜，龙虾钱全退，您看怎么样？”本镜说前半句至“要是调不齐”，后续声音不断。",
+        "positioning": "王晓梅保持原位和持单状态，右臂仍被抓住。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0019"
+        ]
+      },
+      {
+        "action": "王晓梅说完补菜退款建议，顾总听着，尚未松手。",
+        "camera": "固定，以同框展示协商未获回应。",
+        "shotNo": 3,
+        "performance": "王晓梅延续上一镜同一句：“咱这边给您补一道别的菜，龙虾钱全退，您看怎么样？”本人可见口型同步，顾总闭口听。",
+        "positioning": "侧面双人中景，顾总左、王晓梅右；顾总右手仍抓她右臂，采购单在她左手。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景，顾总右手松开并垂下，王晓梅右臂恢复自由；左手采购单保持不变。",
+        "camera": "固定侧面，松手结果清楚即切。",
+        "shotNo": 4,
+        "performance": "无对白，动作利落，不新增后退或揉臂行为。",
+        "positioning": "两人仍近距离相对，抓握手和王晓梅右臂居画面中部。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.5,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 8,
+    "board": 7,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 28,
+    "charsPerSecond": 5.6,
+    "voice": [
+      "王晓梅（诚恳看着顾总）：“我知道，所以我不敢隐瞒，今天错在我们百味楼，出了什么事我来承担！”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，王晓梅诚恳看着顾总，明确不隐瞒并承认百味楼责任。",
+        "camera": "固定侧面双人机位，维持对峙轴线。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（诚恳看着顾总）：“我知道，所以我不敢隐瞒，今天错在我们百味楼，出了什么事我来承担！”",
+        "performance": "王晓梅同期说：“我知道，所以我不敢隐瞒，今天错在我们百味楼，出了什么事我来承担！”本镜说至“今天错在我们百味楼”，剩余句连续跨镜。",
+        "positioning": "王晓梅右、顾总左，两人仍半臂距离；王晓梅左手拿采购单，右臂自由垂下，孙晴在后侧画外。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0022"
+        ]
+      },
+      {
+        "action": "王晓梅说完承担责任的承诺，目光坚定停在顾总脸上；不添加顾总答复或后续行动。",
+        "camera": "固定过顾总肩近景，以王晓梅承担责任收尾。",
+        "shotNo": 2,
+        "performance": "王晓梅同期延续：“出了什么事我来承担！”尾句放重，短暂停留在承诺落下的表情。",
+        "positioning": "王晓梅近景面向左侧顾总，顾总肩部留在前景，持单手位置不变。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.11,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 11,
+    "board": 2,
+    "shot": 3,
+    "seconds": 5,
+    "characters": 34,
+    "charsPerSecond": 6.8,
+    "voice": [
+      "马强（指向胡百德）：“王总，我承认我拿过好处。但每次买多少、单上写多少，都是他定的！钱大头都转给他了。”"
+    ],
+    "shots": [
+      {
+        "action": "马强指向胡百德并开始完整一句同期对白：“王总，我承认我拿过好处。但每次买多少、单上写多少，都是他定的！钱大头都转给他了。”本镜说至“但每次买多少”，后半句连续到下一镜。",
+        "camera": "固定中近景，手指与脸同时入画。",
+        "shotNo": 3,
+        "dialogue": "马强（指向胡百德）：“王总，我承认我拿过好处。但每次买多少、单上写多少，都是他定的！钱大头都转给他了。”",
+        "performance": "承认时短促低头，随即指认；一句声音连续不中断。",
+        "positioning": "马强在通道右侧，左手仍握手机，右手可指向左侧胡百德；王晓梅在马强右后侧。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0008"
+        ]
+      },
+      {
+        "action": "过肩中景保持指认关系；马强现场画外声音延续“单上写多少，都是他定的！钱大头都转给他了。”胡百德无声承受指认。",
+        "camera": "固定过肩机位，仍在原轴线一侧。",
+        "shotNo": 4,
+        "performance": "马强声音延续而非重起；胡百德不对口型，嘴唇紧抿。",
+        "positioning": "从马强右肩后看左侧胡百德，指向他的手在前景；王大山仍隔在两人之间。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.78,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 11,
+    "board": 4,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 32,
+    "charsPerSecond": 6.4,
+    "voice": [
+      "王晓梅（一把拨开胡百德的手）：“我没忘！这些年我也没亏待过你！一码归一码，你以次充好、做假账的事别想翻篇！”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，王晓梅左手一把拨开胡百德的手，使其手臂落向侧下方，同时说：“我没忘！这些年我也没亏待过你！一码归一码，你以次充好、做假账的事别想翻篇！”对白说至“一码归一码”附近，后半句延续下一镜。",
+        "camera": "固定侧面构图，看清拨开接触与落手结果。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（一把拨开胡百德的手）：“我没忘！这些年我也没亏待过你！一码归一码，你以次充好、做假账的事别想翻篇！”",
+        "performance": "王晓梅同期对白，动作干脆，不松掉右手手机。",
+        "positioning": "王晓梅在右，胡百德在左、指向她的手伸在两人之间；王晓梅右手持手机，左手空着。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0012"
+        ]
+      },
+      {
+        "action": "王晓梅近景，继续说完“你以次充好、做假账的事别想翻篇！”目光不离胡百德。",
+        "camera": "固定过胡百德肩近景。",
+        "shotNo": 2,
+        "performance": "王晓梅延续同句同期口型，不重新起句；重音落在“别想翻篇”。",
+        "positioning": "胡百德左肩为前景，王晓梅保持右侧原位，左手已落下。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "胡百德近景，脸色发青，嘴角绷住，一时无话。",
+        "camera": "固定反打，保留同轴方向。",
+        "shotNo": 3,
+        "performance": "无声反应，不追加怒骂。",
+        "positioning": "胡百德站在王晓梅左前方，手臂已被拨落。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.56,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 13,
+    "board": 3,
+    "shot": 3,
+    "seconds": 4,
+    "characters": 27,
+    "charsPerSecond": 6.75,
+    "voice": [
+      "胡百德（冷笑）：“咱俩现在是一条船上的蚂蚱，你以为你留在这里讨得了什么好吗？”"
+    ],
+    "shots": [
+      {
+        "action": "近景，胡百德冷笑着开始威胁马强。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "dialogue": "胡百德（冷笑）：“咱俩现在是一条船上的蚂蚱，你以为你留在这里讨得了什么好吗？”",
+        "performance": "胡百德同期完整起句：咱俩现在是一条船上的蚂蚱，你以为你留在这里讨得了什么好吗？此镜说到蚂蚱，后半句连续跨下镜。",
+        "positioning": "胡百德面对马强，出口在胡百德背后。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      },
+      {
+        "action": "马强近景，听见后半句时目光停在胡百德身上，仍不回答。",
+        "camera": "固定反打，不越轴。",
+        "shotNo": 4,
+        "performance": "胡百德现场画外声音接续：你以为你留在这里讨得了什么好吗？马强不对口型，不重起整句。",
+        "positioning": "马强在通道中，画外胡百德仍在出口处对他说话。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中全景，胡百德先跨出门，马强短暂犹豫后跟上，两个厨师随后出门，通道空出来。保留连续脚步声。",
+        "camera": "向出口小幅跟随，清楚呈现四人离开顺序。",
+        "shotNo": 5,
+        "performance": "马强比胡百德慢半拍起步；两个厨师各自跟随，不复制人物。",
+        "positioning": "胡百德距门最近，马强及两个厨师依次在其后。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4,
+      5
+    ],
+    "effectiveSeconds": 11.0,
+    "effectiveCharsPerSecond": 2.45,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 13,
+    "board": 6,
+    "shot": 1,
+    "seconds": 4.5,
+    "characters": 25,
+    "charsPerSecond": 5.56,
+    "voice": [
+      "王晓梅（冷声）：“你想走没人拦你，可你这些年昧下的钱，少一分我都跟你没完！”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅近景，冷声把离职和追款分开表态。",
+        "camera": "缓慢推近王晓梅。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（冷声）：“你想走没人拦你，可你这些年昧下的钱，少一分我都跟你没完！”",
+        "performance": "王晓梅同期完整起句：你想走没人拦你，可你这些年昧下的钱，少一分我都跟你没完！本镜说至昧下的钱，末句延续下镜。",
+        "positioning": "王晓梅右侧挡住通道，胡百德在她对面一米处，手机垂握在胡百德右手中、尚未亮屏。",
+        "sourceAnchor": "S0023",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0023"
+        ]
+      },
+      {
+        "action": "胡百德中近景，站住听王晓梅说完追款警告。",
+        "camera": "固定反打。",
+        "shotNo": 2,
+        "performance": "王晓梅画外声连续说：少一分我都跟你没完！胡百德不对口型。",
+        "positioning": "胡百德仍在左侧，王晓梅在现场画外右侧。",
+        "sourceAnchor": "S0023",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景，胡百德死死盯住王晓梅，嘴角浮起冷笑。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "无对白，不添加回应。",
+        "positioning": "胡百德面向右侧王晓梅，右手持手机垂在腰侧。",
+        "sourceAnchor": "S0024",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7.0,
+    "effectiveCharsPerSecond": 3.57,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 15,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 28,
+    "charsPerSecond": 5.6,
+    "voice": [
+      "王大山：“明儿五十桌寿宴。原来那个主厨撂挑子走了。恁、建国、春桃仨人能来不？”"
+    ],
+    "shots": [
+      {
+        "action": "王大山近景，说明明天五十桌寿宴以及原主厨撂挑子的情况。",
+        "camera": "固定，从王晓梅左肩旁看王大山，不越轴。",
+        "shotNo": 1,
+        "dialogue": "王大山：“明儿五十桌寿宴。原来那个主厨撂挑子走了。恁、建国、春桃仨人能来不？”",
+        "performance": "王大山同期开始S0006整句，语气直接；声音连续至下一镜。",
+        "positioning": "王大山在门内左侧，左手手机免提保持开启；王晓梅在右侧半米处。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0006"
+        ]
+      },
+      {
+        "action": "双人中景，王大山接着询问桂兰、建国、春桃三人能否来。",
+        "camera": "固定，稍宽构图同时看见求援者和等待的侄女。",
+        "shotNo": 2,
+        "performance": "延续上一镜王大山同一句同期声音，在本镜说完；王晓梅只听，不新增回应。",
+        "positioning": "两人位置不变，手机仍在王大山胸前，王晓梅面向他。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "双人中近景，桂兰婶指出五十桌只找三人不够，王大山认真听完。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "narration": "桂兰婶（电话VO）：“五十桌？你光找俺们仨可不够。”",
+        "performance": "桂兰婶电话VO完整说本段，现场两人不对口型。",
+        "positioning": "王大山持机在左前景，右侧王晓梅脸部清晰；桂兰婶在电话另一端。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 3,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.5,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 15,
+    "board": 4,
+    "shot": 1,
+    "seconds": 4.5,
+    "characters": 26,
+    "charsPerSecond": 5.78,
+    "voice": [
+      "王大山：“你放心吧，你桂兰婶她们的手艺没得说，你只管进货，俺们管出菜。”"
+    ],
+    "shots": [
+      {
+        "action": "王大山中近景，安慰王晓梅放心，肯定桂兰婶等人的手艺。",
+        "camera": "固定平视。",
+        "shotNo": 1,
+        "dialogue": "王大山：“你放心吧，你桂兰婶她们的手艺没得说，你只管进货，俺们管出菜。”",
+        "performance": "王大山同期开始S0013整句，亲切而有把握；后半句跨镜持续。",
+        "positioning": "王大山左侧面向右侧侄女，左手手机垂在腰际；两人距半米。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0013"
+        ]
+      },
+      {
+        "action": "王大山将话落到分工：侄女负责进货，他们负责出菜。",
+        "camera": "固定，双人构图呈现协作关系。",
+        "shotNo": 2,
+        "performance": "王大山同期延续上一镜台词至结束；王晓梅闭口听完。",
+        "positioning": "双人中景，王晓梅右侧正对王大山，两人及手机位置不变。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景，王晓梅笑着点头，认可分工。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "笑意保留，点头一次，无新增对白。",
+        "positioning": "王晓梅右侧，王大山肩部在左前景。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7.5,
+    "effectiveCharsPerSecond": 3.47,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 15,
+    "board": 5,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 27,
+    "charsPerSecond": 6.75,
+    "voice": [
+      "孙晴：（VO）王总，胡百德在客户群发了个视频！明天办寿宴的李老板也看见了！"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅近景，听到孙晴报告胡百德在客户群发布视频。",
+        "camera": "缓慢推近，集中到听者面部。",
+        "shotNo": 2,
+        "dialogue": "孙晴：（VO）王总，胡百德在客户群发了个视频！明天办寿宴的李老板也看见了！",
+        "performance": "孙晴电话VO开始S0017整句并跨镜延续，语气急促但清楚；王晓梅闭口倾听。",
+        "positioning": "王晓梅右手手机贴右耳；王大山在左侧画外原位，孙晴仅为电话声音。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0017"
+        ]
+      },
+      {
+        "action": "更紧近景，孙晴接着说李老板也已看见视频，王晓梅视线停住。",
+        "camera": "固定，同轴收紧构图。",
+        "shotNo": 3,
+        "performance": "孙晴电话VO延续并说完同一句，不重复起句；王晓梅不对口型。",
+        "positioning": "王晓梅手机仍贴右耳，王大山的肩缘留在左前景，双方不换位。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "面部特写，王晓梅眼睛睁大、嘴唇微张，原本轻松的神态凝住，在震惊中结束。",
+        "camera": "固定，停在反应结果。",
+        "shotNo": 4,
+        "performance": "无对白，不挂断、不打开视频；保留轻微室内环境声，无配乐、字幕或额外叠字。",
+        "positioning": "王晓梅保持接听姿势，右手手机未放下，身体仍朝王大山。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.86,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 16,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 52,
+    "charsPerSecond": 10.4,
+    "voice": [
+      "胡百德（怒气冲冲）：“各位，我已经不在百味楼干了！现在掌勺的是一个乡下老头！乡下人做饭你们知道的，肯定没那么多讲究，往后吃出毛病，别来找我！”】"
+    ],
+    "shots": [
+      {
+        "action": "录像中景，胡百德怒气冲冲地宣告离职，接着攻击新掌勺者。",
+        "camera": "录像固定机位。",
+        "shotNo": 1,
+        "dialogue": "胡百德（怒气冲冲）：“各位，我已经不在百味楼干了！现在掌勺的是一个乡下老头！乡下人做饭你们知道的，肯定没那么多讲究，往后吃出毛病，别来找我！”】",
+        "performance": "唯一声音为手机录像中的胡百德，全句在本镜起声并跨后两镜连续说完：“各位，我已经不在百味楼干了！现在掌勺的是一个乡下老头！乡下人做饭你们知道的，肯定没那么多讲究，往后吃出毛病，别来找我！”本镜说至“现在掌勺的是”。",
+        "positioning": "承接手机屏幕，插入录像原画面；胡百德在门外中央，与门框距离不变，直视录制镜头。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      },
+      {
+        "action": "切录像较紧近景，胡百德继续贬低乡下厨师，扬起下巴，语气越发轻蔑。",
+        "camera": "同轴裁切近景，固定。",
+        "shotNo": 2,
+        "performance": "胡百德原句连续，从“一个乡下老头”接到“肯定没那么多讲究”；口型匹配，无重复起句。",
+        "positioning": "录像中胡百德仍在门框前，面向原录制机位，不改变站位。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "手机屏幕中胡百德说完关于吃出毛病的推责话，录像声音收尾；不添加评论、转发量或消息文字。",
+        "camera": "固定手机特写。",
+        "shotNo": 3,
+        "performance": "延续胡百德原句：“往后吃出毛病，别来找我！”屏幕内胡百德对口型，王晓梅不发声。保留手机外放的窄频音色。",
+        "positioning": "回到王晓梅左肩后手机特写，右手仍持手机；胡百德仅出现在屏幕内，录像站位不变。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 15,
+    "effectiveCharsPerSecond": 3.47,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 16,
+    "board": 3,
+    "shot": 3,
+    "seconds": 5,
+    "characters": 34,
+    "charsPerSecond": 6.8,
+    "voice": [
+      "孙晴（焦急）：“王总，好几个下了预订单的客人都在问，明天办宴的李老板也看见了，说一早就过来。”"
+    ],
+    "shots": [
+      {
+        "action": "孙晴向王晓梅汇报预订客人的反应，手机不递出。",
+        "camera": "固定过肩中近景。",
+        "shotNo": 3,
+        "dialogue": "孙晴（焦急）：“王总，好几个下了预订单的客人都在问，明天办宴的李老板也看见了，说一早就过来。”",
+        "performance": "孙晴同期焦急说：“王总，好几个下了预订单的客人都在问，明天办宴的李老板也看见了，说一早就过来。”本镜说至“客人都在问”，后镜继续；王晓梅只听。",
+        "positioning": "从王晓梅右肩后看孙晴，孙晴在右侧面对王晓梅，右手手机停在腰胸之间。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0008"
+        ]
+      },
+      {
+        "action": "中景，孙晴继续汇报李老板明早要来；王晓梅把目光从屏幕移向孙晴，王大山听清后将视线转向侄女。",
+        "camera": "固定三人中景，保持对话轴线。",
+        "shotNo": 4,
+        "performance": "孙晴上一句同期延续，从“明天办宴的李老板也看见了”说到句末；另两人不对口型。",
+        "positioning": "三人同框，王晓梅在左前，孙晴在右，王大山在左后；各自持物不变。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "王大山皱眉，直接提出将语音公开的应对办法。",
+        "camera": "固定王大山近景。",
+        "shotNo": 5,
+        "dialogue": "王大山（皱眉）：“晓梅，把他那段语音发出去！”",
+        "performance": "王大山同期：“晓梅，把他那段语音发出去！”语气果断；不播放所指语音。",
+        "positioning": "王大山位于王晓梅左后半米，面向她；王晓梅肩部留在前景，孙晴在右侧画外。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 3,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.78,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 16,
+    "board": 4,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 28,
+    "charsPerSecond": 5.6,
+    "voice": [
+      "王晓梅：“孙晴，你顺便把今天的采购单一起发上去，不管谁问起，咱都实话实说。”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，王晓梅边操作手机边要求连同采购单一起公开。",
+        "camera": "固定双人构图。",
+        "shotNo": 2,
+        "dialogue": "王晓梅：“孙晴，你顺便把今天的采购单一起发上去，不管谁问起，咱都实话实说。”",
+        "performance": "王晓梅同期完整句在本镜起声：“孙晴，你顺便把今天的采购单一起发上去，不管谁问起，咱都实话实说。”本镜说到“一起发上去”；孙晴不对口型。不额外展示纸质采购单。",
+        "positioning": "王晓梅居左，面向右侧孙晴，右手手机不变；孙晴持自己的手机静听。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0011"
+        ]
+      },
+      {
+        "action": "王晓梅抬眼直视孙晴，将实话实说的原则交代到底。",
+        "camera": "同轴切王晓梅近景，固定。",
+        "shotNo": 3,
+        "performance": "王晓梅上一句继续：“不管谁问起，咱都实话实说。”口型连续、语气坚定，不重复起句。",
+        "positioning": "王晓梅位置与持手机手不变，孙晴右肩在前景。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "孙晴应声，目光落回自己的手机，结束在准备执行的状态，不虚构发送成功结果。",
+        "camera": "固定孙晴中近景，轴线不变。",
+        "shotNo": 4,
+        "dialogue": "孙晴：“好，我现在就发！”",
+        "performance": "孙晴同期：“好，我现在就发！”由焦急转为干脆；王晓梅不发声。",
+        "positioning": "孙晴在右，面对左侧王晓梅，右手持自己的手机；王大山保持左后方位置。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 2,
+        "soundSegmentIds": [
+          "S0012"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7.5,
+    "effectiveCharsPerSecond": 3.73,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 17,
+    "board": 2,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "桂兰婶（爽朗）：“大山的侄女，甭说客气话。肉在哪儿？狮子头得先做，耽误不得。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，桂兰婶爽朗回应，随问肉的位置把视线转向厨房内。",
+        "camera": "固定，王晓梅肩部在前景边缘。",
+        "shotNo": 2,
+        "dialogue": "桂兰婶（爽朗）：“大山的侄女，甭说客气话。肉在哪儿？狮子头得先做，耽误不得。”",
+        "performance": "桂兰婶同期起句：“大山的侄女，甭说客气话。肉在哪儿？”整句延续至下镜。",
+        "positioning": "桂兰婶站在王晓梅对面，配菜台在她右后方。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "双人中景，桂兰婶朝配菜区看，王晓梅认真听。",
+        "camera": "固定，拓开视野显出她寻找工作位置的方向。",
+        "shotNo": 3,
+        "performance": "桂兰婶同期续说：“狮子头得先做，耽误不得。”不重复起句，王晓梅不对口型。",
+        "positioning": "仍在同一轴线侧，桂兰婶侧脸与王晓梅同框，赵建国、刘春桃在后景。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 17,
+    "board": 4,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 43,
+    "charsPerSecond": 8.6,
+    "voice": [
+      "王大山：“桂兰先管狮子头，建国跟俺守两口炒锅，春桃盯切配和分盘。李明跟我，小柱跟春桃，先洗手换衣裳，准备开工！”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王大山依次示意桂兰婶与赵建国，明确两口锅的分工。",
+        "camera": "固定正侧面，保留手势与工作区。",
+        "shotNo": 1,
+        "dialogue": "王大山：“桂兰先管狮子头，建国跟俺守两口炒锅，春桃盯切配和分盘。李明跟我，小柱跟春桃，先洗手换衣裳，准备开工！”",
+        "performance": "王大山同期开始整句：“桂兰先管狮子头，建国跟俺守两口炒锅”，声音连续至后镜。",
+        "positioning": "王大山在灶与配菜台之间，赵建国靠灶，桂兰婶靠鲜肉，刘春桃手持分菜单，李明与陈小柱在通道旁。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0012"
+        ]
+      },
+      {
+        "action": "中景展示被分派的切配与分盘位置，刘春桃抬眼听指挥。",
+        "camera": "固定同轴侧机位。",
+        "shotNo": 2,
+        "performance": "王大山现场画外续说：“春桃盯切配和分盘。李明跟我，小柱跟春桃”，听者均不对口型。",
+        "positioning": "刘春桃站台端持分菜单，李明在通道左侧，陈小柱靠配菜区；王大山在画外原位。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，王大山转向众人收束指令。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "王大山同期续说：“先洗手换衣裳，准备开工！”语气干脆，无重复对白。",
+        "positioning": "王大山仍在两工作区之间，李明与陈小柱在两侧边缘。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 12,
+    "effectiveCharsPerSecond": 3.58,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 17,
+    "board": 6,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "李老板（怒斥）：“我妈今天过寿，亲戚一会儿就到！你换了主厨，昨晚才告诉我？”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，李老板盯住王晓梅，举手机的手保持在两人之间。",
+        "camera": "固定过肩。",
+        "shotNo": 2,
+        "dialogue": "李老板（怒斥）：“我妈今天过寿，亲戚一会儿就到！你换了主厨，昨晚才告诉我？”",
+        "performance": "李老板怒斥起句：“我妈今天过寿，亲戚一会儿就到！”声音连续到下镜。",
+        "positioning": "从王晓梅肩后看李老板，他右手仍举手机，孙晴在镜外王晓梅身侧。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0018"
+        ]
+      },
+      {
+        "action": "王晓梅中近景，手机与她形成压迫距离，她直视李老板听完质问。",
+        "camera": "同轴反打，人物不换位。",
+        "shotNo": 3,
+        "performance": "李老板现场画外续说：“你换了主厨，昨晚才告诉我？”王晓梅与孙晴闭口听。",
+        "positioning": "王晓梅正对左侧李老板，孙晴站她身侧；手机在前景。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 17,
+    "board": 7,
+    "shot": 1,
+    "seconds": 4.5,
+    "characters": 29,
+    "charsPerSecond": 6.44,
+    "voice": [
+      "王晓梅：“不是故意瞒着您，胡百德是昨天走的，他做的事孙晴应该告诉您了，我们……”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王晓梅迎着质问立即解释，没有回避李老板视线。",
+        "camera": "固定，李老板肩部在前景。",
+        "shotNo": 1,
+        "dialogue": "王晓梅：“不是故意瞒着您，胡百德是昨天走的，他做的事孙晴应该告诉您了，我们……”",
+        "performance": "王晓梅同期起句：“不是故意瞒着您，胡百德是昨天走的”，全句声音延续。",
+        "positioning": "王晓梅仍在右侧，孙晴侧后，李老板左侧举手机相向。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0019"
+        ]
+      },
+      {
+        "action": "双人中景，王晓梅提及孙晴时略朝她侧向，继续向李老板说明。",
+        "camera": "固定稍宽机位，显出被提及的孙晴。",
+        "shotNo": 2,
+        "performance": "王晓梅同期续说：“他做的事孙晴应该告诉您了，我们……”末尾未完成便接下一条打断，孙晴不代说。",
+        "positioning": "王晓梅与孙晴同框，李老板在左前景边缘，手机仍属于李老板。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.62,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 17,
+    "board": 8,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 54,
+    "charsPerSecond": 10.8,
+    "voice": [
+      "李老板（打断）：“其他事情我不管，我只问你一句，我妈就是喜欢胡师傅做的红烧狮子头，所以才把寿宴定在这儿！现在做菜的人都换了，味道怎么保证！”"
+    ],
+    "shots": [
+      {
+        "action": "李老板中近景，直接抢断王晓梅话头，身体朝她略倾。",
+        "camera": "固定过王晓梅肩机位。",
+        "shotNo": 1,
+        "dialogue": "李老板（打断）：“其他事情我不管，我只问你一句，我妈就是喜欢胡师傅做的红烧狮子头，所以才把寿宴定在这儿！现在做菜的人都换了，味道怎么保证！”",
+        "performance": "李老板同期开始整句：“其他事情我不管，我只问你一句，我妈就是喜欢胡师傅做的”，后镜持续，不再起句。",
+        "positioning": "李老板在左，面对右侧王晓梅，右手手机仍在胸前至两人之间；孙晴站王晓梅身侧。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0020"
+        ]
+      },
+      {
+        "action": "三人侧面中景，李老板继续说明订宴缘由，王晓梅被迫停止解释，孙晴静听。",
+        "camera": "固定侧面，保留真实发声者侧脸。",
+        "shotNo": 2,
+        "performance": "李老板同期续说：“红烧狮子头，所以才把寿宴定在这儿！现在做菜的人都换了”，听者不对口型。",
+        "positioning": "王晓梅与孙晴保持右侧站位，李老板在左前景，手机仍举着。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "李老板近景，问出最后一句，目光紧盯王晓梅，结束在要求保证的压力上，不添加回应。",
+        "camera": "缓慢小幅推近，落在质问表情。",
+        "shotNo": 3,
+        "performance": "李老板同期续说：“味道怎么保证！”强调末句，留短促收尾。全条对白连续共13秒，无字幕无配乐。",
+        "positioning": "李老板仍面向王晓梅，两人距离不变。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 13,
+    "effectiveCharsPerSecond": 4.15,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 18,
+    "board": 4,
+    "shot": 2,
+    "seconds": 4.5,
+    "characters": 25,
+    "charsPerSecond": 5.56,
+    "voice": [
+      "王晓梅（伸手示意）：“李老板，今天是我大伯王大山掌勺，大伯，李老板想尝尝狮子头。”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王晓梅伸手示意王大山，向李老板介绍今日掌勺者，再转向大伯提出尝菜需求。",
+        "camera": "固定三人构图。",
+        "shotNo": 2,
+        "dialogue": "王晓梅（伸手示意）：“李老板，今天是我大伯王大山掌勺，大伯，李老板想尝尝狮子头。”",
+        "performance": "王晓梅同期开始完整原句，先说至“大伯王大山掌勺”，下一镜连续说余句。",
+        "positioning": "王晓梅站台外中间，李老板在她右侧；王大山在台内左侧。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0016"
+        ]
+      },
+      {
+        "action": "中近景呈现王大山持刀听介绍，王晓梅声音延续至“李老板想尝尝狮子头”。",
+        "camera": "固定过肩。",
+        "shotNo": 3,
+        "performance": "王晓梅现场画外延续同一句，不重复；王大山不对口型。",
+        "positioning": "从李老板肩后看台内王大山；王晓梅在左侧画外紧邻李老板。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，王大山把菜刀放平在案板上，答应现做。",
+        "camera": "固定，双手与脸同框。",
+        "shotNo": 4,
+        "dialogue": "王大山（放下菜刀）：“可以，那俺们给恁现做。”",
+        "performance": "王大山同期完整原句，放刀与回应并行，语气平实。",
+        "positioning": "王大山右手持刀靠近案板，视线朝台外两人。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": [
+          "S0017"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7.5,
+    "effectiveCharsPerSecond": 3.33,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 18,
+    "board": 5,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 29,
+    "charsPerSecond": 5.8,
+    "voice": [
+      "李老板（质疑）：“这狮子头肉得松，筷子夹起来还不能散，那可是胡百德的拿手菜，你会吗？”"
+    ],
+    "shots": [
+      {
+        "action": "李老板中近景，质疑狮子头既要肉松、又要筷子夹起不散；只口头提出要求，不拿筷子示范。",
+        "camera": "从王大山肩后固定拍李老板。",
+        "shotNo": 1,
+        "dialogue": "李老板（质疑）：“这狮子头肉得松，筷子夹起来还不能散，那可是胡百德的拿手菜，你会吗？”",
+        "performance": "李老板同期开始完整原句，前半句说至“还不能散”，后半句跨镜延续。",
+        "positioning": "王大山台内画左，李老板台外画右，王晓梅在李老板左后侧；菜刀平放案板。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0018"
+        ]
+      },
+      {
+        "action": "展示客人与掌勺者隔台相对，李老板继续将胡百德的拿手菜作为标准，问王大山会不会。",
+        "camera": "固定，明确质问的对象。",
+        "shotNo": 2,
+        "performance": "李老板延续原句至“你会吗”，仅李老板对口型；其余人听，不另加反应。",
+        "positioning": "同轴线侧面的三人中景，王大山仍在台内，王晓梅在两人侧方。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8.5,
+    "effectiveCharsPerSecond": 3.41,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 19,
+    "board": 2,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 48,
+    "charsPerSecond": 8.0,
+    "voice": [
+      "胡百德(看向王晓梅):“王晓梅，你还真找来一帮乡下摆大席的？百味楼这是改成村口流水席了？这么缺人，要不我去门口菜摊上给你找两个来？”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德面向王晓梅开始整句嘲讽：“王晓梅，你还真找来一帮乡下摆大席的？百味楼这是改成村口流水席了？这么缺人，要不我去门口菜摊上给你找两个来？”声音连续跨下两镜。",
+        "camera": "固定双人侧面构图。",
+        "shotNo": 1,
+        "dialogue": "胡百德(看向王晓梅):“王晓梅，你还真找来一帮乡下摆大席的？百味楼这是改成村口流水席了？这么缺人，要不我去门口菜摊上给你找两个来？”",
+        "performance": "前段说至乡下摆大席的，轻蔑咬字，胡百德同期口型。",
+        "positioning": "胡百德转眼看右侧王晓梅，马强仍在身后；王晓梅保持站立。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      },
+      {
+        "action": "近景延续胡百德同一句声音，中段质问百味楼是否改成村口流水席；胡百德看着王晓梅说，不另起台词。",
+        "camera": "固定过肩，不越轴。",
+        "shotNo": 2,
+        "performance": "眉梢抬起，口型延续原句。",
+        "positioning": "从王晓梅肩后看胡百德，马强在其后侧。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "双人中景，胡百德说完同句末段门口菜摊找人的嘲讽；王晓梅听着不对口型。",
+        "camera": "固定，保留双方距离。",
+        "shotNo": 3,
+        "performance": "胡百德尾音上挑，结束整句。",
+        "positioning": "胡百德与王晓梅仍相隔一臂，马强保持身后位置。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 14,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 19,
+    "board": 6,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 31,
+    "charsPerSecond": 6.2,
+    "voice": [
+      "胡百德(得意):“当着李老板的面给我鞠躬认错！之前的事一笔勾销，往后后厨还是我说了算！”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德得意地提出条件：“当着李老板的面给我鞠躬认错！之前的事一笔勾销，往后后厨还是我说了算！”声音延续下镜。",
+        "camera": "缓慢推近，强调逼迫。",
+        "shotNo": 2,
+        "dialogue": "胡百德(得意):“当着李老板的面给我鞠躬认错！之前的事一笔勾销，往后后厨还是我说了算！”",
+        "performance": "抬下巴，前段强调鞠躬认错；仅胡百德发声。",
+        "positioning": "胡百德面对王晓梅，李老板在后侧画面边缘。",
+        "sourceAnchor": "S0021",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0021"
+        ]
+      },
+      {
+        "action": "过肩近景，胡百德延续并说完同句“一笔勾销，往后后厨还是我说了算”的条件，未实际发生鞠躬。",
+        "camera": "固定过肩。",
+        "shotNo": 3,
+        "performance": "胡百德同期口型，语气笃定。",
+        "positioning": "王晓梅在前景肩部，胡百德正面，李老板保持侧后位置。",
+        "sourceAnchor": "S0021",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景，王晓梅立即怒斥：“你做梦！”",
+        "camera": "固定反打，不越轴。",
+        "shotNo": 4,
+        "dialogue": "王晓梅(怒斥):“你做梦！”",
+        "performance": "目光不躲，斩断式发声。",
+        "positioning": "王晓梅直立原位，面对胡百德。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": [
+          "S0022"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.44,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 19,
+    "board": 7,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 31,
+    "charsPerSecond": 6.2,
+    "voice": [
+      "胡百德(摊开手):“行啊，那就让你这帮穷亲戚做。我倒要看看，这五十桌席面砸了，你们拿什么赔！”"
+    ],
+    "shots": [
+      {
+        "action": "中景，胡百德摊开双手，说：“行啊，那就让你这帮穷亲戚做。我倒要看看，这五十桌席面砸了，你们拿什么赔！”整句跨下镜持续。",
+        "camera": "固定，双手完整入画。",
+        "shotNo": 1,
+        "dialogue": "胡百德(摊开手):“行啊，那就让你这帮穷亲戚做。我倒要看看，这五十桌席面砸了，你们拿什么赔！”",
+        "performance": "胡百德以无所谓的摊手施压，前半句同期口型；其余人不发声。",
+        "positioning": "胡百德站在通道中央，王晓梅在他右侧，李老板在右后方；双方距离不变。",
+        "sourceAnchor": "S0023",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0023"
+        ]
+      },
+      {
+        "action": "近景延续同句后半，胡百德说完“五十桌席面砸了，你们拿什么赔”，以威胁落点结束本集，不新增离场或回应。",
+        "camera": "固定过肩，落在胡百德说完的表情。",
+        "shotNo": 2,
+        "performance": "胡百德直视王晓梅，末句加重；同期声音连续，不重说整句。",
+        "positioning": "胡百德双手仍摊开，王晓梅肩部在前景，李老板保持原位。",
+        "sourceAnchor": "S0023",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.1,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 20,
+    "board": 3,
+    "shot": 1,
+    "seconds": 5.5,
+    "characters": 36,
+    "charsPerSecond": 6.55,
+    "voice": [
+      "王晓梅（凝重）：“可他以次充好，坑害客人，还要我给他鞠躬道歉！我今天要是低了头，才是真的毁了百味楼！”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王晓梅又转向胡百德，声音拔高，直指以次充好和逼迫道歉。",
+        "camera": "固定中近景，保留胡百德侧脸及李老板抓臂关系。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（凝重）：“可他以次充好，坑害客人，还要我给他鞠躬道歉！我今天要是低了头，才是真的毁了百味楼！”",
+        "performance": "王晓梅同期开始完整原句“可他以次充好，坑害客人，还要我给他鞠躬道歉！我今天要是低了头，才是真的毁了百味楼！”本镜说至“鞠躬道歉”，后半句跨镜连续。",
+        "positioning": "王晓梅居中偏左，李老板贴她左侧保持抓臂状态，胡百德画右站立相距一米半。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      },
+      {
+        "action": "收紧到王晓梅近景，她挺住肩背，把拒绝低头的理由说完。",
+        "camera": "缓慢推近王晓梅，落到坚定目光即结束。",
+        "shotNo": 2,
+        "performance": "延续上一镜王晓梅同一句同期声“我今天要是低了头，才是真的毁了百味楼！”重音落在“毁了百味楼”，不重复前半句。",
+        "positioning": "王晓梅保持朝右看胡百德，其他人仍在原位，李老板手臂位于裁切外。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 11.0,
+    "effectiveCharsPerSecond": 3.27,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 20,
+    "board": 5,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 26,
+    "charsPerSecond": 6.5,
+    "voice": [
+      "王大山：“李老板，俺们先做一份送给恁妈尝尝。好不好吃，让老人家自己说。”"
+    ],
+    "shots": [
+      {
+        "action": "王大山提出先做一份让老人家尝味，给客户可验证的办法。",
+        "camera": "固定王大山中近景，手中无道具。",
+        "shotNo": 2,
+        "dialogue": "王大山：“李老板，俺们先做一份送给恁妈尝尝。好不好吃，让老人家自己说。”",
+        "performance": "王大山同期开始“李老板，俺们先做一份送给恁妈尝尝。好不好吃，让老人家自己说。”本镜说至“尝尝”，下一镜延续。",
+        "positioning": "王大山画左朝右面对李老板；李老板画右，王晓梅在其右后侧。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      },
+      {
+        "action": "李老板听试菜方案，目光仍带审视，未表示答应。",
+        "camera": "固定李老板近景，以视线承接画外声。",
+        "shotNo": 3,
+        "performance": "王大山位于左侧现场画外，延续“好不好吃，让老人家自己说。”李老板闭嘴听完，不代说。",
+        "positioning": "李老板朝左看王大山，王晓梅在右侧边缘，原抓臂关系不突变。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "李老板将疑虑直接问出口，仍不相信王大山的能力。",
+        "camera": "固定过王大山肩近景，接住听者转为发问者。",
+        "shotNo": 4,
+        "dialogue": "李老板（怀疑）：“你真能行？别是拿我这席面练手吧？“",
+        "performance": "李老板同期“你真能行？别是拿我这席面练手吧？”眼睛微眯，口气怀疑。",
+        "positioning": "双方保持一米对话距离，李老板画右，王大山肩部在左前景。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.25,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 20,
+    "board": 6,
+    "shot": 1,
+    "seconds": 3.5,
+    "characters": 25,
+    "charsPerSecond": 7.14,
+    "voice": [
+      "王大山（摆手）：“那不能够！做人要讲良心的！村里的大席，俺们从来就没办砸过！”"
+    ],
+    "shots": [
+      {
+        "action": "王大山抬手摆手否认练手，掌心向外，态度坦荡。",
+        "camera": "固定中近景，脸与摆手同框。",
+        "shotNo": 1,
+        "dialogue": "王大山（摆手）：“那不能够！做人要讲良心的！村里的大席，俺们从来就没办砸过！”",
+        "performance": "同期开始“那不能够！做人要讲良心的！村里的大席，俺们从来就没办砸过！”本镜说前两分句，摆手与发声并行。",
+        "positioning": "王大山位于李老板对面一米处，王晓梅在李老板右后侧。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": [
+          "S0016"
+        ]
+      },
+      {
+        "action": "三人侧面中景，王大山用办大席的经验把保证说完，王晓梅认真听着。",
+        "camera": "固定侧面中景，显出王晓梅即将接话的空间。",
+        "shotNo": 2,
+        "performance": "王大山同期延续“村里的大席，俺们从来就没办砸过！”其余两人不对口型，不新增认可反应。",
+        "positioning": "王大山位置不变；李老板和王晓梅在画右，抓臂状态保持至前移动作开始。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "王晓梅上前一步到李老板右侧前方，李老板手臂自然随她前移不作阻拦；她面对客户提出不满意就退款。",
+        "camera": "固定双人中景，看清一步前移后的落位。",
+        "shotNo": 3,
+        "dialogue": "王晓梅（上前一步）：“李老板，尝过之后要是您不满意，今天的餐费我全退！原定的菜照样给您上！”",
+        "performance": "王晓梅同期开始“李老板，尝过之后要是您不满意，今天的餐费我全退！原定的菜照样给您上！”本镜说至“不满意”，后半句跨镜。",
+        "positioning": "王晓梅在李老板右后侧半步，王大山在其对面。李老板右手原贴握她左上臂。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0017"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7.0,
+    "effectiveCharsPerSecond": 3.57,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 20,
+    "board": 6,
+    "shot": 3,
+    "seconds": 4.5,
+    "characters": 30,
+    "charsPerSecond": 6.67,
+    "voice": [
+      "王晓梅（上前一步）：“李老板，尝过之后要是您不满意，今天的餐费我全退！原定的菜照样给您上！”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅上前一步到李老板右侧前方，李老板手臂自然随她前移不作阻拦；她面对客户提出不满意就退款。",
+        "camera": "固定双人中景，看清一步前移后的落位。",
+        "shotNo": 3,
+        "dialogue": "王晓梅（上前一步）：“李老板，尝过之后要是您不满意，今天的餐费我全退！原定的菜照样给您上！”",
+        "performance": "王晓梅同期开始“李老板，尝过之后要是您不满意，今天的餐费我全退！原定的菜照样给您上！”本镜说至“不满意”，后半句跨镜。",
+        "positioning": "王晓梅在李老板右后侧半步，王大山在其对面。李老板右手原贴握她左上臂。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0017"
+        ]
+      },
+      {
+        "action": "近景强调王晓梅主动承担餐费风险，保证原定菜仍照常上。",
+        "camera": "固定近景，集中呈现承担责任的决定。",
+        "shotNo": 4,
+        "performance": "王晓梅同期延续“今天的餐费我全退！原定的菜照样给您上！”语气果断，句末落稳；不重复开头。",
+        "positioning": "王晓梅站在前移后的位置朝左看李老板，胡百德仍在她右侧一米附近画外。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.75,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 21,
+    "board": 6,
+    "shot": 2,
+    "seconds": 5.5,
+    "characters": 35,
+    "charsPerSecond": 6.36,
+    "voice": [
+      "胡百德（冷笑）：“老人家还没尝呢，五十桌的肉先备上了。王晓梅，你的好大伯这是拿你的钱练手呢，蠢货！”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，胡百德向王晓梅挖苦，视线由备料区转到她脸上。",
+        "camera": "固定同侧双人构图。",
+        "shotNo": 2,
+        "dialogue": "胡百德（冷笑）：“老人家还没尝呢，五十桌的肉先备上了。王晓梅，你的好大伯这是拿你的钱练手呢，蠢货！”",
+        "performance": "胡百德同期开始完整一句：“老人家还没尝呢，五十桌的肉先备上了。王晓梅，你的好大伯这是拿你的钱练手呢，蠢货！”本镜说至“王晓梅”，后镜连续接声；王晓梅不说话。",
+        "positioning": "胡百德在画左，王晓梅在画右，配料台仍位于二人后方；李老板在通道另一侧画外。",
+        "sourceAnchor": "S0028",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0028"
+        ]
+      },
+      {
+        "action": "胡百德近景继续冷笑讥讽，最后将“蠢货”说完即结束，不增加王晓梅回击。",
+        "camera": "从王晓梅肩后缓慢推近胡百德，收在其冷笑。",
+        "shotNo": 3,
+        "performance": "延续上一镜同一句同期声：“你的好大伯这是拿你的钱练手呢，蠢货！”口型归胡百德，语末带轻蔑重音。",
+        "positioning": "胡百德仍在王晓梅左侧半步处，王晓梅肩侧处于右前景，二人不换位。",
+        "sourceAnchor": "S0028",
+        "durationSeconds": 6,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 11.5,
+    "effectiveCharsPerSecond": 3.04,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 22,
+    "board": 3,
+    "shot": 1,
+    "seconds": 6.5,
+    "characters": 48,
+    "charsPerSecond": 7.38,
+    "voice": [
+      "胡百德（冷笑，低声）：“人家特意从乡下的带了三个帮手，摆明了就是要接这后厨，你还搁这给人帮忙，等这顿席做完，百味楼还能有你的位置？”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，胡百德低声冷笑挑拨：“人家特意从乡下的带了三个帮手，摆明了就是要接这后厨，你还搁这给人帮忙，等这顿席做完，百味楼还能有你的位置？”整句连续跨下一镜，此镜说至“接这后厨”。",
+        "camera": "缓慢推近双人关系，突出贴身挑拨。",
+        "shotNo": 1,
+        "dialogue": "胡百德（冷笑，低声）：“人家特意从乡下的带了三个帮手，摆明了就是要接这后厨，你还搁这给人帮忙，等这顿席做完，百味楼还能有你的位置？”",
+        "performance": "唯一声源为胡百德同期；压低音量而非加速。李明仍低头操作，不替他说话。",
+        "positioning": "胡百德站李明右侧半步，李明面对操作台，托盘中有刚团好的生狮子头。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 6.5,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      },
+      {
+        "action": "切侧面近景保留两人，延续胡百德同一句，从“你还搁这给人帮忙”说到“百味楼还能有你的位置？”。不重新起句。",
+        "camera": "同轴侧面固定，保留胡百德嘴部与李明工作状态。",
+        "shotNo": 2,
+        "performance": "胡百德持续同期对口型，末尾轻挑眉，李明闭口听。",
+        "positioning": "胡百德仍在右侧，李明在左，手保持在肉馅上方。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 6,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "李明近景，手上动作停住，转眼看向胡百德。",
+        "camera": "固定近景，画面下沿保留停住的双手。",
+        "shotNo": 3,
+        "performance": "原对白已结束；李明眼神迟疑，不新增台词。",
+        "positioning": "李明双手在台面上方，胡百德站在其右侧未动。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 12.5,
+    "effectiveCharsPerSecond": 3.84,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 22,
+    "board": 6,
+    "shot": 2,
+    "seconds": 4.5,
+    "characters": 27,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "胡百德（冷笑）：“哼，自不量力，让他们做。等李老板翻了脸，我看他们还笑不笑得出来！”"
+    ],
+    "shots": [
+      {
+        "action": "胡百德冷笑说：“哼，自不量力，让他们做。等李老板翻了脸，我看他们还笑不笑得出来！”此镜开始整句，说至“等李老板翻了脸”。",
+        "camera": "缓慢推近胡百德，保持拦人的手臂入画。",
+        "shotNo": 2,
+        "dialogue": "胡百德（冷笑）：“哼，自不量力，让他们做。等李老板翻了脸，我看他们还笑不笑得出来！”",
+        "performance": "胡百德同期发声，先哼一声再说；马强闭口。整句跨下一镜连续。",
+        "positioning": "胡百德在中部，右臂仍挡在马强胸前，桂兰婶在左前景。",
+        "sourceAnchor": "S0027",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0027"
+        ]
+      },
+      {
+        "action": "中近景，胡百德继续同句：“我看他们还笑不笑得出来！”说完以冷笑收尾，不增加其他人的反击或后续结果。",
+        "camera": "同轴固定较近构图，以胡百德的讥笑结束。",
+        "shotNo": 3,
+        "performance": "延续胡百德同期口型与声音，语尾带讥讽；桂兰婶和马强不对口型。",
+        "positioning": "人物站位不变，胡百德面向桂兰婶，马强停在他右侧。",
+        "sourceAnchor": "S0027",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 9.0,
+    "effectiveCharsPerSecond": 3.0,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 24,
+    "board": 2,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 34,
+    "charsPerSecond": 5.67,
+    "voice": [
+      "胡百德:“这大喜的日子，就拿乡下人做的菜来凑数，我都说这样不行，人家不听还要赶我走呢。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德摆出无辜姿态，向试菜的李母抱怨。",
+        "camera": "缓慢推近胡百德。",
+        "shotNo": 1,
+        "dialogue": "胡百德:“这大喜的日子，就拿乡下人做的菜来凑数，我都说这样不行，人家不听还要赶我走呢。”",
+        "performance": "胡百德同期起句：“这大喜的日子，就拿乡下人做的菜来凑数，我都说这样不行，人家不听还要赶我走呢。”本镜说至“我都说这样不行”，后半句连续至下一镜。",
+        "positioning": "胡百德站在台右侧墙边，距李母约两步，王大山在台内侧。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "过肩中景，王大山听完指责，目光转向李母。",
+        "camera": "固定反应构图，不越台面轴线。",
+        "shotNo": 2,
+        "performance": "胡百德现场画外延续“人家不听还要赶我走呢”；王大山和李母不对口型，不重复整句。",
+        "positioning": "从胡百德肩后看台内侧王大山，李母侧背在画边，双方位置不变。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "王大山近景，以平稳回应将判断权交给李母。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "dialogue": "王大山(看向李母):“是不是凑数，恁尝一口就知道了。”",
+        "performance": "王大山同期说：“是不是凑数，恁尝一口就知道了。”看着李母，语气笃定。",
+        "positioning": "王大山面对台外李母，胡百德位于画外右侧墙边。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": [
+          "S0008"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9.5,
+    "effectiveCharsPerSecond": 3.58,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 24,
+    "board": 6,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 36,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "胡百德(皱眉):“一盘做得好算什么本事？外头五十桌，每一桌都得保持水准，这几个乡巴佬怎么可能做好！”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德皱眉，将质疑从一盘菜转到五十桌水准。",
+        "camera": "缓慢推近，突出强撑的质疑。",
+        "shotNo": 1,
+        "dialogue": "胡百德(皱眉):“一盘做得好算什么本事？外头五十桌，每一桌都得保持水准，这几个乡巴佬怎么可能做好！”",
+        "performance": "胡百德同期说：“一盘做得好算什么本事？外头五十桌，每一桌都得保持水准，这几个乡巴佬怎么可能做好！”本镜说至“每一桌都得保持水准”，余句延续下镜。",
+        "positioning": "胡百德在台右通道，面对台内王大山；桂兰婶、赵建国、刘春桃依次在王大山后侧一米处。",
+        "sourceAnchor": "S0021",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0021"
+        ]
+      },
+      {
+        "action": "中景关系镜头，胡百德将末句指向台内众人，明确被贬低对象。",
+        "camera": "固定侧向构图，不越轴。",
+        "shotNo": 2,
+        "performance": "胡百德同期延续“这几个乡巴佬怎么可能做好！”不重复起句，其他人听完，不抢先发笑。",
+        "positioning": "胡百德侧脸在右前景，台内王大山和身后三位老搭档在左侧纵深，均原地。",
+        "sourceAnchor": "S0021",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，王大山嘴角压住笑意，转头看向三位老搭档。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "positioning": "王大山在台内前方，三位搭档在其身后侧，胡百德在画外对面。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.6,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 26,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 30,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "梁会长：“绝对不能超时，超一分钟，餐费减半，接得了就定你们家，接不了我就找别家。”"
+    ],
+    "shots": [
+      {
+        "action": "梁会长近景，从手表收回视线，对晓梅提出完整条件：“绝对不能超时，超一分钟，餐费减半，接得了就定你们家，接不了我就找别家。”本镜说至“餐费减半”。",
+        "camera": "缓慢推近，强调履约压力。",
+        "shotNo": 1,
+        "dialogue": "梁会长：“绝对不能超时，超一分钟，餐费减半，接得了就定你们家，接不了我就找别家。”",
+        "performance": "梁会长同期对白起句，语气坚定；整句跨下一镜连续发声，不重复起句。",
+        "positioning": "梁会长画右刚看完表，晓梅画左与他相对，王大山位于晓梅侧后方。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "中景呈现听者关系，梁会长现场画外声延续“接得了就定你们家，接不了我就找别家”，二人听完条件。",
+        "camera": "固定同轴侧反打。",
+        "shotNo": 2,
+        "performance": "只延续梁会长前镜对白，晓梅和大山闭口倾听，不另加反应动作。",
+        "positioning": "晓梅画左面对画外右侧梁会长，王大山在她后侧同框，二人站位未变。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景，王大山上前一步来到晓梅侧面，转向她问：“楼上传菜咋走？”",
+        "camera": "固定，完整保留上前一步的动作路径。",
+        "shotNo": 3,
+        "dialogue": "王大山（看向王晓梅）：“楼上传菜咋走？”",
+        "performance": "王大山同期询问，目光落实到晓梅；晓梅听，不提前说话。",
+        "positioning": "王大山从晓梅左后侧起步，梁会长仍在画右，后厨通道在画左后方。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 3,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.33,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 26,
+    "board": 4,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 54,
+    "charsPerSecond": 10.8,
+    "voice": [
+      "梁会长（沉声）：“王老板，我听说你昨天刚换主厨。今天五十桌办得好，但一百桌可不是那么好应付的，你可得考虑清楚，别为了挣这笔钱，把招牌都砸了。”"
+    ],
+    "shots": [
+      {
+        "action": "梁会长中近景，沉声提醒：“王老板，我听说你昨天刚换主厨。今天五十桌办得好，但一百桌可不是那么好应付的，你可得考虑清楚，别为了挣这笔钱，把招牌都砸了。”本镜说完至“刚换主厨”。",
+        "camera": "固定过晓梅肩看梁会长。",
+        "shotNo": 1,
+        "dialogue": "梁会长（沉声）：“王老板，我听说你昨天刚换主厨。今天五十桌办得好，但一百桌可不是那么好应付的，你可得考虑清楚，别为了挣这笔钱，把招牌都砸了。”",
+        "performance": "完整对白由本镜起声，后两镜连续延续一次；语气严肃，非斥骂。",
+        "positioning": "梁会长画右，刚推正眼镜，面对画左的晓梅；大山仍在她左侧。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0016"
+        ]
+      },
+      {
+        "action": "保留叔侄听取提醒的关系，梁会长现场画外声延续“今天五十桌办得好，但一百桌可不是那么好应付的”。",
+        "camera": "固定同侧反打。",
+        "shotNo": 2,
+        "performance": "晓梅与大山均不对口型，不增添点头或答应；声音连续。",
+        "positioning": "中景同框晓梅与大山，晓梅仍微低头，大山双手叉腰；梁会长在画外右侧。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景回到梁会长，将提醒说完：“你可得考虑清楚，别为了挣这笔钱，把招牌都砸了。”",
+        "camera": "缓慢推近，落在警告的后果上。",
+        "shotNo": 3,
+        "performance": "梁会长同期延续前镜声音，重读“招牌”，话音落下即收镜。",
+        "positioning": "梁会长仍在画右原位，朝向画左晓梅。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 15,
+    "effectiveCharsPerSecond": 3.6,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 28,
+    "board": 1,
+    "shot": 2,
+    "seconds": 5.5,
+    "characters": 32,
+    "charsPerSecond": 5.82,
+    "voice": [
+      "王晓梅（严肃）：“下周六下午两点，你带两个人过来。一百桌，晚上七点开席。工钱按咱们谈好的给。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，晓梅严肃向免提交代到场时间、人数和桌数。",
+        "camera": "固定拍晓梅正侧面。",
+        "shotNo": 2,
+        "dialogue": "王晓梅（严肃）：“下周六下午两点，你带两个人过来。一百桌，晚上七点开席。工钱按咱们谈好的给。”",
+        "performance": "晓梅同期完整起句：“下周六下午两点，你带两个人过来。一百桌，晚上七点开席。工钱按咱们谈好的给。”本镜说至“一百桌”，余句跨镜延续。",
+        "positioning": "晓梅仍坐画右，手机平放手边，大山在对面画外。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0004"
+        ]
+      },
+      {
+        "action": "双人中景，晓梅继续交代晚上开席和工钱安排，大山安静听她说完。",
+        "camera": "固定同轴侧双人构图，保留桌面筹备资料。",
+        "shotNo": 3,
+        "performance": "延续上一镜晓梅同期原句后半段，口型连贯；大山不张嘴，无重复起句。",
+        "positioning": "两人仍隔桌相对，手机位于晓梅前方；请柬和文件在两人之间。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 10.0,
+    "effectiveCharsPerSecond": 3.2,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 28,
+    "board": 2,
+    "shot": 3,
+    "seconds": 4.5,
+    "characters": 30,
+    "charsPerSecond": 6.67,
+    "voice": [
+      "王晓梅（沉声）：“丑话说在前头，我跟胡百德的事你听说了吧？你以前跟他干过，到时候可别……”"
+    ],
+    "shots": [
+      {
+        "action": "过肩近景，晓梅沉下语气，提出自己与胡百德的旧事。",
+        "camera": "从大山肩后看晓梅，缓慢小幅推近。",
+        "shotNo": 3,
+        "dialogue": "王晓梅（沉声）：“丑话说在前头，我跟胡百德的事你听说了吧？你以前跟他干过，到时候可别……”",
+        "performance": "晓梅同期起句：“丑话说在前头，我跟胡百德的事你听说了吧？你以前跟他干过，到时候可别……”本镜前半句，声音接下镜。",
+        "positioning": "晓梅坐姿不变，身体朝桌面手机，大山肩部在左前景。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "双人中近景，晓梅说完对高师傅的顾虑，尾句悬住。",
+        "camera": "固定回到同轴侧双人机位。",
+        "shotNo": 4,
+        "performance": "晓梅延续上一镜原句，从“你以前跟他干过”到“到时候可别……”自然迟疑收尾；大山静听，不代说。",
+        "positioning": "晓梅右、大山左，手机仍在桌上，两人相对而坐。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 8.5,
+    "effectiveCharsPerSecond": 3.53,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 28,
+    "board": 3,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 25,
+    "charsPerSecond": 6.25,
+    "voice": [
+      "高师傅（电话VO）：“王老板放心。我是真心来做活的，不会把私人感情带到工作上。”"
+    ],
+    "shots": [
+      {
+        "action": "晓梅近景，她保持注视手机，听高师傅解释。",
+        "camera": "固定晓梅三分之二侧面。",
+        "shotNo": 2,
+        "narration": "高师傅（电话VO）：“王老板放心。我是真心来做活的，不会把私人感情带到工作上。”",
+        "performance": "高师傅电话VO起句：“王老板放心。我是真心来做活的，不会把私人感情带到工作上。”本镜前半句，晓梅不对口型。",
+        "positioning": "晓梅坐画右，视线向下落在手机；高师傅不在办公室，仅免提发声。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0010"
+        ]
+      },
+      {
+        "action": "桌面近景，以手机声源和两人的静止手部承接保证的后半句。",
+        "camera": "固定斜俯机位，焦点在免提手机。",
+        "shotNo": 3,
+        "performance": "延续高师傅电话原句“不会把私人感情带到工作上”，不重起；无新增提示音。",
+        "positioning": "手机平放桌面，晓梅的手停在旁边，大山隔桌坐着，仅身体局部入画。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，晓梅肩部稍松，答应立即转定金并再次叮嘱准时。",
+        "camera": "固定晓梅近景。",
+        "shotNo": 4,
+        "dialogue": "王晓梅（松了口气）：“好，那我现在把定金转给你。周六准时到，别误事。”",
+        "performance": "晓梅松口气后同期：“好，那我现在把定金转给你。周六准时到，别误事。”语速自然，末句加重。",
+        "positioning": "晓梅仍坐右侧办公椅，手机未拿起，大山在对面画外。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0011"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.57,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 29,
+    "board": 2,
+    "shot": 1,
+    "seconds": 6.5,
+    "characters": 45,
+    "charsPerSecond": 6.92,
+    "voice": [
+      "马强（谄笑）：“师傅，还真让您说准了！她找了高师兄，让他带两个人过去。高师兄刚才还问我，百味楼那几口灶能不能一块儿开。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，马强接回手机握在身前，向师傅凑近，压低声音报告高师兄将带两人帮厨。",
+        "camera": "固定马强侧面中近景，胡百德肩部在前景。",
+        "shotNo": 1,
+        "dialogue": "马强（谄笑）：“师傅，还真让您说准了！她找了高师兄，让他带两个人过去。高师兄刚才还问我，百味楼那几口灶能不能一块儿开。”",
+        "performance": "马强同期开始完整S0007，谄笑说至带两个人过去附近，后半句跨镜连续。",
+        "positioning": "马强站在胡百德桌右侧，接住胡百德递还的手机；胡百德靠坐。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 6.5,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "双人近景保留马强说话嘴部与胡百德听话侧脸，马强继续透露高师兄询问百味楼灶口能否一起开。",
+        "camera": "固定双人侧面近景，维持桌侧轴线。",
+        "shotNo": 2,
+        "performance": "延续上一镜马强同一句S0007声音，不重起；胡百德无声听完，不提前砸桌。",
+        "positioning": "胡百德坐画左，马强持手机俯身在画右，两人距离不足一米。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 6.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 13.0,
+    "effectiveCharsPerSecond": 3.46,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 31,
+    "board": 1,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "李明（着急地转头）：“王总，高师傅的人还没到，昨天不是说好下午两点前进场吗？”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，李明从看钟转头朝王晓梅发问，肩膀随转头绷紧。",
+        "camera": "固定，保持李明望向画右。",
+        "shotNo": 2,
+        "dialogue": "李明（着急地转头）：“王总，高师傅的人还没到，昨天不是说好下午两点前进场吗？”",
+        "performance": "李明同期说原句“王总，高师傅的人还没到，昨天不是说好下午两点前进场吗？”，声音延续至下一镜。",
+        "positioning": "李明仍在配菜台左侧，王晓梅位于其右前方画外。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0004"
+        ]
+      },
+      {
+        "action": "近景呈现王晓梅听完询问，目光急切转向口袋位置。",
+        "camera": "同轴线反切固定近景。",
+        "shotNo": 3,
+        "performance": "延续李明上一镜问句至句末，王晓梅不对口型，不重复台词。",
+        "positioning": "王晓梅在右侧灶台旁朝画左听，李明在左侧画外。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，右手从口袋掏出手机，划开屏幕拨号，再举向右耳，完成呼叫动作。",
+        "camera": "固定，手部与面部同时入画。",
+        "shotNo": 4,
+        "performance": "抿唇，动作急促；保留屏幕触碰声，不添加通话内容。",
+        "positioning": "王晓梅右手靠近衣袋，左手自然垂下，灶台在她身侧。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 33,
+    "board": 1,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 29,
+    "charsPerSecond": 5.8,
+    "voice": [
+      "胡百德（得意）：“给客户发个视频，说上次的事是你冤枉我。再当着梁会长的面，给我道歉。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德抱起胳膊，侧头笑，提出发视频翻案的条件。",
+        "camera": "固定过王晓梅肩看胡百德。",
+        "shotNo": 2,
+        "dialogue": "胡百德（得意）：“给客户发个视频，说上次的事是你冤枉我。再当着梁会长的面，给我道歉。”",
+        "performance": "胡百德同期完整起句“给客户发个视频，说上次的事是你冤枉我。再当着梁会长的面，给我道歉。”声音跨下一镜连续。",
+        "positioning": "胡百德画右，王晓梅左侧肩背作前景；梁会长在胡侧方。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      },
+      {
+        "action": "双人中景，胡百德把要求当面道歉的后半句说完，王晓梅保持直视。",
+        "camera": "固定同轴侧机位。",
+        "shotNo": 3,
+        "performance": "延续胡百德上一镜同期台词，不重起；王晓梅闭口听。",
+        "positioning": "王晓梅画左正面，胡百德画右侧脸，梁会长处于二人后侧。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.22,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 33,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 29,
+    "charsPerSecond": 5.8,
+    "voice": [
+      "王晓梅：“买货的钱你吞了，死龙虾也是你让人放进去凑数的，现在要我说你冤枉？”"
+    ],
+    "shots": [
+      {
+        "action": "近景，王晓梅嘴角反向扯起，怒极反笑，直接揭穿吞款和死龙虾的事。",
+        "camera": "缓慢推近王晓梅。",
+        "shotNo": 1,
+        "dialogue": "王晓梅：“买货的钱你吞了，死龙虾也是你让人放进去凑数的，现在要我说你冤枉？”",
+        "performance": "王晓梅同期说“买货的钱你吞了，死龙虾也是你让人放进去凑数的，现在要我说你冤枉？”整句跨下一镜。",
+        "positioning": "王晓梅画左，胡百德肩部在右前景，双方未换位。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "中近景，反打呈现质问直落胡百德面前的关系，不添加新反应。",
+        "camera": "固定，保持轴线。",
+        "shotNo": 2,
+        "performance": "王晓梅上一句后半段现场声音延续，胡百德不张嘴抢话。",
+        "positioning": "胡百德画右正面，王晓梅左前景侧脸；梁、孙在画外原位。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，胡百德抬高下巴，以一百桌出菜威胁王晓梅。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "dialogue": "胡百德：“不说也行。我倒要看看，你今晚怎么出这一百桌菜。”",
+        "performance": "胡百德同期说“不说也行。我倒要看看，你今晚怎么出这一百桌菜。”",
+        "positioning": "胡百德仍面朝王晓梅，两人相距半步。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.62,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 33,
+    "board": 6,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 48,
+    "charsPerSecond": 9.6,
+    "voice": [
+      "王大山：“梁会长，原定的炒牛柳，俺想改成红烧牛肉。牛肉一斤不少，原料还没切片，分两口压力锅烧软，再下大锅收汁，出菜能快些。”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王大山走到梁会长面前，王晓梅随其前行松开手；王大山左手递出菜单，右食指点住菜目，同时说明改菜。",
+        "camera": "短距离跟随王大山至梁面前。",
+        "shotNo": 1,
+        "dialogue": "王大山：“梁会长，原定的炒牛柳，俺想改成红烧牛肉。牛肉一斤不少，原料还没切片，分两口压力锅烧软，再下大锅收汁，出菜能快些。”",
+        "performance": "王大山同期起句“梁会长，原定的炒牛柳，俺想改成红烧牛肉。牛肉一斤不少，原料还没切片，分两口压力锅烧软，再下大锅收汁，出菜能快些。”声音连续覆盖本条三镜。",
+        "positioning": "王大山画左距梁会长两步，左手持菜单；王晓梅在他后侧，胡百德在梁侧方画外。",
+        "sourceAnchor": "S0027",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0027"
+        ]
+      },
+      {
+        "action": "斜俯近景，将点菜单的手与梁会长面向纸面的视线同框，重点表现分锅改做法的说明，不插入尚未发生的烹饪画面。",
+        "camera": "固定。",
+        "shotNo": 2,
+        "performance": "王大山现场画外声音延续上一镜中段，梁会长闭口听；无新增纸面叠字。",
+        "positioning": "菜单仍由王大山左手托住，右食指落在菜目；梁会长双手尚未接纸。",
+        "sourceAnchor": "S0027",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景回到王大山面部，保留其指住菜目的手在画面下沿，说完收汁和加快出菜的方案。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "王大山延续同一句最后部分，同期口型衔接，不重说；梁会长不抢话。",
+        "positioning": "王大山在左向梁会长解释，菜单仍递在两人之间；王晓梅在后方。",
+        "sourceAnchor": "S0027",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 15,
+    "effectiveCharsPerSecond": 3.2,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 33,
+    "board": 7,
+    "shot": 2,
+    "seconds": 4.5,
+    "characters": 27,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "王大山：“是不一样。俺不哄恁说一个味儿，但红烧牛肉更香，恁尝过就知道了。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王大山挺直腰看着梁会长，坦承做法不同。",
+        "camera": "缓慢推近。",
+        "shotNo": 2,
+        "dialogue": "王大山：“是不一样。俺不哄恁说一个味儿，但红烧牛肉更香，恁尝过就知道了。”",
+        "performance": "王大山同期说“是不一样。俺不哄恁说一个味儿，但红烧牛肉更香，恁尝过就知道了。”声音跨下一镜。",
+        "positioning": "王大山两手已空，梁会长持菜单在右前景。",
+        "sourceAnchor": "S0031",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0031"
+        ]
+      },
+      {
+        "action": "双人近景，呈现王大山面对客户说完邀请试味的后半句。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "延续王大山上一句声音，王大山可见侧脸保持口型，梁会长闭口听，不新增反应。",
+        "positioning": "从王大山左肩后看梁会长，菜单在梁手中，王大山侧脸位于左前景。",
+        "sourceAnchor": "S0031",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.38,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 1,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 28,
+    "charsPerSecond": 7.0,
+    "voice": [
+      "任国华（自信）：“好食材我供得起。下周市里办厨艺赛，你代表福香楼跟百味楼比一场。”"
+    ],
+    "shots": [
+      {
+        "action": "中景双人构图，任国华双手撑桌、上身前倾逼视胡百德，开口下达参赛安排。集名仅作为内容标识，不生成字幕。",
+        "camera": "固定机位，桌侧建立对峙轴线。",
+        "shotNo": 1,
+        "dialogue": "任国华（自信）：“好食材我供得起。下周市里办厨艺赛，你代表福香楼跟百味楼比一场。”",
+        "performance": "任国华同期说“好食材我供得起。下周市里办厨艺赛”，后半句跨镜继续；胡百德闭口听。",
+        "positioning": "任国华在办公桌后画左，胡百德在桌前画右，两人站立相对，报名表和签字笔置于桌面。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0003"
+        ]
+      },
+      {
+        "action": "任国华近景，保持前倾姿态，把代表福香楼挑战百味楼的安排说完。",
+        "camera": "缓慢推近任国华，突出命令压力。",
+        "shotNo": 2,
+        "performance": "任国华同期延续“你代表福香楼跟百味楼比一场。”不重复起句。",
+        "positioning": "仍在桌侧同轴，任国华撑桌面向画右胡百德。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "过胡百德肩中近景，任国华抬起右手指向胡百德，转为嘲讽。",
+        "camera": "固定，保持指向与被指者的空间关系。",
+        "shotNo": 3,
+        "dialogue": "任国华（嘲讽）：“人家现在都说，乡下做大席的比你这个名厨强，你咽得下这口气？”",
+        "performance": "任国华同期说“人家现在都说，乡下做大席的”，余句连续跨镜。",
+        "positioning": "任国华仍在桌后，胡百德肩部位于画右前景。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.5,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 1,
+    "shot": 3,
+    "seconds": 3.5,
+    "characters": 26,
+    "charsPerSecond": 7.43,
+    "voice": [
+      "任国华（嘲讽）：“人家现在都说，乡下做大席的比你这个名厨强，你咽得下这口气？”"
+    ],
+    "shots": [
+      {
+        "action": "过胡百德肩中近景，任国华抬起右手指向胡百德，转为嘲讽。",
+        "camera": "固定，保持指向与被指者的空间关系。",
+        "shotNo": 3,
+        "dialogue": "任国华（嘲讽）：“人家现在都说，乡下做大席的比你这个名厨强，你咽得下这口气？”",
+        "performance": "任国华同期说“人家现在都说，乡下做大席的”，余句连续跨镜。",
+        "positioning": "任国华仍在桌后，胡百德肩部位于画右前景。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      },
+      {
+        "action": "胡百德近景承受指责，不增添新的反击动作。",
+        "camera": "同轴反打固定，呈现话语所指的对象。",
+        "shotNo": 4,
+        "performance": "任国华现场画外延续“比你这个名厨强，你咽得下这口气？”胡百德不对口型。",
+        "positioning": "胡百德在桌前画右，任国华在画左现场画外，手指可留在前景边缘。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 7.0,
+    "effectiveCharsPerSecond": 3.71,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5.5,
+    "characters": 34,
+    "charsPerSecond": 6.18,
+    "voice": [
+      "胡百德（怒）：“他娘的几个乡巴佬会做两桌大锅菜，就敢说比我强？上了赛场我让他连刀都拿不稳！”"
+    ],
+    "shots": [
+      {
+        "action": "胡百德近景，咬紧牙后开口发怒，脸色阴沉。",
+        "camera": "缓慢推近胡百德，突出受激后的怒意。",
+        "shotNo": 1,
+        "dialogue": "胡百德（怒）：“他娘的几个乡巴佬会做两桌大锅菜，就敢说比我强？上了赛场我让他连刀都拿不稳！”",
+        "performance": "胡百德同期说“他娘的几个乡巴佬会做两桌大锅菜，就敢说比我强？”语句带重音，后句跨镜连续。",
+        "positioning": "胡百德站在桌前画右，任国华仍在桌后画左。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0007"
+        ]
+      },
+      {
+        "action": "中景保留两人权力关系，胡百德把赛场狠话说完，任国华听着。",
+        "camera": "固定。",
+        "shotNo": 2,
+        "performance": "胡百德同期延续“上了赛场我让他连刀都拿不稳！”任国华不对口型。",
+        "positioning": "桌侧双人构图，胡百德面向任国华，两人位置不变。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景同时收进脸和桌面，任国华轻笑一声，右手拍了拍报名表，纸面受拍轻颤；保留拍纸声。",
+        "camera": "固定斜侧机位，清楚呈现手与报名表接触。",
+        "shotNo": 3,
+        "performance": "笑意轻蔑，无新增对白。",
+        "positioning": "任国华站在桌后，右手位于报名表上方，胡百德在桌前画外。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10.0,
+    "effectiveCharsPerSecond": 3.4,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 3,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 30,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "任国华（威逼）：“说得倒挺能耐，可别给我丢脸。你要是赢了，我把名厨的招牌给你打响，输了……”"
+    ],
+    "shots": [
+      {
+        "action": "任国华中近景，从轻笑转为威逼，向胡百德提出输赢条件。",
+        "camera": "固定。",
+        "shotNo": 1,
+        "dialogue": "任国华（威逼）：“说得倒挺能耐，可别给我丢脸。你要是赢了，我把名厨的招牌给你打响，输了……”",
+        "performance": "同期说“说得倒挺能耐，可别给我丢脸。你要是赢了”，对白接续下一镜。",
+        "positioning": "任国华在桌后画左，手停在报名表旁；胡百德在对面画右。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      },
+      {
+        "action": "过肩近景，任国华把赢后的许诺说完，在“输了”处刻意收住。",
+        "camera": "慢推任国华，强化未明说的威胁。",
+        "shotNo": 2,
+        "performance": "任国华同期延续“我把名厨的招牌给你打响，输了……”保留未说完的尾音和短停顿。",
+        "positioning": "胡百德肩后看向桌后的任国华，报名表位于两人之间。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "任国华近景，视线从胡百德上身扫下再回到脸上，始终没有接着说。",
+        "camera": "固定。",
+        "shotNo": 3,
+        "performance": "闭口，不屑地扫视，无新增声音。",
+        "positioning": "任国华面向桌前的胡百德，双方站位不动。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 1.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 11.5,
+    "effectiveCharsPerSecond": 2.61,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 4,
+    "shot": 3,
+    "seconds": 5,
+    "characters": 30,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "任国华（得意地笑）：“市里办厨艺赛，想跟您这边切磋切磋，听说你大伯手艺不错，敢不敢来比比？”"
+    ],
+    "shots": [
+      {
+        "action": "任国华近景，以客气姿态发起挑战。",
+        "camera": "轻缓推近，凸显笑里挑衅。",
+        "shotNo": 3,
+        "dialogue": "任国华（得意地笑）：“市里办厨艺赛，想跟您这边切磋切磋，听说你大伯手艺不错，敢不敢来比比？”",
+        "performance": "任国华同期说“市里办厨艺赛，想跟您这边切磋切磋，听说”，后半句跨镜持续。",
+        "positioning": "任国华画左朝向王晓梅，胡百德仍站侧后方。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      },
+      {
+        "action": "中景将王晓梅与旁边抱臂的胡百德纳入关系构图，王晓梅保持冷淡听完邀请。",
+        "camera": "固定，交代胡百德与通道的相对位置。",
+        "shotNo": 4,
+        "performance": "任国华现场画外延续“你大伯手艺不错，敢不敢来比比？”王晓梅和胡百德均不对口型。",
+        "positioning": "从任国华左后方看前台内的王晓梅，胡百德抱臂位于侧边通道，邀请函留在台面王晓梅面前。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.33,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 43,
+    "board": 5,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 27,
+    "charsPerSecond": 6.75,
+    "voice": [
+      "胡百德（挑衅）：“哎，敢不敢跟我掰掰手腕？别光躲在一个女流之辈身后当缩头乌龟。”"
+    ],
+    "shots": [
+      {
+        "action": "胡百德中近景，挡住王大山后当面挑衅。",
+        "camera": "固定，略带王大山肩上米袋前景。",
+        "shotNo": 2,
+        "dialogue": "胡百德（挑衅）：“哎，敢不敢跟我掰掰手腕？别光躲在一个女流之辈身后当缩头乌龟。”",
+        "performance": "胡百德同期说“哎，敢不敢跟我掰掰手腕？别光躲在”，余句跨镜持续。",
+        "positioning": "胡百德在画左面对画右王大山，前台与任国华、王晓梅处于后景，保持通道轴线。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0019"
+        ]
+      },
+      {
+        "action": "王大山近景，肩头米袋仍保持负重状态，听完辱骂，不提前放袋。",
+        "camera": "同轴反打固定，保留肩部持物连续性。",
+        "shotNo": 3,
+        "performance": "胡百德现场画外延续“一个女流之辈身后当缩头乌龟。”王大山闭口，不代替发声。",
+        "positioning": "王大山画右扛米袋面向画左胡百德，胡百德在现场画外左侧。",
+        "sourceAnchor": "S0019",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中全景，王大山盯住胡百德，双手将肩上米袋猛地向脚前撂下；米袋砸地变扁并停住，发出一声闷响，袋体不破裂。停在米袋落地与二人对峙的结果上。",
+        "camera": "固定低位斜侧构图，同时看清脸部、卸袋路径和地面落点。",
+        "shotNo": 4,
+        "performance": "王大山怒意用紧盯和突然发力表达，不补说下一集对白；无字幕、无配乐，突出闷响。",
+        "positioning": "王大山画右、胡百德画左相距一步，王大山脚前地面空出，米袋仍由右肩承重。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.38,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 44,
+    "board": 1,
+    "shot": 4,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "任国华（似笑非笑）：“市餐饮协会请评委，现场还有客人试吃，输赢当场见分晓。”"
+    ],
+    "shots": [
+      {
+        "action": "面部特写，任国华似笑非笑地开始说明评判方式。",
+        "camera": "任国华正面偏侧固定特写。",
+        "shotNo": 4,
+        "dialogue": "任国华（似笑非笑）：“市餐饮协会请评委，现场还有客人试吃，输赢当场见分晓。”",
+        "performance": "任国华同期完整台词起句：“市餐饮协会请评委，现场还有客人试吃，输赢当场见分晓。”本镜说至“现场还有”，余句持续到下镜。",
+        "positioning": "任国华仍双手撑台，朝王晓梅说话；王晓梅在镜外对面。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      },
+      {
+        "action": "切至邀请函与王晓梅面部同框的近景，明确她正听取评判条件，函始终留在右手。",
+        "camera": "从任国华肩侧固定反打，不越前台对话轴线。",
+        "shotNo": 5,
+        "performance": "任国华现场画外声音接续：“客人试吃，输赢当场见分晓。”不重复起句；王晓梅闭口听。",
+        "positioning": "王晓梅持函处于近景，任国华在对面镜外原位，前台边沿作为空间锚点。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      5
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 44,
+    "board": 2,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 32,
+    "charsPerSecond": 6.4,
+    "voice": [
+      "胡百德（冷笑）：“第一轮刀工，你怕是就得滚下台，乡下那些上不得台面的东西，有什么刀工可言！”"
+    ],
+    "shots": [
+      {
+        "action": "胡百德中近景，视线从王大山身上扫到脸上，带着不屑冷笑发难。",
+        "camera": "从王大山左侧肩后看胡百德，固定。",
+        "shotNo": 1,
+        "dialogue": "胡百德（冷笑）：“第一轮刀工，你怕是就得滚下台，乡下那些上不得台面的东西，有什么刀工可言！”",
+        "performance": "胡百德同期说整句：“第一轮刀工，你怕是就得滚下台，乡下那些上不得台面的东西，有什么刀工可言！”本镜说至“滚下台”，后半句跨镜持续。",
+        "positioning": "前台旁王大山在左、胡百德在右，面对面相距约一米；王晓梅与任国华在前台处画外，位置不变。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0011"
+        ]
+      },
+      {
+        "action": "侧面双人中景，将胡百德贬损的话与被贬损对象同时呈现；胡百德下巴微扬，王大山迎着他的目光。",
+        "camera": "同轴线外侧固定双人构图。",
+        "shotNo": 2,
+        "performance": "胡百德原句同期延续：“乡下那些上不得台面的东西，有什么刀工可言！”胡百德口型同步；王大山不发声，不新增动作。",
+        "positioning": "王大山左侧半身与胡百德右侧半身同框，两人脚位不动；前台边沿在后景。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.2,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 44,
+    "board": 3,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 33,
+    "charsPerSecond": 6.6,
+    "voice": [
+      "王大山（怒）：“哟，还怪好心嘞！每次都拿乡下人说事，张嘴闭嘴就是乡下人，你跟俺们乡下人有仇？！”"
+    ],
+    "shots": [
+      {
+        "action": "王大山近景，目光直逼胡百德，带反讽起句，随后怒意加重。",
+        "camera": "从胡百德肩后固定拍王大山，保留胡的肩部作距离参照。",
+        "shotNo": 2,
+        "dialogue": "王大山（怒）：“哟，还怪好心嘞！每次都拿乡下人说事，张嘴闭嘴就是乡下人，你跟俺们乡下人有仇？！”",
+        "performance": "王大山同期完整台词起句：“哟，还怪好心嘞！每次都拿乡下人说事，张嘴闭嘴就是乡下人，你跟俺们乡下人有仇？！”本镜说至“说事”，后文持续到下镜。",
+        "positioning": "王大山仍居左原位，胡百德近在右侧，右手拍脸动作已完成；两人间距半米。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      },
+      {
+        "action": "切回双人近景，王大山把反问正面抛给胡百德，身体暂不前移，下一轮冲突前保留近身空间。",
+        "camera": "同侧固定双人镜头，保持人物左右关系。",
+        "shotNo": 3,
+        "performance": "王大山原声接续：“张嘴闭嘴就是乡下人，你跟俺们乡下人有仇？！”王大山口型同步；胡百德闭口听，不添加回答。",
+        "positioning": "两人保持半米对峙，王大山左胡百德右；前台在背景同一侧。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.3,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 44,
+    "board": 4,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "王大山（强硬）：“那就上台比！俺要是输了俺认。恁要是输了，就别再来闹事！”"
+    ],
+    "shots": [
+      {
+        "action": "王大山挺起胸膛向前逼近小半步，将两人距离压至约三十厘米；胡百德手臂随距离缩短被动弯曲，王大山没有挥手攻击。",
+        "camera": "侧面中景固定，明确向前的路径与距离变化。",
+        "shotNo": 2,
+        "dialogue": "王大山（强硬）：“那就上台比！俺要是输了俺认。恁要是输了，就别再来闹事！”",
+        "performance": "王大山同期怒吼整句：“那就上台比！俺要是输了俺认。恁要是输了，就别再来闹事！”本镜说至“俺认”，后半句延续下镜。",
+        "positioning": "承接指尖抵在胸前状态，王大山左胡百德右；王大山面朝胡百德。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0018"
+        ]
+      },
+      {
+        "action": "近景缓慢推近王大山；他盯住胡百德说完条件，结束在不退让的正面目光上，不增加对方回应。",
+        "camera": "沿王大山视线旁缓慢推近，停在面部近景。",
+        "shotNo": 3,
+        "performance": "王大山同期原句延续：“恁要是输了，就别再来闹事！”强调“别再”，说完自然收口。",
+        "positioning": "王大山停在逼近后的脚位，胡百德在其右前方近距离；镜头从胡百德肩侧看王大山。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 2.88,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 45,
+    "board": 4,
+    "shot": 1,
+    "seconds": 5.5,
+    "characters": 31,
+    "charsPerSecond": 5.64,
+    "voice": [
+      "胡百德（狠声）：“你还是先担心你自己吧，等你大伯输得抬不起头，我看你百味楼怎么开下去！”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，胡百德从直立俯身凑近前台，压低脸部高度向王晓梅施压。",
+        "camera": "王晓梅肩后固定看胡百德，保留台沿作为距离锚点。",
+        "shotNo": 1,
+        "dialogue": "胡百德（狠声）：“你还是先担心你自己吧，等你大伯输得抬不起头，我看你百味楼怎么开下去！”",
+        "performance": "胡百德狠声同期开始“你还是先担心你自己吧，等你大伯输得抬不起头，我看你百味楼怎么开下去！”说至“等你大伯输得抬不起头”，下一镜接完。",
+        "positioning": "胡百德在前台外侧右位，与王晓梅隔台相对；签好的确认书和笔留在内侧台面。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0018"
+        ]
+      },
+      {
+        "action": "侧面近景展示隔着前台的压迫距离，胡百德把威胁落到百味楼经营上。",
+        "camera": "固定侧机位，不越前台对峙轴。",
+        "shotNo": 2,
+        "performance": "胡百德同期延续“我看你百味楼怎么开下去！”王晓梅只听，不添加回应和台词。",
+        "positioning": "侧面双人构图，胡百德保持俯身，王晓梅在台内面对他，笔和书留原处。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9.0,
+    "effectiveCharsPerSecond": 3.44,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 47,
+    "board": 4,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "任国华（笑）：“哈哈哈哈！行，那就接着看，看你那好大伯能变出什么花来！”"
+    ],
+    "shots": [
+      {
+        "action": "任国华近景，笑着回应：“哈哈哈哈！行，那就接着看，看你那好大伯能变出什么花来！”本镜从笑声开始说至“那就接着看”。",
+        "camera": "从王晓梅肩后固定拍任国华，与前镜保持同侧轴线。",
+        "shotNo": 1,
+        "dialogue": "任国华（笑）：“哈哈哈哈！行，那就接着看，看你那好大伯能变出什么花来！”",
+        "performance": "任国华同期笑着说，句子连续进入下一镜，不额外增加笑声。",
+        "positioning": "王晓梅保持转身面对任国华的站姿，任国华在右侧原位，两人相距半米。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0013"
+        ]
+      },
+      {
+        "action": "双人中景，任国华接续说完“看你那好大伯能变出什么花来！”，王晓梅维持冷眼相对；台词结束即收尾，不公布比赛结果。",
+        "camera": "固定双人关系镜头，以完整对峙关系结束本集。",
+        "shotNo": 2,
+        "performance": "任国华上一镜声音连续、本人同步口型；王晓梅只听不说，不新增反应动作。",
+        "positioning": "两人仍立在栏杆旁，王晓梅在左，任国华在右，均保持面对彼此的位置关系。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 52,
+    "board": 5,
+    "shot": 1,
+    "seconds": 4.5,
+    "characters": 27,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "魏评委（严肃）：“卖相是你占优，但他这道味道更足，食材利用也是这一轮的评分项。”"
+    ],
+    "shots": [
+      {
+        "action": "过肩中近景，魏评委收起赞许神色，严肃回应卖相与味道的区别。",
+        "camera": "固定",
+        "shotNo": 1,
+        "dialogue": "魏评委（严肃）：“卖相是你占优，但他这道味道更足，食材利用也是这一轮的评分项。”",
+        "performance": "魏评委同期：“卖相是你占优，但他这道味道更足，食材利用也是这一轮的评分项。”本镜说至“味道更足”，后镜继续。",
+        "positioning": "从胡百德右肩后看魏评委；胡百德站桌前，魏评委坐桌后，双方隔一张桌。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0022"
+        ]
+      },
+      {
+        "action": "更紧近景强调魏评委说明本轮评分依据，视线稳定对着胡百德。",
+        "camera": "固定正侧近景，不越轴",
+        "shotNo": 2,
+        "performance": "魏评委同期延续：“食材利用也是这一轮的评分项。”口型连续，不另起整句。",
+        "positioning": "魏评委仍坐原位，白瓷盘与砂锅位于前景下沿。",
+        "sourceAnchor": "S0022",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.38,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 54,
+    "board": 2,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 35,
+    "charsPerSecond": 5.83,
+    "voice": [
+      "主持人（高声）：“所有评委和客人现场品尝，菜品味道、出菜速度、每桌客人能不能按时吃上，都是评分项！”"
+    ],
+    "shots": [
+      {
+        "action": "中景主持人继续讲述评分标准，视线面向现场。",
+        "camera": "固定正面中景。",
+        "shotNo": 1,
+        "dialogue": "主持人（高声）：“所有评委和客人现场品尝，菜品味道、出菜速度、每桌客人能不能按时吃上，都是评分项！”",
+        "performance": "同期对白：“所有评委和客人现场品尝，菜品味道、出菜速度、”声音跨镜连续。",
+        "positioning": "主持人中央站立，右手麦克风靠嘴，左手接上镜指示桌席。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0006"
+        ]
+      },
+      {
+        "action": "侧向中全景呈现满座客人与分区桌牌，强调评分所指的实际用餐对象。",
+        "camera": "固定侧向机位，不越中央空间轴。",
+        "shotNo": 2,
+        "performance": "主持人现场画外声延续：“每桌客人能不能按时吃上，都是评分项！”客人不对口型。",
+        "positioning": "客人坐在通道两侧圆桌旁，主持人在画外中央原位置。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "全景，各人把车推进各自工位前短距离后停稳，车上盘碗随刹停轻响；两队各四人清晰可辨，不开始烹饪。",
+        "camera": "固定斜向全景，以纵深容纳八人及各自推车。",
+        "shotNo": 3,
+        "positioning": "会场烹饪区，百味楼四人在左区、福香楼四人在右区，每人各推一辆装满食材盘碗的三层不锈钢推车。",
+        "sourceAnchor": "S0007",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10,
+    "effectiveCharsPerSecond": 3.5,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 54,
+    "board": 4,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "王大山：“建国管炖菜和热汤，桂兰管蒸菜面点，春桃盯切配，俺炒菜。”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王大山从容分工，目光依次落到对应搭档。",
+        "camera": "从三人一侧看王大山，固定机位。",
+        "shotNo": 2,
+        "dialogue": "王大山：“建国管炖菜和热汤，桂兰管蒸菜面点，春桃盯切配，俺炒菜。”",
+        "performance": "同期对白：“建国管炖菜和热汤，桂兰管蒸菜面点，”整句跨镜延续。",
+        "positioning": "王大山画左面向三人，赵建国靠近他，桂兰婶居中，刘春桃在外侧。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0013"
+        ]
+      },
+      {
+        "action": "三人中景，听清各自任务，视线保持在王大山身上。",
+        "camera": "固定反向中景，不跨本队对话轴线。",
+        "shotNo": 3,
+        "performance": "王大山现场画外声延续：“春桃盯切配，俺炒菜。”三人不对口型。",
+        "positioning": "三名搭档面向画外左侧王大山，刘春桃位于近侧，桂兰婶与赵建国在其旁。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "赵建国、刘春桃笑着点头，刘春桃顺势答应，分工得到确认。",
+        "camera": "固定赵建国与刘春桃双人中近景。",
+        "shotNo": 4,
+        "dialogue": "刘春桃：“成。”",
+        "performance": "刘春桃同期：“成。”赵建国仅笑着点头。",
+        "positioning": "赵建国和刘春桃仍面向左侧王大山，桂兰婶在旁。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 2,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 55,
+    "board": 1,
+    "shot": 3,
+    "seconds": 4.5,
+    "characters": 29,
+    "charsPerSecond": 6.44,
+    "voice": [
+      "王大山（愤怒）：“整天搁这儿逼逼赖赖的，光说不练假把式！等你最后一局能赢过我再说！”"
+    ],
+    "shots": [
+      {
+        "action": "中景，王大山猛然转身，挥手指向胡百德，脸色铁青。",
+        "camera": "固定侧面机位，指向动作完整入画。",
+        "shotNo": 3,
+        "dialogue": "王大山（愤怒）：“整天搁这儿逼逼赖赖的，光说不练假把式！等你最后一局能赢过我再说！”",
+        "performance": "王大山同期起句：“整天搁这儿逼逼赖赖的，光说不练假把式！等你最后一局能赢过我再说！”声音跨下镜连续，不重说。",
+        "positioning": "王大山仍在左侧汤锅前，胡百德位于画外右侧。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0006"
+        ]
+      },
+      {
+        "action": "双人中景保留指责与被指责的距离关系，王大山说完反驳。",
+        "camera": "从王大山左后侧固定拍向胡百德，不越轴。",
+        "shotNo": 4,
+        "performance": "延续上一镜王大山声音，收完“等你最后一局能赢过我再说！”王大山口型同步，胡百德不对口型。",
+        "positioning": "王大山左前景指着右后方灶边的胡百德，两人仍隔通道。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 7.5,
+    "effectiveCharsPerSecond": 3.87,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 56,
+    "board": 1,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 40,
+    "charsPerSecond": 6.67,
+    "voice": [
+      "魏评委(严肃):“福香楼后面四桌上菜晚了，菜都凉了，百味楼十桌准时出餐，份量够，味道好，还能吃口热乎的，这一轮……”"
+    ],
+    "shots": [
+      {
+        "action": "中全景建立两队与裁判关系，魏评委严肃宣布评判理由。同期完整台词起：“福香楼后面四桌上菜晚了，菜都凉了，百味楼十桌准时出餐，份量够，味道好，还能吃口热乎的，这一轮……”声音跨下一镜连续。标题仅作为集意，不叠字。",
+        "camera": "正面固定，保持左队右队轴线。",
+        "shotNo": 1,
+        "dialogue": "魏评委(严肃):“福香楼后面四桌上菜晚了，菜都凉了，百味楼十桌准时出餐，份量够，味道好，还能吃口热乎的，这一轮……”",
+        "performance": "评委口型同步，其他人听，不替说话。",
+        "positioning": "魏评委持评分表站中央；王大山、赵建国、桂兰婶、刘春桃在左，胡百德和任国华在右，主持人在评委右后侧持麦，中央留出通道。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0003"
+        ]
+      },
+      {
+        "action": "中近景突出评委对准时、足量、热菜的判定，接续上一镜同一句后半段至“这一轮……”，不重复起句。",
+        "camera": "同轴切近固定。",
+        "shotNo": 2,
+        "performance": "魏评委语气庄重，末尾保留短促停顿。",
+        "positioning": "魏评委居中，评分表仍在胸前，两队处画外原位。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 6,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景，魏评委向主持人点头并举起评分表，露出百味楼下方的勾。纸张轻响。评分表文字与勾以道具表面后期匹配呈现，不加屏幕字幕。",
+        "camera": "侧前方固定，表格与点头均可见。",
+        "shotNo": 3,
+        "performance": "两人不说话。",
+        "positioning": "评委与主持人同框，表格在评委手中。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 12,
+    "effectiveCharsPerSecond": 3.33,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 56,
+    "board": 4,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 31,
+    "charsPerSecond": 6.2,
+    "voice": [
+      "魏评委(严厉):“这一场比的是宴席，动辄上百人的席面，你只顾着前面几桌，让后面的干等着？”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，魏评委严厉回应：“这一场比的是宴席，动辄上百人的席面，你只顾着前面几桌，让后面的干等着？”本镜起句，跨下一镜说完。",
+        "camera": "固定在胡百德肩后看评委。",
+        "shotNo": 1,
+        "dialogue": "魏评委(严厉):“这一场比的是宴席，动辄上百人的席面，你只顾着前面几桌，让后面的干等着？”",
+        "performance": "评委同期口型，重音落在“宴席”。",
+        "positioning": "魏评委中央偏左持表，面向中央偏右持麦的胡百德。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0009"
+        ]
+      },
+      {
+        "action": "中景显露对峙关系，评委继续同一句至“让后面的干等着？”，胡百德持麦听完。",
+        "camera": "同轴侧前固定。",
+        "shotNo": 2,
+        "performance": "评委继续对口型；胡百德不插话。",
+        "positioning": "侧面双人构图，评委左、胡百德右，两人相距约一米半。",
+        "sourceAnchor": "S0009",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景，胡百德攥紧右手麦，转向王大山并抬左手指向他，把冲突对象从评委转到对手。",
+        "camera": "固定保留指向终点的王大山。",
+        "shotNo": 3,
+        "performance": "胡百德目光随手指转过去，无新增台词。",
+        "positioning": "胡百德右手麦在胸前，王大山在其左前方左队位置。",
+        "sourceAnchor": "S0010",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.44,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 57,
+    "board": 5,
+    "shot": 1,
+    "seconds": 5.5,
+    "characters": 34,
+    "charsPerSecond": 6.18,
+    "voice": [
+      "任国华（怒斥）：“我用不起你！连评委你都敢追着骂，往后客人说句不好吃，你是不是还要当众掀桌子？！”"
+    ],
+    "shots": [
+      {
+        "action": "任国华中近景，维持指责手势，把对比赛的指责推至对客人失控的质问。",
+        "camera": "固定",
+        "shotNo": 1,
+        "dialogue": "任国华（怒斥）：“我用不起你！连评委你都敢追着骂，往后客人说句不好吃，你是不是还要当众掀桌子？！”",
+        "performance": "任国华怒斥同期完整原句：我用不起你！连评委你都敢追着骂，往后客人说句不好吃，你是不是还要当众掀桌子？！声音延续下镜。",
+        "positioning": "任国华站桌后右侧，食指指向左侧胡百德鼻前。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0020"
+        ]
+      },
+      {
+        "action": "任国华继续当面训斥，手指留在胡鼻前，胡百德僵在桌前，信封处于两人下方。",
+        "camera": "固定",
+        "shotNo": 2,
+        "performance": "任国华继续同期说完后半句；胡百德不抢话、不替对方对口型。",
+        "positioning": "侧面双人中景，任国华画右指着胡百德，胡百德画左。",
+        "sourceAnchor": "S0020",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "手部近景，胡百德一把抓起牛皮纸信封，抬起后狠狠砸回桌面；信封平落桌前偏中央，保留纸封拍桌声，不破损。",
+        "camera": "固定斜俯机位",
+        "shotNo": 3,
+        "positioning": "胡百德身前是桌前沿信封，任国华手在画面右上。",
+        "sourceAnchor": "S0021",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 10.0,
+    "effectiveCharsPerSecond": 3.4,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 57,
+    "board": 7,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 31,
+    "charsPerSecond": 6.2,
+    "voice": [
+      "任国华（吼）：“我是想啊！可你做到了吗！一场比赛面子里子全丢尽了！带着你那群人，给我滚！”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，任国华直视胡百德，先承认目的，再提高音量追问结果。",
+        "camera": "缓慢推近",
+        "shotNo": 1,
+        "dialogue": "任国华（吼）：“我是想啊！可你做到了吗！一场比赛面子里子全丢尽了！带着你那群人，给我滚！”",
+        "performance": "任国华同期吼完整原句：我是想啊！可你做到了吗！一场比赛面子里子全丢尽了！带着你那群人，给我滚！连续跨下镜。",
+        "positioning": "任国华画右双掌撑桌，向画左胡百德俯身，马强在左后门边。",
+        "sourceAnchor": "S0024",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0024"
+        ]
+      },
+      {
+        "action": "任国华将最后的驱逐话直接吼向胡百德；两人维持隔桌对峙，信封留在桌面，不提前离场。",
+        "camera": "固定",
+        "shotNo": 2,
+        "performance": "任国华同期延续“面子里子全丢尽了”及驱逐句至结束；胡百德不说话。",
+        "positioning": "桌侧双人中景，任国华依旧撑桌，胡百德站桌前，马强仍靠门一侧。",
+        "sourceAnchor": "S0024",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，马强身体向后贴住门框，眼神在桌旁两人之间游移，嘴微张却说不出话，停在慌张失措的状态。",
+        "camera": "固定",
+        "shotNo": 3,
+        "performance": "无对白，保留办公室低环境声；不添加后续离场动作。",
+        "positioning": "马强在胡百德侧后紧邻门框；桌旁两人位于画外右侧。",
+        "sourceAnchor": "S0025",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2,
+      3
+    ],
+    "effectiveSeconds": 11.5,
+    "effectiveCharsPerSecond": 2.7,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 58,
+    "board": 3,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 30,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "胡美兰：“我不管！之前那些钱咱俩是平分的，上回退的那笔我垫了，这次别想赖给我！”"
+    ],
+    "shots": [
+      {
+        "action": "胡美兰中近景，紧盯胡百德，直接争执两人的分钱与退款责任。",
+        "camera": "固定近景突出胡美兰的坚持。",
+        "shotNo": 1,
+        "dialogue": "胡美兰：“我不管！之前那些钱咱俩是平分的，上回退的那笔我垫了，这次别想赖给我！”",
+        "performance": "胡美兰同期开始完整一句：“我不管！之前那些钱咱俩是平分的，上回退的那笔我垫了，这次别想赖给我！”此句跨下一镜连续，不重复。",
+        "positioning": "胡美兰在车门旁画左，胡百德画右面对她；马强持信封站在胡百德后侧。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0014"
+        ]
+      },
+      {
+        "action": "双人中景保持争执关系，胡美兰继续把垫款与拒绝独担责任的话说完，胡百德听着。",
+        "camera": "固定同轴侧面机位，带出听者。",
+        "shotNo": 2,
+        "performance": "延续上一镜胡美兰同期后半句，胡美兰可见侧脸口型连续；胡百德不说话。",
+        "positioning": "胡美兰在左前景侧脸，胡百德在右侧，马强在后景，信封仍在马强右手。",
+        "sourceAnchor": "S0014",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中近景，手机铃响，胡百德右手取出手机，接通并按下免提，将手机留在胸前；屏幕不展示来电姓名，避免素材原有来电字样误导。",
+        "camera": "固定机位兼顾手机操作和胡百德面部。",
+        "shotNo": 3,
+        "performance": "仅铃声与操作声，三人不说话。",
+        "positioning": "胡百德在画右，双手尚未持信封；胡美兰在左侧，马强后侧持信封。",
+        "sourceAnchor": "S0016",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.33,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 58,
+    "board": 6,
+    "shot": 1,
+    "seconds": 5,
+    "characters": 31,
+    "charsPerSecond": 6.2,
+    "voice": [
+      "胡百德（冷笑）：“哼，先让王晓梅得意两天，百味楼明天有十八桌答谢宴，菜单还是我走前定的。”"
+    ],
+    "shots": [
+      {
+        "action": "胡百德中近景，接过信封后再露冷笑，提起王晓梅及百味楼次日宴席。",
+        "camera": "缓慢推近，强调话题转向。",
+        "shotNo": 1,
+        "dialogue": "胡百德（冷笑）：“哼，先让王晓梅得意两天，百味楼明天有十八桌答谢宴，菜单还是我走前定的。”",
+        "performance": "胡百德同期开始：“哼，先让王晓梅得意两天，百味楼明天有十八桌答谢宴，菜单还是我走前定的。”整句跨下一镜连续。",
+        "positioning": "胡百德居中，左手持信封、右手手机垂身侧；马强在画右面对他，胡美兰在画左车门旁。",
+        "sourceAnchor": "S0026",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0026"
+        ]
+      },
+      {
+        "action": "双人中景带出马强听话的关系，胡百德把十八桌答谢宴和菜单由自己定下的信息说完；不插入菜单或宴席画面。",
+        "camera": "固定同轴侧面构图。",
+        "shotNo": 2,
+        "performance": "延续胡百德上一镜后半句，侧脸口型连续；马强只听不说。",
+        "positioning": "胡百德在左前景侧脸，马强在右侧面对他；胡美兰在车门旁后景。信封和手机仍分别在胡百德左、右手。",
+        "sourceAnchor": "S0026",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "马强中近景，抬右手揉脑袋，皱眉迷茫地看向胡百德，问出疑惑后结束本集，不揭示下一集计划。",
+        "camera": "从胡百德肩后固定拍马强，不越轴。",
+        "shotNo": 3,
+        "dialogue": "马强（皱眉）：“她有生意，跟咱们有什么关系？”",
+        "performance": "马强同期说：“她有生意，跟咱们有什么关系？”其余人物无对白。默认全片无字幕、文字叠加或配乐，保留轻微车旁环境声。",
+        "positioning": "马强画右双手已空，胡百德在左前景持信封和手机，胡美兰仍靠车门。",
+        "sourceAnchor": "S0028",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0028"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 9,
+    "effectiveCharsPerSecond": 3.44,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 59,
+    "board": 5,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 29,
+    "charsPerSecond": 5.8,
+    "voice": [
+      "胡百德（阴狠）：“那也得能抓得到人！她不是要那五十万吗？我就先让她尝尝赔钱的滋味！”"
+    ],
+    "shots": [
+      {
+        "action": "中景，胡百德挺直腰板，大声叫嚣，身体姿态由压迫近身转为自负挺立。",
+        "camera": "固定三人中景，以姿态差异呈现主从关系。",
+        "shotNo": 2,
+        "dialogue": "胡百德（阴狠）：“那也得能抓得到人！她不是要那五十万吗？我就先让她尝尝赔钱的滋味！”",
+        "performance": "胡百德同期起整句：“那也得能抓得到人！她不是要那五十万吗？我就先让她尝尝赔钱的滋味！”本镜说至“五十万吗”，下一镜接续；两名听者闭口。",
+        "positioning": "胡百德左侧面对马强与胡美兰，两名听者在右侧及侧前方，楼体仍在其身后。",
+        "sourceAnchor": "S0029",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0029"
+        ]
+      },
+      {
+        "action": "胡百德凶狠盯着面前两人，把赔钱报复的意图说到底，结束在叫嚣后的狠厉神情。",
+        "camera": "固定近景，以景别收紧强调最终威胁。",
+        "shotNo": 3,
+        "performance": "延续上一镜同一句同期声：“我就先让她尝尝赔钱的滋味！”胡百德持续对口型，不重启整句，不加笑声。",
+        "positioning": "胡百德仍在左侧原位，镜头收紧至胸部以上，另外两人在右侧现场画外。",
+        "sourceAnchor": "S0029",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 9.5,
+    "effectiveCharsPerSecond": 3.05,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 63,
+    "board": 1,
+    "shot": 2,
+    "seconds": 5,
+    "characters": 28,
+    "charsPerSecond": 5.6,
+    "voice": [
+      "李明（皱眉）：“王总，我出来的时候，马强抱着工具包，浑身都是水。胡百德、胡美兰也在。”"
+    ],
+    "shots": [
+      {
+        "action": "中景，李明把手机举到王晓梅面前，皱眉报告。王晓梅低眼看屏幕。",
+        "camera": "固定双人侧面中景。",
+        "shotNo": 2,
+        "dialogue": "李明（皱眉）：“王总，我出来的时候，马强抱着工具包，浑身都是水。胡百德、胡美兰也在。”",
+        "performance": "李明同期说完整句的前段：“王总，我出来的时候，马强抱着工具包，浑身都是水。胡百德、胡美兰也在。”此句跨下一镜连续说完，王晓梅不对口型。",
+        "positioning": "李明站王晓梅右前方半米处，右手持手机；维修师傅仍在左侧蹲着。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 5,
+        "soundSegmentIds": [
+          "S0005"
+        ]
+      },
+      {
+        "action": "手机屏幕特写，视频中湿透的马强抱包跑向面包车，胡百德在车旁可辨。仅展示原文视频内容，不补胡美兰入画。",
+        "camera": "固定屏幕近摄，边框保留以区分视频与现场。",
+        "shotNo": 3,
+        "performance": "延续李明上一镜现场画外报告至“胡百德、胡美兰也在”，视频人物不另发声。",
+        "positioning": "手机仍由李明右手持着；屏幕视频里马强抱工具包，胡百德站在面包车旁。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "近景，王晓梅用右手接过手机，眉头收紧，咬牙盯屏幕后说：“视频留好。”手机留在她右手。",
+        "camera": "固定王晓梅斜侧近景，交接在画内完成。",
+        "shotNo": 4,
+        "dialogue": "王晓梅：“视频留好。”",
+        "performance": "王晓梅同期对白，怒意压住；李明无声听着。",
+        "positioning": "王晓梅与李明维持相对站位，手机在两人之间。",
+        "sourceAnchor": "S0008",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": [
+          "S0008"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8.5,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 63,
+    "board": 2,
+    "shot": 2,
+    "seconds": 4.5,
+    "characters": 26,
+    "charsPerSecond": 5.78,
+    "voice": [
+      "王晓梅：“最近新装的监控能拍到这边，李明，去找孙晴，把刚才那段调出来。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王晓梅转头抬眼望向后门上方，开始吩咐李明：“最近新装的监控能拍到这边，李明，去找孙晴，把刚才那段调出来。”",
+        "camera": "固定侧面中近景，让视线明确指向右上方。",
+        "shotNo": 2,
+        "dialogue": "王晓梅：“最近新装的监控能拍到这边，李明，去找孙晴，把刚才那段调出来。”",
+        "performance": "王晓梅同期说话，整句跨下一镜持续，不急促吞字。",
+        "positioning": "王晓梅站位不变，右手握手机；李明在靠后门的一侧。摄像头装在后门上方。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": [
+          "S0012"
+        ]
+      },
+      {
+        "action": "摄像头近景，保留门框和朝向院墙的安装关系。",
+        "camera": "固定仰角近景。",
+        "shotNo": 3,
+        "performance": "王晓梅现场画外声延续上一镜指令至“把刚才那段调出来”，不重复起句。喷水声贯穿，无字幕无配乐。",
+        "positioning": "前景摄像头位于后门上方，王晓梅与李明在院内画外，位置不变。",
+        "sourceAnchor": "S0012",
+        "durationSeconds": 3.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 8.0,
+    "effectiveCharsPerSecond": 3.25,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 64,
+    "board": 1,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "王晓梅：“把李明拍的视频和后院监控都存好，报警！这事必须查清楚！”"
+    ],
+    "shots": [
+      {
+        "action": "双人中近景，王晓梅转眼看向孙晴，开始交代保存证据和报警；集名仅作叙事标识，不叠字。",
+        "camera": "固定，保持两人视线轴同侧。",
+        "shotNo": 1,
+        "emotion": "压住怒气，果断交代。",
+        "dialogue": "王晓梅：“把李明拍的视频和后院监控都存好，报警！这事必须查清楚！”",
+        "performance": "王晓梅同期说“把李明拍的视频和后院监控都存好”，孙晴闭口听。",
+        "positioning": "后院后门旁，王晓梅画左、孙晴画右，相距一米面对面；手机尚未拿出。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0003"
+        ]
+      },
+      {
+        "action": "王晓梅近景，将报警要求说完，目光不移。",
+        "camera": "从孙晴肩后固定看王晓梅。",
+        "shotNo": 2,
+        "performance": "延续王晓梅同一句同期声：“报警！这事必须查清楚！”不重复起句。",
+        "positioning": "王晓梅仍在左侧，孙晴右肩在前景。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "双人中景，孙晴点头询问客人安排，王晓梅立即接下沟通任务。",
+        "camera": "固定双人构图。",
+        "shotNo": 3,
+        "dialogue": "孙晴（点头）：“好，那客人那边呢？”\n王晓梅：“我去说。”",
+        "performance": "孙晴同期：“好，那客人那边呢？”王晓梅同期：“我去说。”轮流对口型。",
+        "positioning": "两人原位，孙晴在右侧正面，王晓梅左侧半侧脸。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 3,
+        "soundSegmentIds": [
+          "S0004",
+          "S0005"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 64,
+    "board": 2,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "郑老板（压着火）：“王老板，客人已经到了，你现在跟我说停水，这席还能不能开？”"
+    ],
+    "shots": [
+      {
+        "action": "郑老板中近景开口追问，把到场客人和停水问题压向王晓梅。",
+        "camera": "王晓梅肩后固定拍郑老板。",
+        "shotNo": 2,
+        "dialogue": "郑老板（压着火）：“王老板，客人已经到了，你现在跟我说停水，这席还能不能开？”",
+        "performance": "郑老板同期起句：“王老板，客人已经到了，你现在跟我说停水”，压着火说；王晓梅不对口型。",
+        "positioning": "郑老板画右面向左，王晓梅左肩前景，两人已停步。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0011"
+        ]
+      },
+      {
+        "action": "反打王晓梅听完追问，视线迎向郑老板，不抢话。",
+        "camera": "郑老板肩后固定反打，不越轴。",
+        "shotNo": 3,
+        "performance": "郑老板现场画外声延续：“这席还能不能开？”王晓梅闭口听，呼吸收紧。",
+        "positioning": "王晓梅画左朝右，郑老板右侧前景，位置不变。",
+        "sourceAnchor": "S0011",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.43,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 64,
+    "board": 3,
+    "shot": 1,
+    "seconds": 4,
+    "characters": 24,
+    "charsPerSecond": 6.0,
+    "voice": [
+      "王晓梅（焦急）：“后院的管道坏了，师傅正在修。目前来看，十一点半开不了席。”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅近景，眉头紧锁，焦急解释维修现状。",
+        "camera": "固定过肩近景。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（焦急）：“后院的管道坏了，师傅正在修。目前来看，十一点半开不了席。”",
+        "performance": "王晓梅同期起句：“后院的管道坏了，师傅正在修。”语速急但字句清楚。",
+        "positioning": "王晓梅画左面对郑老板，郑老板右肩前景，两人相距一米。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0013"
+        ]
+      },
+      {
+        "action": "双人中景，王晓梅说出十一点半无法开席的判断；郑老板听见明确延误。",
+        "camera": "固定双人中景，展示消息到达对方。",
+        "shotNo": 2,
+        "performance": "王晓梅原句延续：“目前来看，十一点半开不了席。”郑老板闭口，不提前指向宴会厅。",
+        "positioning": "王晓梅左、郑老板右，同框侧面对峙。",
+        "sourceAnchor": "S0013",
+        "durationSeconds": 4,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "郑老板脸色骤沉，右手指向宴会厅，开始责问；中景保留指向动作。",
+        "camera": "固定中景。",
+        "shotNo": 3,
+        "dialogue": "郑老板（愤怒）：“我提前半个月订的席！人都请来了，你现在跟我说开不了？！”",
+        "performance": "郑老板同期：“我提前半个月订的席！人都请来了”，声量抬高。",
+        "positioning": "郑老板画右，宴会厅方向在其右后方，王晓梅画左。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 8,
+    "effectiveCharsPerSecond": 3.0,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 64,
+    "board": 3,
+    "shot": 3,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "郑老板（愤怒）：“我提前半个月订的席！人都请来了，你现在跟我说开不了？！”"
+    ],
+    "shots": [
+      {
+        "action": "郑老板脸色骤沉，右手指向宴会厅，开始责问；中景保留指向动作。",
+        "camera": "固定中景。",
+        "shotNo": 3,
+        "dialogue": "郑老板（愤怒）：“我提前半个月订的席！人都请来了，你现在跟我说开不了？！”",
+        "performance": "郑老板同期：“我提前半个月订的席！人都请来了”，声量抬高。",
+        "positioning": "郑老板画右，宴会厅方向在其右后方，王晓梅画左。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0015"
+        ]
+      },
+      {
+        "action": "郑老板近景说完责问，目光逼住王晓梅。",
+        "camera": "固定近景，强化责问落点。",
+        "shotNo": 4,
+        "performance": "郑老板同句同期声延续：“你现在跟我说开不了？！”不另起重复对白。",
+        "positioning": "郑老板仍在右侧，指向厅门的右臂留在画面下方，王晓梅左肩前景。",
+        "sourceAnchor": "S0015",
+        "durationSeconds": 3,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      4
+    ],
+    "effectiveSeconds": 7,
+    "effectiveCharsPerSecond": 3.29,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 64,
+    "board": 4,
+    "shot": 2,
+    "seconds": 4,
+    "characters": 23,
+    "charsPerSecond": 5.75,
+    "voice": [
+      "郑老板（怒）：“问题是这席都快开了！你赔钱我就能跟满厅客人交代了？”"
+    ],
+    "shots": [
+      {
+        "action": "郑老板中近景拒绝把问题简化为赔钱，仍逼问如何向宾客交代。",
+        "camera": "固定反打。",
+        "shotNo": 2,
+        "dialogue": "郑老板（怒）：“问题是这席都快开了！你赔钱我就能跟满厅客人交代了？”",
+        "performance": "郑老板同期起句：“问题是这席都快开了！你赔钱”，怒意不减。",
+        "positioning": "郑老板画右面对王晓梅，右臂从指厅姿势自然落低。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0017"
+        ]
+      },
+      {
+        "action": "王晓梅听到赔钱不足以交代的质问，嘴唇闭紧。",
+        "camera": "固定近景。",
+        "shotNo": 3,
+        "performance": "郑老板现场画外声延续：“我就能跟满厅客人交代了？”王晓梅不对口型。",
+        "positioning": "王晓梅左侧近景，郑老板在右侧画外原位。",
+        "sourceAnchor": "S0017",
+        "durationSeconds": 2.5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景带纵深，王晓梅看向厅里陆续落座的客人，随后抬头重新迎住郑老板目光；宾客各自拉椅坐下，不集体做同一动作。",
+        "camera": "固定，同时交代她的视线对象及回望结果。",
+        "shotNo": 4,
+        "performance": "王晓梅由焦虑转为认真，尚未开口。保留轻微椅脚声。",
+        "positioning": "王晓梅左前景、郑老板右前景，宴会厅门及桌边宾客在两人之间的纵深可见。",
+        "sourceAnchor": "S0018",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3,
+      4
+    ],
+    "effectiveSeconds": 8.5,
+    "effectiveCharsPerSecond": 2.71,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 66,
+    "board": 1,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 35,
+    "charsPerSecond": 5.83,
+    "voice": [
+      "王晓梅（诚恳）：“郑老板，送水车十分钟就到，能不呢多给我们半个钟，十二点，我们一定让大家吃上热菜。”"
+    ],
+    "shots": [
+      {
+        "action": "中近景，王晓梅诚恳请求延时，开始完整原句“郑老板，送水车十分钟就到，能不呢多给我们半个钟，十二点，我们一定让大家吃上热菜。”",
+        "camera": "固定，郑老板肩后看王晓梅。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（诚恳）：“郑老板，送水车十分钟就到，能不呢多给我们半个钟，十二点，我们一定让大家吃上热菜。”",
+        "performance": "王晓梅同期说话，语气恳切；本句跨下一镜连续说完。",
+        "positioning": "王晓梅在画左面向画右郑老板，两人相距一米，宴会厅入口在郑老板后方。",
+        "sourceAnchor": "S0003",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0003"
+        ]
+      },
+      {
+        "action": "中景，先承接王晓梅原句末半段画外声；句尾郑老板低头看手表，眉头紧锁。",
+        "camera": "固定侧面双人构图，表腕与面部同框。",
+        "shotNo": 2,
+        "performance": "王晓梅声音连续不重起；郑老板闭口，视线落向表盘。",
+        "positioning": "两人站位不变，郑老板手腕在胸腹前可见，王晓梅位于左前景。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 5,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景，王晓梅微微鞠躬，同期说“今天是我们误事了，这顿饭我给您打折。”",
+        "camera": "固定，保留上半身鞠躬幅度。",
+        "shotNo": 3,
+        "dialogue": "王晓梅：“今天是我们误事了，这顿饭我给您打折。”",
+        "performance": "低头致歉后目光回到郑老板脸上。",
+        "positioning": "王晓梅仍面向郑老板，双手自然垂下。",
+        "sourceAnchor": "S0006",
+        "durationSeconds": 4,
+        "soundSegmentIds": [
+          "S0006"
+        ]
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 11,
+    "effectiveCharsPerSecond": 3.18,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 67,
+    "board": 6,
+    "shot": 2,
+    "seconds": 5.5,
+    "characters": 35,
+    "charsPerSecond": 6.36,
+    "voice": [
+      "王晓梅：“10点45分店里突然停水，我的员工出去查看，就看到他们带着家伙事儿站在后院。”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅近景，严肃说明停水时间与员工所见。",
+        "camera": "从警员甲肩后固定拍王晓梅。",
+        "shotNo": 2,
+        "dialogue": "王晓梅：“10点45分店里突然停水，我的员工出去查看，就看到他们带着家伙事儿站在后院。”",
+        "performance": "王晓梅同期开始：“10点45分店里突然停水，我的员工出去查看，就看到他们带着家伙事儿站在后院。”完整一句持续至下一镜，时间读作十点四十五分。",
+        "positioning": "王晓梅持手机朝向警员甲，两人相距约一臂；甲低头看屏幕后听她陈述。",
+        "sourceAnchor": "S0026",
+        "durationSeconds": 5.5,
+        "soundSegmentIds": [
+          "S0026"
+        ]
+      },
+      {
+        "action": "中近景，警员甲听完陈述，视线在手机与王晓梅之间保持关注，不展示未由原文说明的记录内容。",
+        "camera": "同轴侧面固定，保留递看关系。",
+        "shotNo": 3,
+        "performance": "王晓梅现场画外延续同一句至“站在后院”结束，警员甲、乙均不对口型。",
+        "positioning": "警员甲在画右，王晓梅持手机的手在左前景；警员乙仍在甲后侧。",
+        "sourceAnchor": "S0026",
+        "durationSeconds": 4.5,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      3
+    ],
+    "effectiveSeconds": 10.0,
+    "effectiveCharsPerSecond": 3.5,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  },
+  {
+    "episode": 70,
+    "board": 2,
+    "shot": 1,
+    "seconds": 6,
+    "characters": 38,
+    "charsPerSecond": 6.33,
+    "voice": [
+      "王晓梅（打断）：“当年你肯帮我，我一直都很感激你。可你看看你现在都干了些什么？过去那点情分早就耗尽了。”"
+    ],
+    "shots": [
+      {
+        "action": "王晓梅中近景，她直接打断胡百德，保持坐姿直视他。",
+        "camera": "缓慢推近王晓梅，强调界限。",
+        "shotNo": 1,
+        "dialogue": "王晓梅（打断）：“当年你肯帮我，我一直都很感激你。可你看看你现在都干了些什么？过去那点情分早就耗尽了。”",
+        "performance": "王晓梅同期完整一句起声：“当年你肯帮我，我一直都很感激你。可你看看你现在都干了些什么？过去那点情分早就耗尽了。”本镜说至“可你看看”，后半句跨镜连续，不重起。",
+        "positioning": "王晓梅坐在桌左，面对桌右胡百德；胡百德肩背占右前景。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 6,
+        "soundSegmentIds": [
+          "S0004"
+        ]
+      },
+      {
+        "action": "胡百德听完王晓梅的话，脸部逐渐僵住。",
+        "camera": "固定近景，保留听者变化。",
+        "shotNo": 2,
+        "performance": "王晓梅现场画外声延续：“你现在都干了些什么？过去那点情分早就耗尽了。”语气坚定，胡百德闭口不对口型。",
+        "positioning": "同轴线胡百德近景，王晓梅在镜外桌左原位，胡百德仍面对她。",
+        "sourceAnchor": "S0004",
+        "durationSeconds": 6,
+        "soundSegmentIds": []
+      },
+      {
+        "action": "中景，胡百德僵着脸转身，穿过近旁门口走出会议室。",
+        "camera": "向右短摇跟随离场，门框内见其离开。",
+        "shotNo": 3,
+        "performance": "不再回话，保留脚步声。",
+        "positioning": "胡百德站在桌右，右后方门敞开，王晓梅仍坐在桌左。",
+        "sourceAnchor": "S0005",
+        "durationSeconds": 2,
+        "soundSegmentIds": []
+      }
+    ],
+    "note": "自动筛查，跨镜持续发声需人工判断，不能直接判为违规",
+    "continuationShots": [
+      2
+    ],
+    "effectiveSeconds": 12,
+    "effectiveCharsPerSecond": 3.17,
+    "review": "存在明确跨镜续声；单按首镜计算会误报。发音字数为筛查近似值，未使用实际录音测量。"
+  }
+]

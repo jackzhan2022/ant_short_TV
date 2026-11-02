@@ -1,0 +1,95 @@
+{
+  "profiles": {
+    "before": {
+      "shotSeconds": 4736.5,
+      "meanShotSeconds": 3.68,
+      "shotsPerBoard": {
+        "1": 5,
+        "2": 65,
+        "3": 193,
+        "4": 112,
+        "5": 19,
+        "6": 5
+      },
+      "shortBoards": 66,
+      "roundingBoards": 37
+    },
+    "after": {
+      "shotSeconds": 4673.0,
+      "meanShotSeconds": 3.799,
+      "shotsPerBoard": {
+        "1": 10,
+        "2": 86,
+        "3": 185,
+        "4": 97,
+        "5": 16,
+        "6": 3,
+        "7": 1
+      },
+      "shortBoards": 79,
+      "roundingBoards": 0
+    }
+  },
+  "warningTypes": {
+    "SOURCE_SPEAKER_UNCONFIRMED": 13,
+    "ACTION_DENSITY": 33
+  },
+  "voiceCandidates": 86,
+  "voiceNeedsReview": 0,
+  "moreShots": [
+    4,
+    6,
+    9,
+    18,
+    19,
+    23,
+    24,
+    29,
+    41,
+    63,
+    67,
+    70
+  ],
+  "fewerShots": [
+    2,
+    3,
+    5,
+    7,
+    12,
+    13,
+    14,
+    15,
+    17,
+    20,
+    22,
+    26,
+    27,
+    28,
+    31,
+    32,
+    34,
+    36,
+    38,
+    43,
+    44,
+    45,
+    46,
+    49,
+    50,
+    51,
+    53,
+    54,
+    55,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    64,
+    65,
+    66,
+    68,
+    69
+  ]
+}

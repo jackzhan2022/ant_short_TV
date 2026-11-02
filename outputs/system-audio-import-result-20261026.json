@@ -1,0 +1,3171 @@
+{
+  "total": 449,
+  "male": 257,
+  "female": 192,
+  "categories": 21,
+  "duplicates": [
+    {
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01097.mp3",
+      "sameAs": "女/4.傲娇千金女配音/Qwen3-TTS_01097.mp3"
+    },
+    {
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01373.mp3",
+      "sameAs": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01373.mp3"
+    }
+  ],
+  "bytes": 36812821,
+  "allMetadataVerified": true,
+  "allStorageMd5Verified": true,
+  "ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219,
+    220,
+    221,
+    222,
+    223,
+    224,
+    225,
+    226,
+    227,
+    228,
+    229,
+    230,
+    231,
+    232,
+    233,
+    234,
+    235,
+    236,
+    237,
+    238,
+    239,
+    240,
+    241,
+    242,
+    243,
+    244,
+    245,
+    246,
+    247,
+    248,
+    249,
+    250,
+    251,
+    252,
+    253,
+    254,
+    255,
+    256,
+    257,
+    258,
+    259,
+    260,
+    261,
+    262,
+    263,
+    264,
+    265,
+    266,
+    267,
+    268,
+    269,
+    270,
+    271,
+    272,
+    273,
+    274,
+    275,
+    276,
+    277,
+    278,
+    279,
+    280,
+    281,
+    282,
+    283,
+    284,
+    285,
+    286,
+    287,
+    288,
+    289,
+    290,
+    291,
+    292,
+    293,
+    294,
+    295,
+    296,
+    297,
+    298,
+    299,
+    300,
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310,
+    311,
+    312,
+    313,
+    314,
+    315,
+    316,
+    317,
+    318,
+    319,
+    320,
+    321,
+    322,
+    323,
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    331,
+    332,
+    333,
+    334,
+    335,
+    336,
+    337,
+    338,
+    339,
+    340,
+    341,
+    342,
+    343,
+    344,
+    345,
+    346,
+    347,
+    348,
+    349,
+    350,
+    351,
+    352,
+    353,
+    354,
+    355,
+    356,
+    357,
+    358,
+    359,
+    360,
+    361,
+    362,
+    363,
+    364,
+    365,
+    366,
+    367,
+    368,
+    369,
+    370,
+    371,
+    372,
+    373,
+    374,
+    375,
+    376,
+    377,
+    378,
+    379,
+    380,
+    381,
+    382,
+    383,
+    384,
+    385,
+    386,
+    387,
+    388,
+    389,
+    390,
+    391,
+    392,
+    393,
+    394,
+    395,
+    396,
+    397,
+    398,
+    399,
+    400,
+    401,
+    402,
+    403,
+    404,
+    405,
+    406,
+    407,
+    408,
+    409,
+    410,
+    411,
+    412,
+    413,
+    414,
+    415,
+    416,
+    417,
+    418,
+    419,
+    420,
+    421,
+    422,
+    423,
+    424,
+    425,
+    426,
+    427,
+    428,
+    429,
+    430,
+    431,
+    432,
+    433,
+    434,
+    435,
+    436,
+    437,
+    438,
+    439,
+    440,
+    441,
+    442,
+    443,
+    444,
+    445,
+    446,
+    447,
+    448,
+    449
+  ],
+  "sourceDirectory": "D:/BaiduNetdiskDownload/【音色库】漫剧音色库/AI漫剧音色库全量包",
+  "skipped": [
+    "AI漫剧音色库·完整清单.md",
+    "使用说明.md"
+  ],
+  "recordMapping": [
+    {
+      "md5": "5158acd8f4ab0114c4d8da714c64ac6a",
+      "reused": false,
+      "id": 1,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00898.mp3"
+    },
+    {
+      "md5": "042c4ea739ac3f15dfc758a7a112b4a2",
+      "reused": false,
+      "id": 2,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00914.mp3"
+    },
+    {
+      "md5": "d8db2ac912f4589e0c30105829cc45e7",
+      "reused": false,
+      "id": 3,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00918.mp3"
+    },
+    {
+      "md5": "5f970b5a0ed3123a3d89ada4c1531f2a",
+      "reused": false,
+      "id": 4,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00926.mp3"
+    },
+    {
+      "md5": "07ca3ac37a7325448d73a880da1692fe",
+      "reused": false,
+      "id": 5,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00943.mp3"
+    },
+    {
+      "md5": "6b63aac8018e98992e2f1bfb26c2e399",
+      "reused": false,
+      "id": 6,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_00956.mp3"
+    },
+    {
+      "md5": "dcc76887d381d8689c1f81411714cff8",
+      "reused": false,
+      "id": 7,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_01020.mp3"
+    },
+    {
+      "md5": "f5270ff3b638dfb5953c8731aa8e4a62",
+      "reused": false,
+      "id": 8,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_01039.mp3"
+    },
+    {
+      "md5": "c7b3b8aa1258708ae78d4909c1b37313",
+      "reused": false,
+      "id": 9,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_01054.mp3"
+    },
+    {
+      "md5": "8a8f96a4fafc3a15cb0277fd7b4ea827",
+      "reused": false,
+      "id": 10,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_01131.mp3"
+    },
+    {
+      "md5": "fe7db45d424396f4f43de1b02f95a5cc",
+      "reused": false,
+      "id": 11,
+      "path": "女/1.元气甜妹女主/Qwen3-TTS_01170.mp3"
+    },
+    {
+      "md5": "75312e1137846d40c847974ad46d1412",
+      "reused": false,
+      "id": 12,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00960.mp3"
+    },
+    {
+      "md5": "313dafa6d4356c251790a73311d43794",
+      "reused": false,
+      "id": 13,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00962.mp3"
+    },
+    {
+      "md5": "7dff6be10344c8ba7d12a9732b09305f",
+      "reused": false,
+      "id": 14,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00969.mp3"
+    },
+    {
+      "md5": "ce5c373e9087f62320be78da05a70e84",
+      "reused": false,
+      "id": 15,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00970.mp3"
+    },
+    {
+      "md5": "eb398694c288e8ef14e964cdd460efe4",
+      "reused": false,
+      "id": 16,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00973.mp3"
+    },
+    {
+      "md5": "31599365e509337c205c6f304ab71d1f",
+      "reused": false,
+      "id": 17,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00975.mp3"
+    },
+    {
+      "md5": "dc6203b22230cea7515e5076a27c3d0b",
+      "reused": false,
+      "id": 18,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00979.mp3"
+    },
+    {
+      "md5": "201a0d471c2d58828e4e5d46ae189495",
+      "reused": false,
+      "id": 19,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00987.mp3"
+    },
+    {
+      "md5": "d48c4cedfc3a272bc6105dd59448235d",
+      "reused": false,
+      "id": 20,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00989.mp3"
+    },
+    {
+      "md5": "be679f5db0686e2783971be47649f1a4",
+      "reused": false,
+      "id": 21,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00990.mp3"
+    },
+    {
+      "md5": "acc1d117d503ff05d46f8d7cffdd1f12",
+      "reused": false,
+      "id": 22,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_00991.mp3"
+    },
+    {
+      "md5": "40283ddadbe90c418c929890ff61a74f",
+      "reused": false,
+      "id": 23,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01000.mp3"
+    },
+    {
+      "md5": "04f7a2ee183412e1a44bfaee7d3deb91",
+      "reused": false,
+      "id": 24,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01001.mp3"
+    },
+    {
+      "md5": "ed420e2d1f9939ce4c0fa5f3f3f46ace",
+      "reused": false,
+      "id": 25,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01002.mp3"
+    },
+    {
+      "md5": "dbbc5d8322c6460cbe09020f94cf26a3",
+      "reused": false,
+      "id": 26,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01007.mp3"
+    },
+    {
+      "md5": "296eda20bbba2c636a9814f265745b4c",
+      "reused": false,
+      "id": 27,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01010.mp3"
+    },
+    {
+      "md5": "7a8967ddcac5ac0d470122ec153a8abe",
+      "reused": false,
+      "id": 28,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01011.mp3"
+    },
+    {
+      "md5": "c3ee8ee294c58d3474c645f4fe8dcf1e",
+      "reused": false,
+      "id": 29,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01012.mp3"
+    },
+    {
+      "md5": "89ec4504d0f527fd12cb218b5fe31274",
+      "reused": false,
+      "id": 30,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01145.mp3"
+    },
+    {
+      "md5": "24393ba20dfff0b65b79f1816d88f9e0",
+      "reused": false,
+      "id": 31,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01157.mp3"
+    },
+    {
+      "md5": "6081c5403c4317df11297cebb619bba0",
+      "reused": false,
+      "id": 32,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01163.mp3"
+    },
+    {
+      "md5": "8aa79599466e3b79a7c34ff99918733b",
+      "reused": false,
+      "id": 33,
+      "path": "女/2.清冷御姐女主音/Qwen3-TTS_01183.mp3"
+    },
+    {
+      "md5": "a1f57d10afeb9c4db74aa20e944d24c7",
+      "reused": false,
+      "id": 34,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01014.mp3"
+    },
+    {
+      "md5": "88823ef843bb9be05d345904ddb7fb30",
+      "reused": false,
+      "id": 35,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01015.mp3"
+    },
+    {
+      "md5": "fc14773cba1ed01c8b311e0eea1705f7",
+      "reused": false,
+      "id": 36,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01016.mp3"
+    },
+    {
+      "md5": "ec7dc945e1c88a0ed36bba5e43826833",
+      "reused": false,
+      "id": 37,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01017.mp3"
+    },
+    {
+      "md5": "dd9279649012e378f6fe740b0eba05c5",
+      "reused": false,
+      "id": 38,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01018.mp3"
+    },
+    {
+      "md5": "b7c162bc958d96fbc9a6e1816f267c15",
+      "reused": false,
+      "id": 39,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01019.mp3"
+    },
+    {
+      "md5": "c850289431e481633371bf01678a4c75",
+      "reused": false,
+      "id": 40,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01021.mp3"
+    },
+    {
+      "md5": "4e3dcc9c3f5a12a1a1f32d0337cf67dd",
+      "reused": false,
+      "id": 41,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01022.mp3"
+    },
+    {
+      "md5": "c468f2dc2509ba73df3f880e5ad4d7aa",
+      "reused": false,
+      "id": 42,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01023.mp3"
+    },
+    {
+      "md5": "7396f45544e659ea3238848dd22ac509",
+      "reused": false,
+      "id": 43,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01026.mp3"
+    },
+    {
+      "md5": "12b7c8983a3039893974badca20fc1cf",
+      "reused": false,
+      "id": 44,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01027.mp3"
+    },
+    {
+      "md5": "6df50c13a7455414ef06b2e408ebbf14",
+      "reused": false,
+      "id": 45,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01037.mp3"
+    },
+    {
+      "md5": "3320ef6f35c9469d01c82b65a92f4a1c",
+      "reused": false,
+      "id": 46,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01040.mp3"
+    },
+    {
+      "md5": "c97c8edee64186249d5ce1d407936f3e",
+      "reused": false,
+      "id": 47,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01044.mp3"
+    },
+    {
+      "md5": "c9715f78795b3c93ab8081d907d1c20b",
+      "reused": false,
+      "id": 48,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01048.mp3"
+    },
+    {
+      "md5": "c2751c2818c23e77f1e4c049cb7021f1",
+      "reused": false,
+      "id": 49,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01049.mp3"
+    },
+    {
+      "md5": "b91c013a5d90df2018d0983941bb1719",
+      "reused": false,
+      "id": 50,
+      "path": "女/3.软萌小白花女配音/Qwen3-TTS_01052.mp3"
+    },
+    {
+      "md5": "bf3005f3ac7b2a915591f8861b7bb4f2",
+      "reused": false,
+      "id": 51,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01065.mp3"
+    },
+    {
+      "md5": "39976a6b3a1b45fc95e4d67771699f37",
+      "reused": false,
+      "id": 52,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01066.mp3"
+    },
+    {
+      "md5": "9ceee66ad8b577d6845e71f5a0375e46",
+      "reused": false,
+      "id": 53,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01069.mp3"
+    },
+    {
+      "md5": "6939534db9a3fb9503440cfa651a6f8b",
+      "reused": false,
+      "id": 54,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01075.mp3"
+    },
+    {
+      "md5": "b8c20ed60750a26d577d07bb8258d21c",
+      "reused": false,
+      "id": 55,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01076.mp3"
+    },
+    {
+      "md5": "e7973398415f4a4bc1edaaf7972afb62",
+      "reused": false,
+      "id": 56,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01086.mp3"
+    },
+    {
+      "md5": "617c30a2845f051d02ffbd5d269f80b7",
+      "reused": false,
+      "id": 57,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01087.mp3"
+    },
+    {
+      "md5": "eb9a3b7b648f1e33cdd6bc042db943c6",
+      "reused": false,
+      "id": 58,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01090.mp3"
+    },
+    {
+      "md5": "c52696f1b1bb052096cc392239b2cfe7",
+      "reused": false,
+      "id": 59,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01093.mp3"
+    },
+    {
+      "md5": "665a931c639e3016aff1335569758f56",
+      "reused": false,
+      "id": 60,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01095.mp3"
+    },
+    {
+      "md5": "035ffe04ea48bd20ee406fa65e03ff15",
+      "reused": false,
+      "id": 61,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01097.mp3"
+    },
+    {
+      "md5": "7110cd293cf6dfb78a04699e05bbd4c4",
+      "reused": false,
+      "id": 62,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01103.mp3"
+    },
+    {
+      "md5": "ccad574839d7f80f26ce9cbb7c527f4d",
+      "reused": false,
+      "id": 63,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01109.mp3"
+    },
+    {
+      "md5": "321c8984c323043280a327ff9d3c50a6",
+      "reused": false,
+      "id": 64,
+      "path": "女/4.傲娇千金女配音/Qwen3-TTS_01168.mp3"
+    },
+    {
+      "md5": "35752e09ec6489d9de4dcd7d0f810466",
+      "reused": false,
+      "id": 65,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00963.mp3"
+    },
+    {
+      "md5": "46988e2ee72e54c0e65ded47cf47c6b3",
+      "reused": false,
+      "id": 66,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00965.mp3"
+    },
+    {
+      "md5": "0024af21bd2cc2739ba0c8cb4e668d15",
+      "reused": false,
+      "id": 67,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00967.mp3"
+    },
+    {
+      "md5": "294e73d5e729748d9d79a5de230c9980",
+      "reused": false,
+      "id": 68,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00971.mp3"
+    },
+    {
+      "md5": "2dfe27733de08d965dfde19af25fcc1b",
+      "reused": false,
+      "id": 69,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00972.mp3"
+    },
+    {
+      "md5": "20302cd33ecca3a5f21a4fac741650c4",
+      "reused": false,
+      "id": 70,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00977.mp3"
+    },
+    {
+      "md5": "5c49a2976c8e505337f52698ea78f154",
+      "reused": false,
+      "id": 71,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00985.mp3"
+    },
+    {
+      "md5": "d00b9f633d0eeece2d7ae612630632d4",
+      "reused": false,
+      "id": 72,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00994.mp3"
+    },
+    {
+      "md5": "2f121e423edba9407353043af330c1fd",
+      "reused": false,
+      "id": 73,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_00996.mp3"
+    },
+    {
+      "md5": "203a96d99f6cf31024c4b8c17a3661bf",
+      "reused": false,
+      "id": 74,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01004.mp3"
+    },
+    {
+      "md5": "7624496708ff75e5fdee90e4ab66daad",
+      "reused": false,
+      "id": 75,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01079.mp3"
+    },
+    {
+      "md5": "bc0858ff00c2d8bc14643ce4b795b8d6",
+      "reused": false,
+      "id": 76,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01108.mp3"
+    },
+    {
+      "md5": "6027db9bb2b317fde682fc6a9dbad4d1",
+      "reused": false,
+      "id": 77,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01112.mp3"
+    },
+    {
+      "md5": "567f537be65a6186918b6bf0fbed6470",
+      "reused": false,
+      "id": 78,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01116.mp3"
+    },
+    {
+      "md5": "aa6d2917a7d134c80790688741c1cf63",
+      "reused": false,
+      "id": 79,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01126.mp3"
+    },
+    {
+      "md5": "073bab362dee0376e3ac8c02949e8848",
+      "reused": false,
+      "id": 80,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01132.mp3"
+    },
+    {
+      "md5": "bb0d8927a9e5f5e7466bb66017c74729",
+      "reused": false,
+      "id": 81,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01133.mp3"
+    },
+    {
+      "md5": "35d62164f0b05d4c7bbe320912758791",
+      "reused": false,
+      "id": 82,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01134.mp3"
+    },
+    {
+      "md5": "0f85fa5adad7586d8499987da783aca8",
+      "reused": false,
+      "id": 83,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01137.mp3"
+    },
+    {
+      "md5": "ec0e59a98814c8019be4a59f6eafe3c4",
+      "reused": false,
+      "id": 84,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01142.mp3"
+    },
+    {
+      "md5": "c0119b97a70123db2b793cfba2c99ea8",
+      "reused": false,
+      "id": 85,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01146.mp3"
+    },
+    {
+      "md5": "dbe0b4c43f8a2b3e6982249f12306d55",
+      "reused": false,
+      "id": 86,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01148.mp3"
+    },
+    {
+      "md5": "ebedfe77838e739ceaaa1e7eaabbfbf4",
+      "reused": false,
+      "id": 87,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01159.mp3"
+    },
+    {
+      "md5": "a4af10c773283a5a63746c5d8ccce134",
+      "reused": false,
+      "id": 88,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01161.mp3"
+    },
+    {
+      "md5": "c8390517877c4e8c489343fec58fb62c",
+      "reused": false,
+      "id": 89,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01164.mp3"
+    },
+    {
+      "md5": "2f87f398e740069fdb0ba07867b68d45",
+      "reused": false,
+      "id": 90,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01169.mp3"
+    },
+    {
+      "md5": "54f19878753576806eeeef9cdff05efa",
+      "reused": false,
+      "id": 91,
+      "path": "女/5.飒爽中性女主音/Qwen3-TTS_01181.mp3"
+    },
+    {
+      "md5": "8931738edccdd2df1f5279be19b9110b",
+      "reused": false,
+      "id": 92,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00900.mp3"
+    },
+    {
+      "md5": "d7f42f5bc95145ea0ae65ef1ba2ece08",
+      "reused": false,
+      "id": 93,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00902.mp3"
+    },
+    {
+      "md5": "5555318ced7a70336e8a5a48f86fb439",
+      "reused": false,
+      "id": 94,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00904.mp3"
+    },
+    {
+      "md5": "d3f7aab1d05d737dd8287795cc6522b1",
+      "reused": false,
+      "id": 95,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00905.mp3"
+    },
+    {
+      "md5": "174695fc5dec578666c01412144cc802",
+      "reused": false,
+      "id": 96,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00907.mp3"
+    },
+    {
+      "md5": "6214c7d175afed7da67b7aa85efe616b",
+      "reused": false,
+      "id": 97,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00908.mp3"
+    },
+    {
+      "md5": "d25d42a07b6662aec02038ecf51e4d34",
+      "reused": false,
+      "id": 98,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00909.mp3"
+    },
+    {
+      "md5": "91bc8673078b5daffdfe2be0970da4d0",
+      "reused": false,
+      "id": 99,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00912.mp3"
+    },
+    {
+      "md5": "586a441a68db8f1df7f28cd938ad1572",
+      "reused": false,
+      "id": 100,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00913.mp3"
+    },
+    {
+      "md5": "83d4f7800ce5545d5303f3e2b56ab0a9",
+      "reused": false,
+      "id": 101,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00930.mp3"
+    },
+    {
+      "md5": "4008d92445ec844d44f66b02860ced63",
+      "reused": false,
+      "id": 102,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00947.mp3"
+    },
+    {
+      "md5": "46bb9de99705a46e151f372618503f15",
+      "reused": false,
+      "id": 103,
+      "path": "女/6.软萌少女音/Qwen3-TTS_00949.mp3"
+    },
+    {
+      "md5": "2d5af1b44e49dec9bd30d14d245dee2b",
+      "reused": false,
+      "id": 104,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01038.mp3"
+    },
+    {
+      "md5": "490aafdc78fdbddfe4c845f4dc01a5f3",
+      "reused": false,
+      "id": 105,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01047.mp3"
+    },
+    {
+      "md5": "ff6873706665e3a8de25e25e9e877f7c",
+      "reused": false,
+      "id": 106,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01690.mp3"
+    },
+    {
+      "md5": "00fd65836ed166f490fe2c88f5fcb377",
+      "reused": false,
+      "id": 107,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01691.mp3"
+    },
+    {
+      "md5": "1f58cd0c09664f001989c01d15f5fd1e",
+      "reused": false,
+      "id": 108,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01726.mp3"
+    },
+    {
+      "md5": "7e480a70dcc42424caf6f27a6afbef1c",
+      "reused": false,
+      "id": 109,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01729.mp3"
+    },
+    {
+      "md5": "b95f780ad558aad13fba74ff28a0a042",
+      "reused": false,
+      "id": 110,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01738.mp3"
+    },
+    {
+      "md5": "fb3a6cdbf5f1aff99d0c1ea172110944",
+      "reused": false,
+      "id": 111,
+      "path": "女/6.软萌少女音/Qwen3-TTS_01744.mp3"
+    },
+    {
+      "md5": "c1b62f0935c1f1b4b22228805d4f03d3",
+      "reused": false,
+      "id": 112,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01769.mp3"
+    },
+    {
+      "md5": "c0da69fa515078be44c088323569dd5d",
+      "reused": false,
+      "id": 113,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01771.mp3"
+    },
+    {
+      "md5": "e77e78208b77cf89b0121de571ef2624",
+      "reused": false,
+      "id": 114,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01772.mp3"
+    },
+    {
+      "md5": "86a44e5f86e22c2c64b36a91426261d6",
+      "reused": false,
+      "id": 115,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01787.mp3"
+    },
+    {
+      "md5": "7c9635c2abf01ff8d2358d67897b580b",
+      "reused": false,
+      "id": 116,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01797.mp3"
+    },
+    {
+      "md5": "2f39f264f87a9f5ba0046cf0073841b4",
+      "reused": false,
+      "id": 117,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01810.mp3"
+    },
+    {
+      "md5": "5985cf91bad87740a8f5f83b0fa48ae2",
+      "reused": false,
+      "id": 118,
+      "path": "女/7.稚嫩童声/Qwen3-TTS_01817.mp3"
+    },
+    {
+      "md5": "f45e78a5c0c1cb86310083fe835df194",
+      "reused": false,
+      "id": 119,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01185.mp3"
+    },
+    {
+      "md5": "63ebc21507449df7a21b7f1b0fc68fd1",
+      "reused": false,
+      "id": 120,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01186.mp3"
+    },
+    {
+      "md5": "512c7ac58b8ffde0aa55966bf537fe4c",
+      "reused": false,
+      "id": 121,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01187.mp3"
+    },
+    {
+      "md5": "f4ee1ea0ea68188ed1cf036b5b5cf43f",
+      "reused": false,
+      "id": 122,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01194.mp3"
+    },
+    {
+      "md5": "faa0bb17d43afac524c89288091a1070",
+      "reused": false,
+      "id": 123,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01201.mp3"
+    },
+    {
+      "md5": "3cb0993fc03da649b99bd788f7bb1eac",
+      "reused": false,
+      "id": 124,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01202.mp3"
+    },
+    {
+      "md5": "2a3e32714a90262160aada2153e88a54",
+      "reused": false,
+      "id": 125,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01203.mp3"
+    },
+    {
+      "md5": "1f5c3461fe9871ba988a264f725325d4",
+      "reused": false,
+      "id": 126,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01204.mp3"
+    },
+    {
+      "md5": "d05ac7c766f994e79e26bfa2cde40c71",
+      "reused": false,
+      "id": 127,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01205.mp3"
+    },
+    {
+      "md5": "5414c63a9a3cda92144a032b2d7a2ae5",
+      "reused": false,
+      "id": 128,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01207.mp3"
+    },
+    {
+      "md5": "3a2feab6785abd7a5a2779dc9df8391a",
+      "reused": false,
+      "id": 129,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01208.mp3"
+    },
+    {
+      "md5": "4213b511286a53f20d4e1937bb9911a7",
+      "reused": false,
+      "id": 130,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01210.mp3"
+    },
+    {
+      "md5": "dabf30dc0734d562279275710366c7c1",
+      "reused": false,
+      "id": 131,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01212.mp3"
+    },
+    {
+      "md5": "980d7855dc977566d539aea8f4d7a7c7",
+      "reused": false,
+      "id": 132,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01215.mp3"
+    },
+    {
+      "md5": "fbfb2478ac9fc674a0ed3215fa6433b1",
+      "reused": false,
+      "id": 133,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01217.mp3"
+    },
+    {
+      "md5": "2461acbeafaed20a671352f10aa8c07d",
+      "reused": false,
+      "id": 134,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01222.mp3"
+    },
+    {
+      "md5": "edde88cff2d86a213023a441b7b52da5",
+      "reused": false,
+      "id": 135,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01224.mp3"
+    },
+    {
+      "md5": "3db5ec4659307ace3812c0e03fe8fe49",
+      "reused": false,
+      "id": 136,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01225.mp3"
+    },
+    {
+      "md5": "11e3c822350d4a82ea276ae42bfc2f34",
+      "reused": false,
+      "id": 137,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01226.mp3"
+    },
+    {
+      "md5": "ad5ad1692cec06be19d0611d780e8465",
+      "reused": false,
+      "id": 138,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01228.mp3"
+    },
+    {
+      "md5": "23bc47c077d2a2ab8513b584b6002751",
+      "reused": false,
+      "id": 139,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01236.mp3"
+    },
+    {
+      "md5": "4d57507008fe584fd59f014108b82dd6",
+      "reused": false,
+      "id": 140,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01238.mp3"
+    },
+    {
+      "md5": "ed42fbeb3e4a893e072d5f12fcd8b81f",
+      "reused": false,
+      "id": 141,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01240.mp3"
+    },
+    {
+      "md5": "a8ab072e249f728780922329fb898109",
+      "reused": false,
+      "id": 142,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01893.mp3"
+    },
+    {
+      "md5": "eb3799f86ea3a5fe57fb74f9fec1862d",
+      "reused": false,
+      "id": 143,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01894.mp3"
+    },
+    {
+      "md5": "d935bcbd71b47c9bc28826477ca9fc41",
+      "reused": false,
+      "id": 144,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01896.mp3"
+    },
+    {
+      "md5": "b9117bd882ff534476203d64fe5f1bb3",
+      "reused": false,
+      "id": 145,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01902.mp3"
+    },
+    {
+      "md5": "ba2c9464f15008cbe479ef53df0d1d6d",
+      "reused": false,
+      "id": 146,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01904.mp3"
+    },
+    {
+      "md5": "a3812c61352d4c8286bc6af28f868fc6",
+      "reused": false,
+      "id": 147,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01921.mp3"
+    },
+    {
+      "md5": "28032c8d71feda594be6a0d1b2fc8c21",
+      "reused": false,
+      "id": 148,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01924.mp3"
+    },
+    {
+      "md5": "7b08d3512aec1804d3e91cc81fa89f3d",
+      "reused": false,
+      "id": 149,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01928.mp3"
+    },
+    {
+      "md5": "8996a74c04ff7c3d77a8ebf60b8a8db6",
+      "reused": false,
+      "id": 150,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01929.mp3"
+    },
+    {
+      "md5": "b688c95f2cf96680d8202efb0bd9f29c",
+      "reused": false,
+      "id": 151,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01936.mp3"
+    },
+    {
+      "md5": "5ae0e437bd386bab3d7ec5fe91c36dd1",
+      "reused": false,
+      "id": 152,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01940.mp3"
+    },
+    {
+      "md5": "287959a33479b5aa380ed5a1081a45bd",
+      "reused": false,
+      "id": 153,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01942.mp3"
+    },
+    {
+      "md5": "caeb7ff529ed1cc180abf6d2903c7e51",
+      "reused": false,
+      "id": 154,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01949.mp3"
+    },
+    {
+      "md5": "1ed4abf4ceb3c428c4d10a496e95267f",
+      "reused": false,
+      "id": 155,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01955.mp3"
+    },
+    {
+      "md5": "d903d4b73dea46ff1f080e1982196c30",
+      "reused": false,
+      "id": 156,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01959.mp3"
+    },
+    {
+      "md5": "be4da4b1926926782c6eb394c2d1e8e0",
+      "reused": false,
+      "id": 157,
+      "path": "女/8.温婉中年女音温婉贵妇音/Qwen3-TTS_01962.mp3"
+    },
+    {
+      "md5": "b898a6dcf90852cf0fc53453136f6a79",
+      "reused": false,
+      "id": 158,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02031.mp3"
+    },
+    {
+      "md5": "5a468031b59011a704607bae119e9f82",
+      "reused": false,
+      "id": 159,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02032.mp3"
+    },
+    {
+      "md5": "4e633eae0021362002f274e71a89eb20",
+      "reused": false,
+      "id": 160,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02033.mp3"
+    },
+    {
+      "md5": "51152c7f70f459f625d2feb4e5304ca1",
+      "reused": false,
+      "id": 161,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02034.mp3"
+    },
+    {
+      "md5": "e81745bdf05ee4b6d480f64f6dd38cf1",
+      "reused": false,
+      "id": 162,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02035.mp3"
+    },
+    {
+      "md5": "d92d86fa117ec6e14823e5b31e152b05",
+      "reused": false,
+      "id": 163,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02036.mp3"
+    },
+    {
+      "md5": "6283482f77c34dbb827e2482652b75f0",
+      "reused": false,
+      "id": 164,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02037.mp3"
+    },
+    {
+      "md5": "6f34dd6ed3829dca8a02e8cadc4462c1",
+      "reused": false,
+      "id": 165,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02038.mp3"
+    },
+    {
+      "md5": "166b7f904a056048cc7db9028a0762ef",
+      "reused": false,
+      "id": 166,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02039.mp3"
+    },
+    {
+      "md5": "0bc1f3a0ca758f5b56c419efe1e86685",
+      "reused": false,
+      "id": 167,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02040.mp3"
+    },
+    {
+      "md5": "18bd1721a13a10273ed41147cbb4edb3",
+      "reused": false,
+      "id": 168,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02041.mp3"
+    },
+    {
+      "md5": "f0ea7a92091f26814bfabb127a9fe815",
+      "reused": false,
+      "id": 169,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02042.mp3"
+    },
+    {
+      "md5": "79f9ab71f6b86992d3271685a560a254",
+      "reused": false,
+      "id": 170,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02043.mp3"
+    },
+    {
+      "md5": "a4af7ebde4ba65afb19d04128c719cfc",
+      "reused": false,
+      "id": 171,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02044.mp3"
+    },
+    {
+      "md5": "33fd92f35dfbed13e7f7178003fe399a",
+      "reused": false,
+      "id": 172,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02045.mp3"
+    },
+    {
+      "md5": "e01053a4c173a1dc60fc1aeab58fd8e0",
+      "reused": false,
+      "id": 173,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02046.mp3"
+    },
+    {
+      "md5": "daeb7e75c2193af386bddef3692d017d",
+      "reused": false,
+      "id": 174,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02047.mp3"
+    },
+    {
+      "md5": "4389a12ec70cbc5d96d1fc3dc69c6e92",
+      "reused": false,
+      "id": 175,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02048.mp3"
+    },
+    {
+      "md5": "96bd058fd3989e77659e5acb0b4fba69",
+      "reused": false,
+      "id": 176,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02049.mp3"
+    },
+    {
+      "md5": "d91c7128d5a1fd2d0f56b1d57f44e4c9",
+      "reused": false,
+      "id": 177,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02050.mp3"
+    },
+    {
+      "md5": "5db70fcea42dac06490c48c75b57f290",
+      "reused": false,
+      "id": 178,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02051.mp3"
+    },
+    {
+      "md5": "cbfa2bfe20bc8014d8e64f954c3cd1e9",
+      "reused": false,
+      "id": 179,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02052.mp3"
+    },
+    {
+      "md5": "3ed1ab615334cea899243e73456c6faa",
+      "reused": false,
+      "id": 180,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02053.mp3"
+    },
+    {
+      "md5": "a3b3737dfcdd999c54ef4106e124becd",
+      "reused": false,
+      "id": 181,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02054.mp3"
+    },
+    {
+      "md5": "3188b9ed52207c64a929504d1e63c7de",
+      "reused": false,
+      "id": 182,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02055.mp3"
+    },
+    {
+      "md5": "2396ebb4a3c37fb043e1bb8011f74be0",
+      "reused": false,
+      "id": 183,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02056.mp3"
+    },
+    {
+      "md5": "b33b45f42d32e2edd86d70dbb8a1de2f",
+      "reused": false,
+      "id": 184,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02057.mp3"
+    },
+    {
+      "md5": "ddcaa464fe22df63f8a59eb5dbf17aa7",
+      "reused": false,
+      "id": 185,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02058.mp3"
+    },
+    {
+      "md5": "26b08cf01f72cdfbe988df49381c0df8",
+      "reused": false,
+      "id": 186,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02059.mp3"
+    },
+    {
+      "md5": "de1e195c9bb1d39fd7da7241efb9e103",
+      "reused": false,
+      "id": 187,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02060.mp3"
+    },
+    {
+      "md5": "cbcad1cd1488fc453e17de35eac8c6aa",
+      "reused": false,
+      "id": 188,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02061.mp3"
+    },
+    {
+      "md5": "b1fee21d9f556a3d1ea88d4a75fae04b",
+      "reused": false,
+      "id": 189,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02062.mp3"
+    },
+    {
+      "md5": "82a81164edbb4c6ab57e552078955c2c",
+      "reused": false,
+      "id": 190,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02063.mp3"
+    },
+    {
+      "md5": "871924e7a2b832eecd0989fdb34ef99c",
+      "reused": false,
+      "id": 191,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02064.mp3"
+    },
+    {
+      "md5": "6bf696bbec08dd65b40d8cfcef963ab4",
+      "reused": false,
+      "id": 192,
+      "path": "女/9.慈祥老年女音/Qwen3-TTS_02065.mp3"
+    },
+    {
+      "md5": "26f20b8e4314401acf22c1c299e69e85",
+      "reused": false,
+      "id": 193,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01243.mp3"
+    },
+    {
+      "md5": "211f010540d53cf7f3f007db6e09eee1",
+      "reused": false,
+      "id": 194,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01249.mp3"
+    },
+    {
+      "md5": "9a648ab5c32e01a8da216b4bd0b33819",
+      "reused": false,
+      "id": 195,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01250.mp3"
+    },
+    {
+      "md5": "05cca2de16db5ff0417771c449917bb9",
+      "reused": false,
+      "id": 196,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01253.mp3"
+    },
+    {
+      "md5": "b09d42cf713e4fe4abce487ca9636b49",
+      "reused": false,
+      "id": 197,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01254.mp3"
+    },
+    {
+      "md5": "247b9d194bc8c6dd7316c605b62f0165",
+      "reused": false,
+      "id": 198,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01256.mp3"
+    },
+    {
+      "md5": "d44d34b75ec85fbd743bc89a30a3b913",
+      "reused": false,
+      "id": 199,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01261.mp3"
+    },
+    {
+      "md5": "adbe143bb8096df3c0c316e7faefb035",
+      "reused": false,
+      "id": 200,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01266.mp3"
+    },
+    {
+      "md5": "8182a68fbd447a437a6df8116477570b",
+      "reused": false,
+      "id": 201,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01284.mp3"
+    },
+    {
+      "md5": "15f4f049cb76ed1f80296d69a409f560",
+      "reused": false,
+      "id": 202,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01324.mp3"
+    },
+    {
+      "md5": "6f13d5ce33950f344bfccd0c22e62d35",
+      "reused": false,
+      "id": 203,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01379.mp3"
+    },
+    {
+      "md5": "9118be809ca34c58ae3879b42a89910a",
+      "reused": false,
+      "id": 204,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01380.mp3"
+    },
+    {
+      "md5": "37bbd0245fc121dfe43bb4d96415c6c5",
+      "reused": false,
+      "id": 205,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01397.mp3"
+    },
+    {
+      "md5": "91424f3b8e55a2131bfd810c75ef9e33",
+      "reused": false,
+      "id": 206,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01401.mp3"
+    },
+    {
+      "md5": "f1d9812440518883585f8299ed9b5a29",
+      "reused": false,
+      "id": 207,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01403.mp3"
+    },
+    {
+      "md5": "40e5ef2835af3c0bc55844bfa6c00880",
+      "reused": false,
+      "id": 208,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01406.mp3"
+    },
+    {
+      "md5": "f35a272f0c0dd566012bf9436c193226",
+      "reused": false,
+      "id": 209,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01415.mp3"
+    },
+    {
+      "md5": "b5bbac60c2259da5482754b340711cec",
+      "reused": false,
+      "id": 210,
+      "path": "男/1.清冷禁欲男主音/Qwen3-TTS_01420.mp3"
+    },
+    {
+      "md5": "91733b90abaacab3dd3ff7fb5a50f20b",
+      "reused": false,
+      "id": 211,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02202.mp3"
+    },
+    {
+      "md5": "1d84bcfed8aeb54dfd5bf2b296a0ebe9",
+      "reused": false,
+      "id": 212,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02203.mp3"
+    },
+    {
+      "md5": "c80bec722d80394b17a09bad1cd15a13",
+      "reused": false,
+      "id": 213,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02204.mp3"
+    },
+    {
+      "md5": "c32e766645689b47148eb55bac5af9d1",
+      "reused": false,
+      "id": 214,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02205.mp3"
+    },
+    {
+      "md5": "5c437bf0a0bbd3be1d88500cbb48ca7e",
+      "reused": false,
+      "id": 215,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02206.mp3"
+    },
+    {
+      "md5": "c2c48d58894cd9ee835af977c73b6fe6",
+      "reused": false,
+      "id": 216,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02207.mp3"
+    },
+    {
+      "md5": "2eeee75b223f82c057bc2b6df9ebc8b4",
+      "reused": false,
+      "id": 217,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02208.mp3"
+    },
+    {
+      "md5": "dc7ae60a28d41774cf94bbe38347eedc",
+      "reused": false,
+      "id": 218,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02209.mp3"
+    },
+    {
+      "md5": "ab7535827b903cce74774c861ffd122c",
+      "reused": false,
+      "id": 219,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02210.mp3"
+    },
+    {
+      "md5": "31cce487bf5cae92e98eadd0c5d82c61",
+      "reused": false,
+      "id": 220,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02211.mp3"
+    },
+    {
+      "md5": "b6b2e01f821f53f73a87415664291dc4",
+      "reused": false,
+      "id": 221,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02212.mp3"
+    },
+    {
+      "md5": "d4475f7531fc657967d0c0e1dfc7d658",
+      "reused": false,
+      "id": 222,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02213.mp3"
+    },
+    {
+      "md5": "8ae81ba52b8ba56b4951d14381664255",
+      "reused": false,
+      "id": 223,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02214.mp3"
+    },
+    {
+      "md5": "3430c975d7e86a661fc31fecf553fd94",
+      "reused": false,
+      "id": 224,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02215.mp3"
+    },
+    {
+      "md5": "5eb8760be7e9b469e5647e76f1dd3f6c",
+      "reused": false,
+      "id": 225,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02216.mp3"
+    },
+    {
+      "md5": "d7dfa55524c0681b315c4c11a9849704",
+      "reused": false,
+      "id": 226,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02217.mp3"
+    },
+    {
+      "md5": "36f6b406414f7aa6d59da8f452e51747",
+      "reused": false,
+      "id": 227,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02218.mp3"
+    },
+    {
+      "md5": "8ed8a21fdbec419788fcdd5ac3e70fcf",
+      "reused": false,
+      "id": 228,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02219.mp3"
+    },
+    {
+      "md5": "fa332663bba8b54189f3c72770b50553",
+      "reused": false,
+      "id": 229,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02220.mp3"
+    },
+    {
+      "md5": "80917dd79f04de10dd35957ee63b24cd",
+      "reused": false,
+      "id": 230,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02221.mp3"
+    },
+    {
+      "md5": "3f54359786a65afe3e71de8925f54d85",
+      "reused": false,
+      "id": 231,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02222.mp3"
+    },
+    {
+      "md5": "519fcda3fae1e32b20a478474f8c2c15",
+      "reused": false,
+      "id": 232,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02223.mp3"
+    },
+    {
+      "md5": "9b3d68ecf860e9dc40ea720f48248bd8",
+      "reused": false,
+      "id": 233,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02224.mp3"
+    },
+    {
+      "md5": "35745a9c30bc24b37f061a21f069c563",
+      "reused": false,
+      "id": 234,
+      "path": "男/10.沙哑反派音/Qwen3-TTS_02225.mp3"
+    },
+    {
+      "md5": "a5ab75546e83b3ff49c243e2146cd36b",
+      "reused": false,
+      "id": 235,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02237.mp3"
+    },
+    {
+      "md5": "5cd24136f4718907feccf5240b8898ed",
+      "reused": false,
+      "id": 236,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02238.mp3"
+    },
+    {
+      "md5": "31e8fd2fd3786012eff07ffe75f24715",
+      "reused": false,
+      "id": 237,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02239.mp3"
+    },
+    {
+      "md5": "97d03e64277428c799018a8bca25ea71",
+      "reused": false,
+      "id": 238,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02240.mp3"
+    },
+    {
+      "md5": "e3ed325c64be27de9e5f956fe2f201d8",
+      "reused": false,
+      "id": 239,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02241.mp3"
+    },
+    {
+      "md5": "77ebfbd04d3371b7e8a44d691d5dcb91",
+      "reused": false,
+      "id": 240,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02242.mp3"
+    },
+    {
+      "md5": "deef162b1fc6855a3b0fc34e06e10c9c",
+      "reused": false,
+      "id": 241,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02243.mp3"
+    },
+    {
+      "md5": "90e022dbbc5493f2b268ca5ed1bbfa65",
+      "reused": false,
+      "id": 242,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02244.mp3"
+    },
+    {
+      "md5": "df9554bd5a8531db34e4b8583996339a",
+      "reused": false,
+      "id": 243,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02245.mp3"
+    },
+    {
+      "md5": "0c3498de8e23e1e9d696fc5cb0d72c7b",
+      "reused": false,
+      "id": 244,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02246.mp3"
+    },
+    {
+      "md5": "0aa6843533e8a6aac4d2cd0615bfefed",
+      "reused": false,
+      "id": 245,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02247.mp3"
+    },
+    {
+      "md5": "e41a04d4cd4918d677f2515847d38653",
+      "reused": false,
+      "id": 246,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02248.mp3"
+    },
+    {
+      "md5": "58338aae29f4a329c897da678fa5a669",
+      "reused": false,
+      "id": 247,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02249.mp3"
+    },
+    {
+      "md5": "39bda39ff1a1d6994a350e8fcdee5540",
+      "reused": false,
+      "id": 248,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02250.mp3"
+    },
+    {
+      "md5": "7b37f18eea5d50a0ff8d96a889c28edb",
+      "reused": false,
+      "id": 249,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02251.mp3"
+    },
+    {
+      "md5": "ed04181e839e68d97cc91d432c39a20d",
+      "reused": false,
+      "id": 250,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02252.mp3"
+    },
+    {
+      "md5": "af25ad29d34b107da046f4c9822c4af1",
+      "reused": false,
+      "id": 251,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02253.mp3"
+    },
+    {
+      "md5": "b259047cd940359da27ad7137ac2e916",
+      "reused": false,
+      "id": 252,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02254.mp3"
+    },
+    {
+      "md5": "8fce2994bd80afe98aa316a494a56aab",
+      "reused": false,
+      "id": 253,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02255.mp3"
+    },
+    {
+      "md5": "b73446f876597060eb4bb1f5074d9e12",
+      "reused": false,
+      "id": 254,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02256.mp3"
+    },
+    {
+      "md5": "db45d9698ed7f3a93ff9f6f637822a75",
+      "reused": false,
+      "id": 255,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02257.mp3"
+    },
+    {
+      "md5": "29c26f2a2814c3278c449ca6a19538b7",
+      "reused": false,
+      "id": 256,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02258.mp3"
+    },
+    {
+      "md5": "29026fa7dad127f3eaf182c5b6447e3f",
+      "reused": false,
+      "id": 257,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02259.mp3"
+    },
+    {
+      "md5": "ee069c1af85c4f35ce84b605e69d7d6b",
+      "reused": false,
+      "id": 258,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02260.mp3"
+    },
+    {
+      "md5": "f2b3059836fe1401b4688d6887b255c6",
+      "reused": false,
+      "id": 259,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02261.mp3"
+    },
+    {
+      "md5": "5ce45c6014a129be14ea3276deec916e",
+      "reused": false,
+      "id": 260,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02262.mp3"
+    },
+    {
+      "md5": "b1dcdf9edb6107feb06a48d6b580910e",
+      "reused": false,
+      "id": 261,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02263.mp3"
+    },
+    {
+      "md5": "be5033c2bee4e7082e768e9e74e5162b",
+      "reused": false,
+      "id": 262,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02264.mp3"
+    },
+    {
+      "md5": "e0ad9e19849c546bfb796c3066b324e7",
+      "reused": false,
+      "id": 263,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02265.mp3"
+    },
+    {
+      "md5": "0159d831e90e9c80eab95ad585362c38",
+      "reused": false,
+      "id": 264,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02266.mp3"
+    },
+    {
+      "md5": "a02c63ec7b2bf3ddcffa05dcf792a41c",
+      "reused": false,
+      "id": 265,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02267.mp3"
+    },
+    {
+      "md5": "3914050dfadd72fc9342b75ceea0b27e",
+      "reused": false,
+      "id": 266,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02268.mp3"
+    },
+    {
+      "md5": "e65d676986f18888138c3a85d1805734",
+      "reused": false,
+      "id": 267,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02269.mp3"
+    },
+    {
+      "md5": "9fc8aed9394c9051bef0cca306d466db",
+      "reused": false,
+      "id": 268,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02270.mp3"
+    },
+    {
+      "md5": "bfb2aa2d4d752fc35a09e4c6e256fcb7",
+      "reused": false,
+      "id": 269,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02271.mp3"
+    },
+    {
+      "md5": "6ca7db92798a4fdd0216ca80c740f537",
+      "reused": false,
+      "id": 270,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02272.mp3"
+    },
+    {
+      "md5": "6efb29978a5001f3271de583c0fe2aaa",
+      "reused": false,
+      "id": 271,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02273.mp3"
+    },
+    {
+      "md5": "8cf7d3186153363068b5564181b1553b",
+      "reused": false,
+      "id": 272,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02274.mp3"
+    },
+    {
+      "md5": "d80ada162e3dfe71a04acb9fe1ecc7fc",
+      "reused": false,
+      "id": 273,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02275.mp3"
+    },
+    {
+      "md5": "652e16bf4a5b2d334006bd5edd6865de",
+      "reused": false,
+      "id": 274,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02276.mp3"
+    },
+    {
+      "md5": "0571e3e4d6541b98a0a353b29802a42d",
+      "reused": false,
+      "id": 275,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02277.mp3"
+    },
+    {
+      "md5": "e55eb878596cd478f0d4c15aeb94cdb1",
+      "reused": false,
+      "id": 276,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02278.mp3"
+    },
+    {
+      "md5": "b47594651f4bdcfcec820accd9b61d9f",
+      "reused": false,
+      "id": 277,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02279.mp3"
+    },
+    {
+      "md5": "76a154e49fcfc58d94bbfebf7c00774c",
+      "reused": false,
+      "id": 278,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02280.mp3"
+    },
+    {
+      "md5": "a0a99cfdb02c0247f5a92108643be126",
+      "reused": false,
+      "id": 279,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02281.mp3"
+    },
+    {
+      "md5": "e8a916980d284306f6a54b48aca4f426",
+      "reused": false,
+      "id": 280,
+      "path": "男/11.妖孽魅惑音/Qwen3-TTS_02282.mp3"
+    },
+    {
+      "md5": "b838b0e38289592f94c1e621f64d5060",
+      "reused": false,
+      "id": 281,
+      "path": "男/12.配角/Qwen3-TTS_01309.mp3"
+    },
+    {
+      "md5": "ea62e29f1283fd182f4b445c28e87118",
+      "reused": false,
+      "id": 282,
+      "path": "男/12.配角/Qwen3-TTS_01310.mp3"
+    },
+    {
+      "md5": "4b61abdd814f3c2e5eb49c1370168958",
+      "reused": false,
+      "id": 283,
+      "path": "男/12.配角/Qwen3-TTS_01314.mp3"
+    },
+    {
+      "md5": "896d31f8725b9fa7f9cb0bdb9b41f3ca",
+      "reused": false,
+      "id": 284,
+      "path": "男/12.配角/Qwen3-TTS_01323.mp3"
+    },
+    {
+      "md5": "987756a5e6a75fdc136be2c7bc3af85b",
+      "reused": false,
+      "id": 285,
+      "path": "男/12.配角/Qwen3-TTS_01325.mp3"
+    },
+    {
+      "md5": "5ee357aa3c6810453d3392dc017a8ffd",
+      "reused": false,
+      "id": 286,
+      "path": "男/12.配角/Qwen3-TTS_01326.mp3"
+    },
+    {
+      "md5": "14fc9e4d8d2aa43b5abba33339909f4b",
+      "reused": false,
+      "id": 287,
+      "path": "男/12.配角/Qwen3-TTS_01338.mp3"
+    },
+    {
+      "md5": "50d33f868433d738c6243d1ae94ca15b",
+      "reused": false,
+      "id": 288,
+      "path": "男/12.配角/Qwen3-TTS_01341.mp3"
+    },
+    {
+      "md5": "973062aa7ae4b93c7e9f42771a8fda87",
+      "reused": false,
+      "id": 289,
+      "path": "男/12.配角/Qwen3-TTS_01344.mp3"
+    },
+    {
+      "md5": "3fc606db77de30af564df78952c78184",
+      "reused": false,
+      "id": 290,
+      "path": "男/12.配角/Qwen3-TTS_01346.mp3"
+    },
+    {
+      "md5": "dfad5542e7b461a7ad615044526802ae",
+      "reused": false,
+      "id": 291,
+      "path": "男/12.配角/Qwen3-TTS_01347.mp3"
+    },
+    {
+      "md5": "0012293ab51e3da4c1cbcf65dc5926c0",
+      "reused": false,
+      "id": 292,
+      "path": "男/12.配角/Qwen3-TTS_01349.mp3"
+    },
+    {
+      "md5": "16eaf4253587c2e857ce22a0b2bde8fe",
+      "reused": false,
+      "id": 293,
+      "path": "男/12.配角/Qwen3-TTS_01355.mp3"
+    },
+    {
+      "md5": "6e19ddde367488d82a19d58c99dc6d87",
+      "reused": false,
+      "id": 294,
+      "path": "男/12.配角/Qwen3-TTS_01359.mp3"
+    },
+    {
+      "md5": "28aa842f25c4cf104693ed244ad26584",
+      "reused": false,
+      "id": 295,
+      "path": "男/12.配角/Qwen3-TTS_01376.mp3"
+    },
+    {
+      "md5": "bfc34a3c0fc4f8fd40c5e7f814bc70f1",
+      "reused": false,
+      "id": 296,
+      "path": "男/12.配角/Qwen3-TTS_01408.mp3"
+    },
+    {
+      "md5": "3b09c3b37e0054c5a9a295593fe1d7e0",
+      "reused": false,
+      "id": 297,
+      "path": "男/12.配角/Qwen3-TTS_01432.mp3"
+    },
+    {
+      "md5": "38b860bb2be5603e797f2f39cb88c8bd",
+      "reused": false,
+      "id": 298,
+      "path": "男/12.配角/Qwen3-TTS_01437.mp3"
+    },
+    {
+      "md5": "ec6680fc60daef8fa11c07b17ac083e8",
+      "reused": false,
+      "id": 299,
+      "path": "男/12.配角/Qwen3-TTS_01446.mp3"
+    },
+    {
+      "md5": "33dae74dfdb507069ed2dba45118054f",
+      "reused": false,
+      "id": 300,
+      "path": "男/12.配角/Qwen3-TTS_01447.mp3"
+    },
+    {
+      "md5": "34e0313d9a7d26569ad0ada677442445",
+      "reused": false,
+      "id": 301,
+      "path": "男/12.配角/Qwen3-TTS_01453.mp3"
+    },
+    {
+      "md5": "3f1eb7fbd7aa1886959e0c6655f79ecd",
+      "reused": false,
+      "id": 302,
+      "path": "男/12.配角/Qwen3-TTS_01474.mp3"
+    },
+    {
+      "md5": "1af6e6e87f55eafe736616a90db10d38",
+      "reused": false,
+      "id": 303,
+      "path": "男/12.配角/Qwen3-TTS_01479.mp3"
+    },
+    {
+      "md5": "97eab18275a4313f7c4fae8c049c64fa",
+      "reused": false,
+      "id": 304,
+      "path": "男/12.配角/Qwen3-TTS_01487.mp3"
+    },
+    {
+      "md5": "497d7eb93a788174252687bf8cc93a9d",
+      "reused": false,
+      "id": 305,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01247.mp3"
+    },
+    {
+      "md5": "db70f962b3cd289c2d1c99f47ef99aa9",
+      "reused": false,
+      "id": 306,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01248.mp3"
+    },
+    {
+      "md5": "97450c879f70bd75b04e43e81f937b6b",
+      "reused": false,
+      "id": 307,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01269.mp3"
+    },
+    {
+      "md5": "84c3124a9c078c3ad8910a8418260537",
+      "reused": false,
+      "id": 308,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01273.mp3"
+    },
+    {
+      "md5": "71db5e0c069178ad839563fd4ff72e89",
+      "reused": false,
+      "id": 309,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01286.mp3"
+    },
+    {
+      "md5": "c0eb45fe1d0513bc4a70c9816102974e",
+      "reused": false,
+      "id": 310,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01287.mp3"
+    },
+    {
+      "md5": "2008935a5f9dbdfed37cca24bd78425d",
+      "reused": false,
+      "id": 311,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01292.mp3"
+    },
+    {
+      "md5": "4ed1e5243d7f5ef14324d6555ccb3de8",
+      "reused": false,
+      "id": 312,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01302.mp3"
+    },
+    {
+      "md5": "5e5c87968b5f9057fb819ab1635c3ea8",
+      "reused": false,
+      "id": 313,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01343.mp3"
+    },
+    {
+      "md5": "cb0a1cdf6330e4fbdfd19793fd1089ce",
+      "reused": false,
+      "id": 314,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01356.mp3"
+    },
+    {
+      "md5": "30675a2f3aa2bdf273e524305c8474f2",
+      "reused": false,
+      "id": 315,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01373.mp3"
+    },
+    {
+      "md5": "c30c25d9d999140c841cbe8a26a9971b",
+      "reused": false,
+      "id": 316,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01381.mp3"
+    },
+    {
+      "md5": "30ad3d494eab6b7e7a7219b6badb14de",
+      "reused": false,
+      "id": 317,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01382.mp3"
+    },
+    {
+      "md5": "eb8bc2d3ad12733612ad85ca59bc9a12",
+      "reused": false,
+      "id": 318,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01389.mp3"
+    },
+    {
+      "md5": "8d6255825aef00bc868458d8301b1b5d",
+      "reused": false,
+      "id": 319,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01391.mp3"
+    },
+    {
+      "md5": "c2a308223b620e439fb6a79f225dd8e4",
+      "reused": false,
+      "id": 320,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01396.mp3"
+    },
+    {
+      "md5": "f4dea5ffaba0eaebafa43e87a8b9ca3e",
+      "reused": false,
+      "id": 321,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01399.mp3"
+    },
+    {
+      "md5": "3a7290a276fe83e8bb457f68f06d8a4d",
+      "reused": false,
+      "id": 322,
+      "path": "男/2.2. 痞苏野系男主音/Qwen3-TTS_01430.mp3"
+    },
+    {
+      "md5": "de090a30c954ab131d92b797641559c9",
+      "reused": false,
+      "id": 323,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01329.mp3"
+    },
+    {
+      "md5": "29a7d361e7ef7b173b21f259a9ac7c09",
+      "reused": false,
+      "id": 324,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01375.mp3"
+    },
+    {
+      "md5": "329d87a22da6bcd562440849fb3ddb0e",
+      "reused": false,
+      "id": 325,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01378.mp3"
+    },
+    {
+      "md5": "6588248c57b5ebfbc88b959489bd5fe0",
+      "reused": false,
+      "id": 326,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01384.mp3"
+    },
+    {
+      "md5": "9c2f97cb02e46c1bacf69d001226cb14",
+      "reused": false,
+      "id": 327,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01385.mp3"
+    },
+    {
+      "md5": "fbc7081ab9d873ad892b36388fb33af9",
+      "reused": false,
+      "id": 328,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01393.mp3"
+    },
+    {
+      "md5": "f4e46ca6b03081c62406d5aea6b6fa5e",
+      "reused": false,
+      "id": 329,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01394.mp3"
+    },
+    {
+      "md5": "1e48792bc1e1b6f4ffc9c1eab5aa9b2e",
+      "reused": false,
+      "id": 330,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01395.mp3"
+    },
+    {
+      "md5": "23d2a2f02f145ac9b46d2da4cb1bffae",
+      "reused": false,
+      "id": 331,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01404.mp3"
+    },
+    {
+      "md5": "e5990228d286ebefbdb125079e0da021",
+      "reused": false,
+      "id": 332,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01416.mp3"
+    },
+    {
+      "md5": "c6868545eb242e4f4bab78ff2021aec4",
+      "reused": false,
+      "id": 333,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01417.mp3"
+    },
+    {
+      "md5": "a6e8ec4a0f62aa872fc6543fb0bdfd61",
+      "reused": false,
+      "id": 334,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01421.mp3"
+    },
+    {
+      "md5": "46119be1afa6beb64889a4a3690f79f6",
+      "reused": false,
+      "id": 335,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01428.mp3"
+    },
+    {
+      "md5": "b000fb1692125a6bc3a9b7465638bd46",
+      "reused": false,
+      "id": 336,
+      "path": "男/3.3. 温润公子男主音/Qwen3-TTS_01483.mp3"
+    },
+    {
+      "md5": "f958b1801382a6acd0c7f89feb874c1a",
+      "reused": false,
+      "id": 337,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01305.mp3"
+    },
+    {
+      "md5": "ceb6800835bf31ed91f0c08589f74544",
+      "reused": false,
+      "id": 338,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01317.mp3"
+    },
+    {
+      "md5": "1957f1777545146387dc118f5983f93b",
+      "reused": false,
+      "id": 339,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01321.mp3"
+    },
+    {
+      "md5": "8b521e93555c47ee69a386c3e5883139",
+      "reused": false,
+      "id": 340,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01333.mp3"
+    },
+    {
+      "md5": "430712cbfe1941de289d85c901e9eb0f",
+      "reused": false,
+      "id": 341,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01334.mp3"
+    },
+    {
+      "md5": "817e95cd6b53de780a21ba6a0fbb5473",
+      "reused": false,
+      "id": 342,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01368.mp3"
+    },
+    {
+      "md5": "4bfa1489141f305670fde209ea08e6cb",
+      "reused": false,
+      "id": 343,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01369.mp3"
+    },
+    {
+      "md5": "7e55085f4a93107173bbcb2094eded49",
+      "reused": false,
+      "id": 344,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01431.mp3"
+    },
+    {
+      "md5": "40b2fdc6deb3813c618a4082037c9ed0",
+      "reused": false,
+      "id": 345,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01448.mp3"
+    },
+    {
+      "md5": "4124c34dcf92d60e499d93699edd476b",
+      "reused": false,
+      "id": 346,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01463.mp3"
+    },
+    {
+      "md5": "f27892a1081c583da28e14cbf126fe66",
+      "reused": false,
+      "id": 347,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01478.mp3"
+    },
+    {
+      "md5": "c6858f83ec105175188726d43fc9b103",
+      "reused": false,
+      "id": 348,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01482.mp3"
+    },
+    {
+      "md5": "44ed10e4e4bf288423a0bbff3468444f",
+      "reused": false,
+      "id": 349,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01488.mp3"
+    },
+    {
+      "md5": "28b234387c40b8c684b254a4a907ac11",
+      "reused": false,
+      "id": 350,
+      "path": "男/4. 桀骜少年男主音/Qwen3-TTS_01494.mp3"
+    },
+    {
+      "md5": "80f633b6da80132315f8046a4a79d291",
+      "reused": false,
+      "id": 351,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01252.mp3"
+    },
+    {
+      "md5": "5dfb0a18ac7fd4d4d6960b7e86f962a7",
+      "reused": false,
+      "id": 352,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01255.mp3"
+    },
+    {
+      "md5": "2b06d1310196cfea8c87429d62ddc584",
+      "reused": false,
+      "id": 353,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01257.mp3"
+    },
+    {
+      "md5": "3f15109e6c5ff1b202c04469872f7b0b",
+      "reused": false,
+      "id": 354,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01268.mp3"
+    },
+    {
+      "md5": "8cf72250b5c5b4cd49909f93a1464412",
+      "reused": false,
+      "id": 355,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01270.mp3"
+    },
+    {
+      "md5": "f82ff479e7e4441ab7fff0e39b316311",
+      "reused": false,
+      "id": 356,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01271.mp3"
+    },
+    {
+      "md5": "cee90f5a135a3bf9f5095d40495115d1",
+      "reused": false,
+      "id": 357,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01279.mp3"
+    },
+    {
+      "md5": "cf68279cfe633455ec5ec33524f62fed",
+      "reused": false,
+      "id": 358,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01283.mp3"
+    },
+    {
+      "md5": "eec04b2c9283637ef1cd26260b8ed8d3",
+      "reused": false,
+      "id": 359,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01402.mp3"
+    },
+    {
+      "md5": "41287654f502bcffd8f3f8c6b2f7f7df",
+      "reused": false,
+      "id": 360,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01407.mp3"
+    },
+    {
+      "md5": "c580dab08a2eaaf8ab513e96d8118406",
+      "reused": false,
+      "id": 361,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01412.mp3"
+    },
+    {
+      "md5": "2e65778cd7cb1cc6e64559f744757385",
+      "reused": false,
+      "id": 362,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01414.mp3"
+    },
+    {
+      "md5": "b35937a1ce1f2b9236e32174079c4188",
+      "reused": false,
+      "id": 363,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01503.mp3"
+    },
+    {
+      "md5": "c367ff820db9127e6c894022f4520562",
+      "reused": false,
+      "id": 364,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01506.mp3"
+    },
+    {
+      "md5": "51a8978dad22524b68575c35c190ac60",
+      "reused": false,
+      "id": 365,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01513.mp3"
+    },
+    {
+      "md5": "445daa9a0ec4d25148619a3fe3bdea30",
+      "reused": false,
+      "id": 366,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01524.mp3"
+    },
+    {
+      "md5": "2ab00292f695abac5b5bdf09fc48cbdd",
+      "reused": false,
+      "id": 367,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01545.mp3"
+    },
+    {
+      "md5": "52a7f4b15fa80f3cccf4f2aa27c1b2b8",
+      "reused": false,
+      "id": 368,
+      "path": "男/5. 低沉霸总男主音/Qwen3-TTS_01562.mp3"
+    },
+    {
+      "md5": "accb00d3dd3860aebf3494d4dd459d02",
+      "reused": false,
+      "id": 369,
+      "path": "男/5. 低沉霸总男主音/SS.mp3"
+    },
+    {
+      "md5": "61b0ca5a8a3c49c0ac8a555262279224",
+      "reused": false,
+      "id": 370,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01258.mp3"
+    },
+    {
+      "md5": "5d946161b9378e5b6271ee7fb13d9c04",
+      "reused": false,
+      "id": 371,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01263.mp3"
+    },
+    {
+      "md5": "262346748e71e6b9f81ad0152beb1083",
+      "reused": false,
+      "id": 372,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01276.mp3"
+    },
+    {
+      "md5": "01727bc81fc898252e534e07c7a535da",
+      "reused": false,
+      "id": 373,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01277.mp3"
+    },
+    {
+      "md5": "b2466276ca22825c77f4dbebbd7b891a",
+      "reused": false,
+      "id": 374,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01291.mp3"
+    },
+    {
+      "md5": "a04e769f16d307831f0a382f8c2389a1",
+      "reused": false,
+      "id": 375,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01528.mp3"
+    },
+    {
+      "md5": "6be074dfd13bf255cab720310d573871",
+      "reused": false,
+      "id": 376,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01564.mp3"
+    },
+    {
+      "md5": "1ce299c4a7c44c8de16bf128a523a477",
+      "reused": false,
+      "id": 377,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01567.mp3"
+    },
+    {
+      "md5": "539df7cb70f0a15e542e3b2f13bc126f",
+      "reused": false,
+      "id": 378,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01595.mp3"
+    },
+    {
+      "md5": "24deb489b6b02a16441b87e5644c73d2",
+      "reused": false,
+      "id": 379,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01606.mp3"
+    },
+    {
+      "md5": "5e5f9c46881c5b53fc97333dc106606a",
+      "reused": false,
+      "id": 380,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01612.mp3"
+    },
+    {
+      "md5": "40e7ad85ae73195d6c3d8df999e564af",
+      "reused": false,
+      "id": 381,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01613.mp3"
+    },
+    {
+      "md5": "80dde95fb09a4772930e2cc1e811d183",
+      "reused": false,
+      "id": 382,
+      "path": "男/6. 病娇破碎男主音/Qwen3-TTS_01618.mp3"
+    },
+    {
+      "md5": "d3a9f02d57d468aca9ea6cbd88ca404a",
+      "reused": false,
+      "id": 383,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01445.mp3"
+    },
+    {
+      "md5": "6757361e42d67c72785250c8044a3373",
+      "reused": false,
+      "id": 384,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01473.mp3"
+    },
+    {
+      "md5": "0a0a747abd2509998b23db0fafb99722",
+      "reused": false,
+      "id": 385,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01620.mp3"
+    },
+    {
+      "md5": "ad969fa714a3294b2e7d6e7eeabc4587",
+      "reused": false,
+      "id": 386,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01621.mp3"
+    },
+    {
+      "md5": "7d760b37ebbf3e084d9539b0d5d5f5db",
+      "reused": false,
+      "id": 387,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01622.mp3"
+    },
+    {
+      "md5": "92cf6309f1a3e2f371f8cdf85d00d1f6",
+      "reused": false,
+      "id": 388,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01624.mp3"
+    },
+    {
+      "md5": "c7157612830173e40434d425cb379cd5",
+      "reused": false,
+      "id": 389,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01626.mp3"
+    },
+    {
+      "md5": "249be3c523a086b31bc6d89c967a1d6e",
+      "reused": false,
+      "id": 390,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01627.mp3"
+    },
+    {
+      "md5": "a8af5ecae3c94c9b9e78f1030bdb2e84",
+      "reused": false,
+      "id": 391,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01630.mp3"
+    },
+    {
+      "md5": "2f05b40b7f8ad613a1566e877c7efb69",
+      "reused": false,
+      "id": 392,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01632.mp3"
+    },
+    {
+      "md5": "509f59660861d7260e1ca9a4128b37c9",
+      "reused": false,
+      "id": 393,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01634.mp3"
+    },
+    {
+      "md5": "908a7d5adf313ded652e20772b6a8444",
+      "reused": false,
+      "id": 394,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01635.mp3"
+    },
+    {
+      "md5": "40555be90775754df03c04e05e42ccb1",
+      "reused": false,
+      "id": 395,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01637.mp3"
+    },
+    {
+      "md5": "03ff5e533e07fd43867c02aea91f6ddc",
+      "reused": false,
+      "id": 396,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01648.mp3"
+    },
+    {
+      "md5": "a3d03e45efcc335243d05fc5a6d60c7b",
+      "reused": false,
+      "id": 397,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01652.mp3"
+    },
+    {
+      "md5": "b5a5004cf3c7132168c3533f6bd6c22f",
+      "reused": false,
+      "id": 398,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01658.mp3"
+    },
+    {
+      "md5": "a2404e70ef7da4925b3ee67cc0565cfe",
+      "reused": false,
+      "id": 399,
+      "path": "男/7. 清朗少年音/Qwen3-TTS_01661.mp3"
+    },
+    {
+      "md5": "e9421e9358baeb120366286c08bba7ec",
+      "reused": false,
+      "id": 400,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01264.mp3"
+    },
+    {
+      "md5": "b41effc72bfc7528290d147bd4f6a3f8",
+      "reused": false,
+      "id": 401,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01297.mp3"
+    },
+    {
+      "md5": "45390b1aabf74ab97af757a5e203fe52",
+      "reused": false,
+      "id": 402,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01303.mp3"
+    },
+    {
+      "md5": "96f83d52c2c3f9a94c8ad9ed0cc5f698",
+      "reused": false,
+      "id": 403,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01311.mp3"
+    },
+    {
+      "md5": "8e59fc4c8a4cee6f7994e6b5a36c07b2",
+      "reused": false,
+      "id": 404,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01328.mp3"
+    },
+    {
+      "md5": "bc2f08c9915b0d0a13608e38d4216325",
+      "reused": false,
+      "id": 405,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01336.mp3"
+    },
+    {
+      "md5": "43701798226cfbf552188cbc1cd1c64d",
+      "reused": false,
+      "id": 406,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01337.mp3"
+    },
+    {
+      "md5": "fb4c1e70778c8ccaaa7ed010bcd4aa38",
+      "reused": false,
+      "id": 407,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01342.mp3"
+    },
+    {
+      "md5": "eef22fc6c81617dbe94301408129fce3",
+      "reused": false,
+      "id": 408,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01497.mp3"
+    },
+    {
+      "md5": "abdbc687944d6600c7a095f95c171908",
+      "reused": false,
+      "id": 409,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01500.mp3"
+    },
+    {
+      "md5": "04b7be8a9e04d006cf2c11c7adca033f",
+      "reused": false,
+      "id": 410,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01501.mp3"
+    },
+    {
+      "md5": "2c5751657179a985a9c6637077bc7beb",
+      "reused": false,
+      "id": 411,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01507.mp3"
+    },
+    {
+      "md5": "6ba64450f3a889488578aeae69c9c591",
+      "reused": false,
+      "id": 412,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01520.mp3"
+    },
+    {
+      "md5": "eedf5a2cdd66fbd717c45fbae42bd44c",
+      "reused": false,
+      "id": 413,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01530.mp3"
+    },
+    {
+      "md5": "ad2df71f8db69938bd0b082e94a2b4f8",
+      "reused": false,
+      "id": 414,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01825.mp3"
+    },
+    {
+      "md5": "354df859375102f95fcbad211c16b69c",
+      "reused": false,
+      "id": 415,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01827.mp3"
+    },
+    {
+      "md5": "36544aa0e2f3e8ee37ec13dd88f4b3e7",
+      "reused": false,
+      "id": 416,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01829.mp3"
+    },
+    {
+      "md5": "74873fb988c35fde3ee7d9f43f99f930",
+      "reused": false,
+      "id": 417,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01838.mp3"
+    },
+    {
+      "md5": "12aa2f655d814890b4153dc5d99d8290",
+      "reused": false,
+      "id": 418,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01849.mp3"
+    },
+    {
+      "md5": "7347a194fcf2856e6e2e5fc04de3b5ee",
+      "reused": false,
+      "id": 419,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01863.mp3"
+    },
+    {
+      "md5": "05225f819787b8176e5753faab3b6c43",
+      "reused": false,
+      "id": 420,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01865.mp3"
+    },
+    {
+      "md5": "3fae107d0071ecc1e497ab9e1c40d0cd",
+      "reused": false,
+      "id": 421,
+      "path": "男/8.1. 威严中年男音/Qwen3-TTS_01878.mp3"
+    },
+    {
+      "md5": "317f3d01c1185dc3615508683451a8ec",
+      "reused": false,
+      "id": 422,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01304.mp3"
+    },
+    {
+      "md5": "24c300c5fb1baa88a131f8db37fbf8a5",
+      "reused": false,
+      "id": 423,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01316.mp3"
+    },
+    {
+      "md5": "a8cd8e82f5d6b21d08277a8d15bf86f3",
+      "reused": false,
+      "id": 424,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01320.mp3"
+    },
+    {
+      "md5": "93e2a345d15640f6c54b79322e108d71",
+      "reused": false,
+      "id": 425,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01882.mp3"
+    },
+    {
+      "md5": "5bfbe1eab32435d46fec4f85cab69ded",
+      "reused": false,
+      "id": 426,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01970.mp3"
+    },
+    {
+      "md5": "86044ccd02570b499557200672f034ef",
+      "reused": false,
+      "id": 427,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01971.mp3"
+    },
+    {
+      "md5": "d85f05e5fffedb5e2c0e55eea6131f72",
+      "reused": false,
+      "id": 428,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01976.mp3"
+    },
+    {
+      "md5": "b8d617e428525e10845088b25bb8a5f9",
+      "reused": false,
+      "id": 429,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01977.mp3"
+    },
+    {
+      "md5": "ddc6967ed7afa3c17060547915b3a373",
+      "reused": false,
+      "id": 430,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01978.mp3"
+    },
+    {
+      "md5": "992182dfada07a1c1b6c6b9fa6727ace",
+      "reused": false,
+      "id": 431,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01979.mp3"
+    },
+    {
+      "md5": "50bcd1e70e7c4cd8f6af2e90188969b8",
+      "reused": false,
+      "id": 432,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01980.mp3"
+    },
+    {
+      "md5": "cbad775de7a6d01c0a66e732b34b3a8b",
+      "reused": false,
+      "id": 433,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01981.mp3"
+    },
+    {
+      "md5": "0bc91c7eb79296e117e10d2df7995652",
+      "reused": false,
+      "id": 434,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01982.mp3"
+    },
+    {
+      "md5": "924779516f796591328d77bd7d3d3c2f",
+      "reused": false,
+      "id": 435,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01983.mp3"
+    },
+    {
+      "md5": "f4a99a1d242331b62488d898b1b827d7",
+      "reused": false,
+      "id": 436,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01984.mp3"
+    },
+    {
+      "md5": "cfc8a1baa57b16e32c19291784f27af5",
+      "reused": false,
+      "id": 437,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01985.mp3"
+    },
+    {
+      "md5": "e759a487536adc87fbea5ade84f307aa",
+      "reused": false,
+      "id": 438,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01986.mp3"
+    },
+    {
+      "md5": "514158955c07fd2722ec55e9fa13fb16",
+      "reused": false,
+      "id": 439,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01987.mp3"
+    },
+    {
+      "md5": "24a432bdf80b9f2d0e5ce1d1ee79673d",
+      "reused": false,
+      "id": 440,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01988.mp3"
+    },
+    {
+      "md5": "80e18ea54adf99310c3edb9920c05a7a",
+      "reused": false,
+      "id": 441,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01989.mp3"
+    },
+    {
+      "md5": "7ac4e624138ed5393f55e03f20d54fd7",
+      "reused": false,
+      "id": 442,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01990.mp3"
+    },
+    {
+      "md5": "cbbe1779783c9bc99b6bad08132d9c65",
+      "reused": false,
+      "id": 443,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01991.mp3"
+    },
+    {
+      "md5": "c27d8ecbb7a4e6eb046348cb0e43e031",
+      "reused": false,
+      "id": 444,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01992.mp3"
+    },
+    {
+      "md5": "5157e5d4d05af2b16f75ad1579f0ce4a",
+      "reused": false,
+      "id": 445,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01993.mp3"
+    },
+    {
+      "md5": "7b7d0311d996dbb97dbcb4c30034c415",
+      "reused": false,
+      "id": 446,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01994.mp3"
+    },
+    {
+      "md5": "35b1dbf6403c8af5fd17c857f6a6f529",
+      "reused": false,
+      "id": 447,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01995.mp3"
+    },
+    {
+      "md5": "746108a4a580d19333c61716620ded70",
+      "reused": false,
+      "id": 448,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01996.mp3"
+    },
+    {
+      "md5": "dace69a08098dd326bfa7c3b5e9a3e5f",
+      "reused": false,
+      "id": 449,
+      "path": "男/9. 苍老威严男音/Qwen3-TTS_01997.mp3"
+    }
+  ]
+}

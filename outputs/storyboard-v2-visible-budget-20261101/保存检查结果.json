@@ -1,0 +1,72 @@
+{
+  "saved": true,
+  "episodeId": 1601,
+  "storyboardIds": [
+    5963,
+    5964,
+    5965
+  ],
+  "actionWarnings": [
+    {
+      "code": "ACTION_DENSITY",
+      "shotNo": 4,
+      "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+      "storyboardNo": 2
+    }
+  ],
+  "storyboardCount": 3,
+  "assetPendingCount": 31,
+  "businessCallCount": 0,
+  "derivedSoundCount": 4,
+  "fallbackItemCount": 0,
+  "lockCarryWarnings": [],
+  "correctedItemCount": 0,
+  "normalizationCount": 19,
+  "technicalRetryCount": 0,
+  "unresolvedAssetCount": 14,
+  "normalizationFindings": [
+    {
+      "code": "SHOT_TYPE_DEFAULTED",
+      "message": "缺少镜头类型，已使用默认值。",
+      "jsonPath": "$.storyboards[0].shotType",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "MULTI_SHOT"
+    },
+    {
+      "code": "SOURCE_RANGE_DERIVED",
+      "message": "字段已由服务端规范化。",
+      "jsonPath": "$.storyboards[0].sourceFrom",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "S0001"
+    },
+    {
+      "code": "SHOT_TYPE_DEFAULTED",
+      "message": "缺少镜头类型，已使用默认值。",
+      "jsonPath": "$.storyboards[1].shotType",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "MULTI_SHOT"
+    },
+    {
+      "code": "SOURCE_RANGE_DERIVED",
+      "message": "字段已由服务端规范化。",
+      "jsonPath": "$.storyboards[1].sourceFrom",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "S0012"
+    },
+    {
+      "code": "SHOT_TYPE_DEFAULTED",
+      "message": "缺少镜头类型，已使用默认值。",
+      "jsonPath": "$.storyboards[2].shotType",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "MULTI_SHOT"
+    },
+    {
+      "code": "SOURCE_RANGE_DERIVED",
+      "message": "字段已由服务端规范化。",
+      "jsonPath": "$.storyboards[2].sourceFrom",
+      "severity": "REPAIRABLE",
+      "normalizedValue": "S0017"
+    }
+  ],
+  "classificationWarnings": []
+}

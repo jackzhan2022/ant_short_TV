@@ -1,0 +1,28 @@
+{
+  "commit": "5049fb4bf4223fa8acc8f41a19d4079e8ef38ab0",
+  "previous": "/opt/antv/releases/20261028152804-1c430ba2-download-delivery",
+  "target": "/opt/antv/releases/20261101-storyboard-v2-5049fb4b",
+  "indexSha256": "b79754027eec7ac205202cedc04843b794c00485d01ece3cacdfadfa6afc5e76",
+  "publicAssets": {
+    "umi.777a5cb2.css": "c6af49938c1d47815487febb3378c766df639a67417f4d8c1f664c31d182d92c",
+    "preload_helper.e09af948.js": "0ae8f343f754b8ea4f3dcb1ab6129384c91b901869d9421aefe4c523b0e3bb2e",
+    "umi.478c30ca.js": "37a3677a1787ae2e0eea8ba8a7ef620258a099c619d11f7e344baa12a5782315"
+  },
+  "artifacts": {
+    "backend.jar": "8c680758599a7f03887598b9952162bacfffd1e9170eefbf69d819e55f294222",
+    "frontend.tar.gz": "aa4cb5432a2498382193e0421fbbdbba36e2a5e780d10047c3dc1f32844c9fd9",
+    "storyboard-v2-SKILL.md": "156b383e533ea53267877b3dfaeacd374a903980cdf0520e984e1df9614426c0",
+    "sample-density.md": "fa551cac6edcd5c9ef690b35d82aeace72a208d99a5738c457492a2fcae0d6dc"
+  },
+  "scope": "分镜技能2.0、项目创建版本选择、V171、4–15秒短片段及按需内部镜头",
+  "backup": "/opt/antv/backups/20261101-storyboard-v2-030934",
+  "activeBefore": {
+    "execution": 0,
+    "analysis": 0,
+    "agent": 0
+  },
+  "success": true,
+  "migration171": true,
+  "existingProjectsPreserved": true,
+  "existingSkillsPreserved": true
+}

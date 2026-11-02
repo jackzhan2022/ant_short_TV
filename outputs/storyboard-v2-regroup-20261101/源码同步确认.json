@@ -1,0 +1,6 @@
+{
+  "commit": "6f9fea1ae29d5fd66d11a8ec49d7ba3b5a7d1cf7",
+  "masterVerified": true,
+  "verifiedBy": "git ls-remote origin refs/heads/master",
+  "note": "部署时的pending-network状态已于后续推送和远端引用核验后解除。"
+}

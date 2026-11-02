@@ -1,0 +1,2483 @@
+{
+  "summary": {
+    "project": {
+      "id": 71,
+      "name": "乡厨闯大宴-分镜2.0全70集对比-20261101",
+      "scriptId": 58,
+      "scriptChars": 41885,
+      "scriptSha256": "9ab7ce2b02f3dbf3b48a9fff2429aa326b295627277e539eddf32387ea01beb7",
+      "skillVersion": "V2"
+    },
+    "revision": "a3fa74cc4da73b1bad1dfe567e71e4a169fe49bc97c067ec071a21d63d8cdf69",
+    "episodes": 70,
+    "totals": {
+      "reference": {
+        "boards": 364,
+        "shots": 1240,
+        "seconds": 3925.0
+      },
+      "before": {
+        "boards": 399,
+        "shots": 1287,
+        "seconds": 4755
+      },
+      "after": {
+        "boards": 398,
+        "shots": 1230,
+        "seconds": 4673
+      }
+    },
+    "shorterEpisodes": [
+      1,
+      2,
+      3,
+      7,
+      9,
+      12,
+      14,
+      19,
+      20,
+      23,
+      24,
+      25,
+      26,
+      28,
+      30,
+      31,
+      32,
+      33,
+      34,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      43,
+      45,
+      46,
+      49,
+      54,
+      56,
+      57,
+      59,
+      61,
+      65,
+      66,
+      67,
+      68,
+      70
+    ],
+    "longerEpisodes": [
+      4,
+      8,
+      10,
+      11,
+      13,
+      15,
+      16,
+      17,
+      21,
+      22,
+      29,
+      35,
+      52,
+      53,
+      58,
+      60,
+      62,
+      63,
+      64,
+      69
+    ],
+    "unchangedEpisodes": [
+      5,
+      6,
+      18,
+      27,
+      42,
+      44,
+      47,
+      48,
+      50,
+      51,
+      55
+    ],
+    "validationFailures": [
+      {
+        "episode": 34,
+        "title": "后厨总动员",
+        "reference": {
+          "boards": 5,
+          "shots": 24,
+          "seconds": 66.0
+        },
+        "before": {
+          "boards": 6,
+          "shots": 22,
+          "seconds": 73
+        },
+        "after": {
+          "boards": 5,
+          "shots": 21,
+          "seconds": 70
+        },
+        "runId": 5334,
+        "newSkill": true,
+        "expectedVoiceSegments": 11,
+        "savedVoiceSegments": 11,
+        "explicitAnchors": 21,
+        "warnings": 1,
+        "validationErrors": [
+          "collective voice not structured S0022"
+        ],
+        "modelId": 12,
+        "beforeModelIds": [
+          12
+        ],
+        "deltaSeconds": -3,
+        "reductionPercent": 4.1
+      },
+      {
+        "episode": 70,
+        "title": "重归正轨",
+        "reference": {
+          "boards": 6,
+          "shots": 21,
+          "seconds": 57.0
+        },
+        "before": {
+          "boards": 7,
+          "shots": 19,
+          "seconds": 70
+        },
+        "after": {
+          "boards": 7,
+          "shots": 20,
+          "seconds": 69
+        },
+        "runId": 5370,
+        "newSkill": true,
+        "expectedVoiceSegments": 9,
+        "savedVoiceSegments": 9,
+        "explicitAnchors": 20,
+        "warnings": 2,
+        "validationErrors": [
+          "collective voice not structured S0022"
+        ],
+        "modelId": 12,
+        "beforeModelIds": [
+          12
+        ],
+        "deltaSeconds": -1,
+        "reductionPercent": 1.4
+      }
+    ],
+    "voiceSegments": 757,
+    "warningCount": 46,
+    "warningEpisodes": [
+      9,
+      11,
+      13,
+      14,
+      15,
+      20,
+      21,
+      22,
+      24,
+      26,
+      28,
+      29,
+      30,
+      31,
+      34,
+      37,
+      41,
+      42,
+      43,
+      45,
+      46,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      58,
+      61,
+      63,
+      66,
+      69,
+      70
+    ],
+    "voiceReviewCount": 86,
+    "roundingBoards": 0,
+    "roundingExtraSeconds": 0,
+    "unstructuredCollectiveVoice": [
+      {
+        "episode": 34,
+        "id": "S0022",
+        "text": "众人（高声）：“好！”",
+        "type": "ACTION",
+        "requiredCoverage": true,
+        "classificationWarning": "SOURCE_SPEAKER_UNCONFIRMED"
+      },
+      {
+        "episode": 70,
+        "id": "S0022",
+        "text": "众人（齐声）：“中！”",
+        "type": "ACTION",
+        "requiredCoverage": true,
+        "classificationWarning": "SOURCE_SPEAKER_UNCONFIRMED"
+      }
+    ],
+    "modelsSame": true
+  },
+  "episodes": [
+    {
+      "episode": 1,
+      "title": "酒楼危机",
+      "reference": {
+        "boards": 11,
+        "shots": 41,
+        "seconds": 132.0
+      },
+      "before": {
+        "boards": 13,
+        "shots": 40,
+        "seconds": 144
+      },
+      "after": {
+        "boards": 13,
+        "shots": 40,
+        "seconds": 141
+      },
+      "runId": 5301,
+      "newSkill": true,
+      "expectedVoiceSegments": 28,
+      "savedVoiceSegments": 28,
+      "explicitAnchors": 40,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -3,
+      "reductionPercent": 2.1
+    },
+    {
+      "episode": 2,
+      "title": "挺身而出",
+      "reference": {
+        "boards": 6,
+        "shots": 20,
+        "seconds": 70.0
+      },
+      "before": {
+        "boards": 8,
+        "shots": 22,
+        "seconds": 90
+      },
+      "after": {
+        "boards": 7,
+        "shots": 21,
+        "seconds": 83
+      },
+      "runId": 5302,
+      "newSkill": true,
+      "expectedVoiceSegments": 17,
+      "savedVoiceSegments": 17,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -7,
+      "reductionPercent": 7.8
+    },
+    {
+      "episode": 3,
+      "title": "接手后厨",
+      "reference": {
+        "boards": 8,
+        "shots": 22,
+        "seconds": 76.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 25,
+        "seconds": 91
+      },
+      "after": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 89
+      },
+      "runId": 5303,
+      "newSkill": true,
+      "expectedVoiceSegments": 14,
+      "savedVoiceSegments": 14,
+      "explicitAnchors": 23,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 2.2
+    },
+    {
+      "episode": 4,
+      "title": "初显身手",
+      "reference": {
+        "boards": 5,
+        "shots": 22,
+        "seconds": 62.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 20,
+        "seconds": 72
+      },
+      "after": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 74
+      },
+      "runId": 5304,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -2.8
+    },
+    {
+      "episode": 5,
+      "title": "食材猫腻",
+      "reference": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 69.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 24,
+        "seconds": 86
+      },
+      "after": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 86
+      },
+      "runId": 5305,
+      "newSkill": true,
+      "expectedVoiceSegments": 17,
+      "savedVoiceSegments": 17,
+      "explicitAnchors": 22,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 6,
+      "title": "食材危机",
+      "reference": {
+        "boards": 5,
+        "shots": 17,
+        "seconds": 59.0
+      },
+      "before": {
+        "boards": 8,
+        "shots": 24,
+        "seconds": 91
+      },
+      "after": {
+        "boards": 7,
+        "shots": 26,
+        "seconds": 91
+      },
+      "runId": 5306,
+      "newSkill": true,
+      "expectedVoiceSegments": 16,
+      "savedVoiceSegments": 16,
+      "explicitAnchors": 26,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 7,
+      "title": "死虾风波",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 62.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 20,
+        "seconds": 80
+      },
+      "after": {
+        "boards": 6,
+        "shots": 18,
+        "seconds": 76
+      },
+      "runId": 5307,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 18,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -4,
+      "reductionPercent": 5.0
+    },
+    {
+      "episode": 8,
+      "title": "信任危机",
+      "reference": {
+        "boards": 6,
+        "shots": 22,
+        "seconds": 69.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 78
+      },
+      "after": {
+        "boards": 8,
+        "shots": 20,
+        "seconds": 82
+      },
+      "runId": 5308,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 20,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 4,
+      "reductionPercent": -5.1
+    },
+    {
+      "episode": 9,
+      "title": "推卸责任",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 62
+      },
+      "after": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 61
+      },
+      "runId": 5309,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 18,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.6
+    },
+    {
+      "episode": 10,
+      "title": "真相大白",
+      "reference": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 69.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 73
+      },
+      "after": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 75
+      },
+      "runId": 5310,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -2.7
+    },
+    {
+      "episode": 11,
+      "title": "清理门户",
+      "reference": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 71.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 21,
+        "seconds": 72
+      },
+      "after": {
+        "boards": 7,
+        "shots": 21,
+        "seconds": 76
+      },
+      "runId": 5311,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 21,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 4,
+      "reductionPercent": -5.6
+    },
+    {
+      "episode": 12,
+      "title": "顾总试菜",
+      "reference": {
+        "boards": 5,
+        "shots": 19,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 66
+      },
+      "after": {
+        "boards": 6,
+        "shots": 19,
+        "seconds": 65
+      },
+      "runId": 5312,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 19,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.5
+    },
+    {
+      "episode": 13,
+      "title": "师徒决裂",
+      "reference": {
+        "boards": 7,
+        "shots": 25,
+        "seconds": 78.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 24,
+        "seconds": 76
+      },
+      "after": {
+        "boards": 6,
+        "shots": 22,
+        "seconds": 77
+      },
+      "runId": 5313,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 22,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.3
+    },
+    {
+      "episode": 14,
+      "title": "援兵将至",
+      "reference": {
+        "boards": 5,
+        "shots": 20,
+        "seconds": 56.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 63
+      },
+      "after": {
+        "boards": 5,
+        "shots": 17,
+        "seconds": 62
+      },
+      "runId": 5314,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 17,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.6
+    },
+    {
+      "episode": 15,
+      "title": "紧急摇人",
+      "reference": {
+        "boards": 5,
+        "shots": 17,
+        "seconds": 60.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 19,
+        "seconds": 63
+      },
+      "after": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 65
+      },
+      "runId": 5315,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 18,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -3.2
+    },
+    {
+      "episode": 16,
+      "title": "舆论危机",
+      "reference": {
+        "boards": 3,
+        "shots": 9,
+        "seconds": 31.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 45
+      },
+      "after": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 46
+      },
+      "runId": 5316,
+      "newSkill": true,
+      "expectedVoiceSegments": 5,
+      "savedVoiceSegments": 5,
+      "explicitAnchors": 14,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -2.2
+    },
+    {
+      "episode": 17,
+      "title": "临危受命",
+      "reference": {
+        "boards": 6,
+        "shots": 18,
+        "seconds": 66.0
+      },
+      "before": {
+        "boards": 8,
+        "shots": 22,
+        "seconds": 83
+      },
+      "after": {
+        "boards": 8,
+        "shots": 20,
+        "seconds": 84
+      },
+      "runId": 5317,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 20,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.2
+    },
+    {
+      "episode": 18,
+      "title": "正面交锋",
+      "reference": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 71.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 79
+      },
+      "after": {
+        "boards": 8,
+        "shots": 21,
+        "seconds": 79
+      },
+      "runId": 5318,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 19,
+      "title": "厨房骂战",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 63.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 21,
+        "seconds": 83
+      },
+      "after": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 82
+      },
+      "runId": 5319,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 22,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.2
+    },
+    {
+      "episode": 20,
+      "title": "绝不低头",
+      "reference": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 63.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 90
+      },
+      "after": {
+        "boards": 7,
+        "shots": 18,
+        "seconds": 82
+      },
+      "runId": 5320,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 18,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -8,
+      "reductionPercent": 8.9
+    },
+    {
+      "episode": 21,
+      "title": "试菜定乾坤",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 51.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 22,
+        "seconds": 76
+      },
+      "after": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 78
+      },
+      "runId": 5321,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 22,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -2.6
+    },
+    {
+      "episode": 22,
+      "title": "暗地挑拨",
+      "reference": {
+        "boards": 6,
+        "shots": 18,
+        "seconds": 59.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 22,
+        "seconds": 77
+      },
+      "after": {
+        "boards": 6,
+        "shots": 19,
+        "seconds": 79
+      },
+      "runId": 5322,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 19,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -2.6
+    },
+    {
+      "episode": 23,
+      "title": "狮子头出锅",
+      "reference": {
+        "boards": 3,
+        "shots": 15,
+        "seconds": 38.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 52
+      },
+      "after": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 51
+      },
+      "runId": 5323,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 14,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.9
+    },
+    {
+      "episode": 24,
+      "title": "味道说话",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 75
+      },
+      "after": {
+        "boards": 5,
+        "shots": 22,
+        "seconds": 73
+      },
+      "runId": 5324,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 22,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 2.7
+    },
+    {
+      "episode": 25,
+      "title": "实力获认可",
+      "reference": {
+        "boards": 9,
+        "shots": 26,
+        "seconds": 86.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 90
+      },
+      "after": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 85
+      },
+      "runId": 5325,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 23,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 5.6
+    },
+    {
+      "episode": 26,
+      "title": "百桌挑战",
+      "reference": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 43.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 59
+      },
+      "after": {
+        "boards": 5,
+        "shots": 14,
+        "seconds": 57
+      },
+      "runId": 5326,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 14,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 3.4
+    },
+    {
+      "episode": 27,
+      "title": "接下大单",
+      "reference": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 38.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 46
+      },
+      "after": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 46
+      },
+      "runId": 5327,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 13,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 28,
+      "title": "紧急筹备",
+      "reference": {
+        "boards": 5,
+        "shots": 20,
+        "seconds": 62.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 19,
+        "seconds": 67
+      },
+      "after": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 65
+      },
+      "runId": 5328,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 16,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 3.0
+    },
+    {
+      "episode": 29,
+      "title": "暗中作梗",
+      "reference": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 72.0
+      },
+      "before": {
+        "boards": 8,
+        "shots": 20,
+        "seconds": 89
+      },
+      "after": {
+        "boards": 8,
+        "shots": 21,
+        "seconds": 92
+      },
+      "runId": 5329,
+      "newSkill": true,
+      "expectedVoiceSegments": 14,
+      "savedVoiceSegments": 14,
+      "explicitAnchors": 21,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 3,
+      "reductionPercent": -3.4
+    },
+    {
+      "episode": 30,
+      "title": "被迫毁约",
+      "reference": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 49.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 75
+      },
+      "after": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 70
+      },
+      "runId": 5330,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 17,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 6.7
+    },
+    {
+      "episode": 31,
+      "title": "开席危机",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 20,
+        "seconds": 69
+      },
+      "after": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 67
+      },
+      "runId": 5331,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 17,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 2.9
+    },
+    {
+      "episode": 32,
+      "title": "百桌危机",
+      "reference": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 18,
+        "seconds": 69
+      },
+      "after": {
+        "boards": 6,
+        "shots": 16,
+        "seconds": 64
+      },
+      "runId": 5332,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 16,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 7.2
+    },
+    {
+      "episode": 33,
+      "title": "改菜救宴",
+      "reference": {
+        "boards": 8,
+        "shots": 22,
+        "seconds": 81.0
+      },
+      "before": {
+        "boards": 9,
+        "shots": 26,
+        "seconds": 108
+      },
+      "after": {
+        "boards": 9,
+        "shots": 26,
+        "seconds": 98
+      },
+      "runId": 5333,
+      "newSkill": true,
+      "expectedVoiceSegments": 18,
+      "savedVoiceSegments": 18,
+      "explicitAnchors": 26,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -10,
+      "reductionPercent": 9.3
+    },
+    {
+      "episode": 34,
+      "title": "后厨总动员",
+      "reference": {
+        "boards": 5,
+        "shots": 24,
+        "seconds": 66.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 22,
+        "seconds": 73
+      },
+      "after": {
+        "boards": 5,
+        "shots": 21,
+        "seconds": 70
+      },
+      "runId": 5334,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 21,
+      "warnings": 1,
+      "validationErrors": [
+        "collective voice not structured S0022"
+      ],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -3,
+      "reductionPercent": 4.1
+    },
+    {
+      "episode": 35,
+      "title": "开席！上菜",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 51.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 62
+      },
+      "after": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 63
+      },
+      "runId": 5335,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 16,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.6
+    },
+    {
+      "episode": 36,
+      "title": "首战告捷",
+      "reference": {
+        "boards": 4,
+        "shots": 16,
+        "seconds": 41.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 50
+      },
+      "after": {
+        "boards": 5,
+        "shots": 13,
+        "seconds": 49
+      },
+      "runId": 5336,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 13,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 2.0
+    },
+    {
+      "episode": 37,
+      "title": "百桌宴成",
+      "reference": {
+        "boards": 5,
+        "shots": 20,
+        "seconds": 61.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 79
+      },
+      "after": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 77
+      },
+      "runId": 5338,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 20,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 2.5
+    },
+    {
+      "episode": 38,
+      "title": "梁会长怒斥",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 57.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 83
+      },
+      "after": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 80
+      },
+      "runId": 5337,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -3,
+      "reductionPercent": 3.6
+    },
+    {
+      "episode": 39,
+      "title": "虚报货款现形",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 54.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 15,
+        "seconds": 71
+      },
+      "after": {
+        "boards": 6,
+        "shots": 15,
+        "seconds": 70
+      },
+      "runId": 5339,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 15,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.4
+    },
+    {
+      "episode": 40,
+      "title": "黑心钱清算",
+      "reference": {
+        "boards": 4,
+        "shots": 11,
+        "seconds": 38.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 11,
+        "seconds": 52
+      },
+      "after": {
+        "boards": 4,
+        "shots": 11,
+        "seconds": 51
+      },
+      "runId": 5340,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 11,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.9
+    },
+    {
+      "episode": 41,
+      "title": "任国华问责",
+      "reference": {
+        "boards": 5,
+        "shots": 20,
+        "seconds": 58.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 68
+      },
+      "after": {
+        "boards": 6,
+        "shots": 18,
+        "seconds": 64
+      },
+      "runId": 5341,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 18,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -4,
+      "reductionPercent": 5.9
+    },
+    {
+      "episode": 42,
+      "title": "采购权被夺",
+      "reference": {
+        "boards": 4,
+        "shots": 10,
+        "seconds": 41.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 10,
+        "seconds": 46
+      },
+      "after": {
+        "boards": 5,
+        "shots": 10,
+        "seconds": 46
+      },
+      "runId": 5342,
+      "newSkill": true,
+      "expectedVoiceSegments": 7,
+      "savedVoiceSegments": 7,
+      "explicitAnchors": 10,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 43,
+      "title": "战书下达",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 56.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 19,
+        "seconds": 70
+      },
+      "after": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 66
+      },
+      "runId": 5344,
+      "newSkill": true,
+      "expectedVoiceSegments": 7,
+      "savedVoiceSegments": 7,
+      "explicitAnchors": 16,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -4,
+      "reductionPercent": 5.7
+    },
+    {
+      "episode": 44,
+      "title": "接下战书",
+      "reference": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 39.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 52
+      },
+      "after": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 52
+      },
+      "runId": 5343,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 12,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 45,
+      "title": "赛前对峙",
+      "reference": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 52.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 61
+      },
+      "after": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 60
+      },
+      "runId": 5345,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 15,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.6
+    },
+    {
+      "episode": 46,
+      "title": "刀工对决",
+      "reference": {
+        "boards": 3,
+        "shots": 14,
+        "seconds": 36.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 16,
+        "seconds": 52
+      },
+      "after": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 49
+      },
+      "runId": 5346,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 15,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -3,
+      "reductionPercent": 5.8
+    },
+    {
+      "episode": 47,
+      "title": "首轮胜负悬心",
+      "reference": {
+        "boards": 3,
+        "shots": 8,
+        "seconds": 30.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 11,
+        "seconds": 41
+      },
+      "after": {
+        "boards": 4,
+        "shots": 11,
+        "seconds": 41
+      },
+      "runId": 5347,
+      "newSkill": true,
+      "expectedVoiceSegments": 5,
+      "savedVoiceSegments": 5,
+      "explicitAnchors": 11,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 48,
+      "title": "坦然认输",
+      "reference": {
+        "boards": 3,
+        "shots": 12,
+        "seconds": 36.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 45
+      },
+      "after": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 45
+      },
+      "runId": 5348,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 12,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 49,
+      "title": "调整再战",
+      "reference": {
+        "boards": 5,
+        "shots": 19,
+        "seconds": 56.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 58
+      },
+      "after": {
+        "boards": 5,
+        "shots": 12,
+        "seconds": 55
+      },
+      "runId": 5349,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 12,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -3,
+      "reductionPercent": 5.2
+    },
+    {
+      "episode": 50,
+      "title": "虾壳熬汤",
+      "reference": {
+        "boards": 3,
+        "shots": 12,
+        "seconds": 27.0
+      },
+      "before": {
+        "boards": 3,
+        "shots": 13,
+        "seconds": 37
+      },
+      "after": {
+        "boards": 3,
+        "shots": 9,
+        "seconds": 37
+      },
+      "runId": 5350,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 9,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 51,
+      "title": "各显神通",
+      "reference": {
+        "boards": 2,
+        "shots": 11,
+        "seconds": 25.0
+      },
+      "before": {
+        "boards": 3,
+        "shots": 15,
+        "seconds": 40
+      },
+      "after": {
+        "boards": 3,
+        "shots": 13,
+        "seconds": 40
+      },
+      "runId": 5351,
+      "newSkill": true,
+      "expectedVoiceSegments": 4,
+      "savedVoiceSegments": 4,
+      "explicitAnchors": 13,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 52,
+      "title": "味道取胜",
+      "reference": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 49.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 20,
+        "seconds": 73
+      },
+      "after": {
+        "boards": 6,
+        "shots": 20,
+        "seconds": 74
+      },
+      "runId": 5352,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 20,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.4
+    },
+    {
+      "episode": 53,
+      "title": "百味楼扳回一局",
+      "reference": {
+        "boards": 3,
+        "shots": 10,
+        "seconds": 26.0
+      },
+      "before": {
+        "boards": 3,
+        "shots": 9,
+        "seconds": 31
+      },
+      "after": {
+        "boards": 3,
+        "shots": 8,
+        "seconds": 32
+      },
+      "runId": 5353,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 8,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -3.2
+    },
+    {
+      "episode": 54,
+      "title": "最终对决开始",
+      "reference": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 49.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 55
+      },
+      "after": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 50
+      },
+      "runId": 5354,
+      "newSkill": true,
+      "expectedVoiceSegments": 7,
+      "savedVoiceSegments": 7,
+      "explicitAnchors": 13,
+      "warnings": 2,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 9.1
+    },
+    {
+      "episode": 55,
+      "title": "福香楼内讧",
+      "reference": {
+        "boards": 7,
+        "shots": 25,
+        "seconds": 71.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 19,
+        "seconds": 61
+      },
+      "after": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 61
+      },
+      "runId": 5355,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 18,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 0,
+      "reductionPercent": 0.0
+    },
+    {
+      "episode": 56,
+      "title": "百味楼夺冠",
+      "reference": {
+        "boards": 7,
+        "shots": 23,
+        "seconds": 79.0
+      },
+      "before": {
+        "boards": 8,
+        "shots": 23,
+        "seconds": 82
+      },
+      "after": {
+        "boards": 6,
+        "shots": 23,
+        "seconds": 77
+      },
+      "runId": 5356,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 23,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 6.1
+    },
+    {
+      "episode": 57,
+      "title": "胡百德被解雇",
+      "reference": {
+        "boards": 7,
+        "shots": 21,
+        "seconds": 70.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 22,
+        "seconds": 77
+      },
+      "after": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 75
+      },
+      "runId": 5357,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 20,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -2,
+      "reductionPercent": 2.6
+    },
+    {
+      "episode": 58,
+      "title": "胡百德的报复",
+      "reference": {
+        "boards": 4,
+        "shots": 18,
+        "seconds": 53.0
+      },
+      "before": {
+        "boards": 6,
+        "shots": 17,
+        "seconds": 64
+      },
+      "after": {
+        "boards": 6,
+        "shots": 16,
+        "seconds": 66
+      },
+      "runId": 5358,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 16,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 2,
+      "reductionPercent": -3.1
+    },
+    {
+      "episode": 59,
+      "title": "阴险密谋",
+      "reference": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 43.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 59
+      },
+      "after": {
+        "boards": 5,
+        "shots": 14,
+        "seconds": 53
+      },
+      "runId": 5359,
+      "newSkill": true,
+      "expectedVoiceSegments": 14,
+      "savedVoiceSegments": 14,
+      "explicitAnchors": 14,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -6,
+      "reductionPercent": 10.2
+    },
+    {
+      "episode": 60,
+      "title": "破坏水管",
+      "reference": {
+        "boards": 4,
+        "shots": 18,
+        "seconds": 46.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 17,
+        "seconds": 47
+      },
+      "after": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 53
+      },
+      "runId": 5360,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 15,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 6,
+      "reductionPercent": -12.8
+    },
+    {
+      "episode": 61,
+      "title": "停水危机",
+      "reference": {
+        "boards": 3,
+        "shots": 11,
+        "seconds": 30.0
+      },
+      "before": {
+        "boards": 3,
+        "shots": 11,
+        "seconds": 37
+      },
+      "after": {
+        "boards": 3,
+        "shots": 10,
+        "seconds": 36
+      },
+      "runId": 5361,
+      "newSkill": true,
+      "expectedVoiceSegments": 6,
+      "savedVoiceSegments": 6,
+      "explicitAnchors": 10,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 2.7
+    },
+    {
+      "episode": 62,
+      "title": "当场撞破",
+      "reference": {
+        "boards": 4,
+        "shots": 16,
+        "seconds": 46.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 60
+      },
+      "after": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 61
+      },
+      "runId": 5362,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 16,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.7
+    },
+    {
+      "episode": 63,
+      "title": "紧急维修",
+      "reference": {
+        "boards": 5,
+        "shots": 14,
+        "seconds": 47.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 50
+      },
+      "after": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 51
+      },
+      "runId": 5363,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 15,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -2.0
+    },
+    {
+      "episode": 64,
+      "title": "向客人致歉",
+      "reference": {
+        "boards": 7,
+        "shots": 17,
+        "seconds": 61.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 63
+      },
+      "after": {
+        "boards": 5,
+        "shots": 17,
+        "seconds": 64
+      },
+      "runId": 5364,
+      "newSkill": true,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "explicitAnchors": 17,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.6
+    },
+    {
+      "episode": 65,
+      "title": "送水救场",
+      "reference": {
+        "boards": 6,
+        "shots": 16,
+        "seconds": 51.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 13,
+        "seconds": 53
+      },
+      "after": {
+        "boards": 4,
+        "shots": 12,
+        "seconds": 52
+      },
+      "runId": 5365,
+      "newSkill": true,
+      "expectedVoiceSegments": 8,
+      "savedVoiceSegments": 8,
+      "explicitAnchors": 12,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.9
+    },
+    {
+      "episode": 66,
+      "title": "堵门风波",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 60.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 83
+      },
+      "after": {
+        "boards": 7,
+        "shots": 18,
+        "seconds": 78
+      },
+      "runId": 5366,
+      "newSkill": true,
+      "expectedVoiceSegments": 15,
+      "savedVoiceSegments": 15,
+      "explicitAnchors": 18,
+      "warnings": 1,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -5,
+      "reductionPercent": 6.0
+    },
+    {
+      "episode": 67,
+      "title": "警察解围",
+      "reference": {
+        "boards": 8,
+        "shots": 27,
+        "seconds": 81.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 80
+      },
+      "after": {
+        "boards": 7,
+        "shots": 21,
+        "seconds": 79
+      },
+      "runId": 5367,
+      "newSkill": true,
+      "expectedVoiceSegments": 11,
+      "savedVoiceSegments": 11,
+      "explicitAnchors": 21,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.2
+    },
+    {
+      "episode": 68,
+      "title": "众叛亲离",
+      "reference": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 51.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 16,
+        "seconds": 68
+      },
+      "after": {
+        "boards": 5,
+        "shots": 15,
+        "seconds": 62
+      },
+      "runId": 5369,
+      "newSkill": true,
+      "expectedVoiceSegments": 12,
+      "savedVoiceSegments": 12,
+      "explicitAnchors": 15,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -6,
+      "reductionPercent": 8.8
+    },
+    {
+      "episode": 69,
+      "title": "自食恶果",
+      "reference": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 55.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 18,
+        "seconds": 63
+      },
+      "after": {
+        "boards": 5,
+        "shots": 17,
+        "seconds": 64
+      },
+      "runId": 5368,
+      "newSkill": true,
+      "expectedVoiceSegments": 13,
+      "savedVoiceSegments": 13,
+      "explicitAnchors": 17,
+      "warnings": 0,
+      "validationErrors": [],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": 1,
+      "reductionPercent": -1.6
+    },
+    {
+      "episode": 70,
+      "title": "重归正轨",
+      "reference": {
+        "boards": 6,
+        "shots": 21,
+        "seconds": 57.0
+      },
+      "before": {
+        "boards": 7,
+        "shots": 19,
+        "seconds": 70
+      },
+      "after": {
+        "boards": 7,
+        "shots": 20,
+        "seconds": 69
+      },
+      "runId": 5370,
+      "newSkill": true,
+      "expectedVoiceSegments": 9,
+      "savedVoiceSegments": 9,
+      "explicitAnchors": 20,
+      "warnings": 2,
+      "validationErrors": [
+        "collective voice not structured S0022"
+      ],
+      "modelId": 12,
+      "beforeModelIds": [
+        12
+      ],
+      "deltaSeconds": -1,
+      "reductionPercent": 1.4
+    }
+  ]
+}

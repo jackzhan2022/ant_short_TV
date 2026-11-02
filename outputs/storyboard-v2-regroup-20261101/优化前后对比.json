@@ -1,0 +1,116 @@
+{
+  "project": {
+    "id": 72,
+    "name": "乡厨闯大宴-节奏优化验证-原1、46、51集",
+    "scriptId": 59,
+    "scriptChars": 2510,
+    "scriptSha256": "b6e8325529948096ce70623c4719a45556f1ad3db9d66883699847df6b2020f2",
+    "skillVersion": "V2"
+  },
+  "mapping": {
+    "1": 1,
+    "2": 46,
+    "3": 51
+  },
+  "totals": {
+    "reference": {
+      "boards": 16,
+      "shots": 66,
+      "seconds": 193.0
+    },
+    "before": {
+      "boards": 23,
+      "shots": 65,
+      "seconds": 242
+    },
+    "after": {
+      "boards": 20,
+      "shots": 67,
+      "seconds": 239
+    }
+  },
+  "skillRevisions": [
+    "629326feb9ac998033b6a4d7f2bab47c732b468bfcd07754afd6fe99948d41be"
+  ],
+  "expectedRevision": "629326feb9ac998033b6a4d7f2bab47c732b468bfcd07754afd6fe99948d41be",
+  "rows": [
+    {
+      "originalEpisode": 1,
+      "testEpisode": 1,
+      "reference": {
+        "boards": 11,
+        "shots": 41,
+        "seconds": 132.0
+      },
+      "before": {
+        "boards": 14,
+        "shots": 36,
+        "seconds": 145
+      },
+      "after": {
+        "boards": 12,
+        "shots": 38,
+        "seconds": 144
+      },
+      "inputSame": true,
+      "sourceCovered": true,
+      "submittedShots": 38,
+      "explicitAnchors": 38,
+      "expectedVoiceSegments": 28,
+      "savedVoiceSegments": 28,
+      "voiceIdsMatch": true
+    },
+    {
+      "originalEpisode": 46,
+      "testEpisode": 2,
+      "reference": {
+        "boards": 3,
+        "shots": 14,
+        "seconds": 36.0
+      },
+      "before": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 53
+      },
+      "after": {
+        "boards": 4,
+        "shots": 15,
+        "seconds": 49
+      },
+      "inputSame": true,
+      "sourceCovered": true,
+      "submittedShots": 15,
+      "explicitAnchors": 15,
+      "expectedVoiceSegments": 10,
+      "savedVoiceSegments": 10,
+      "voiceIdsMatch": true
+    },
+    {
+      "originalEpisode": 51,
+      "testEpisode": 3,
+      "reference": {
+        "boards": 2,
+        "shots": 11,
+        "seconds": 25.0
+      },
+      "before": {
+        "boards": 5,
+        "shots": 14,
+        "seconds": 44
+      },
+      "after": {
+        "boards": 4,
+        "shots": 14,
+        "seconds": 46
+      },
+      "inputSame": true,
+      "sourceCovered": true,
+      "submittedShots": 14,
+      "explicitAnchors": 14,
+      "expectedVoiceSegments": 4,
+      "savedVoiceSegments": 4,
+      "voiceIdsMatch": true
+    }
+  ]
+}

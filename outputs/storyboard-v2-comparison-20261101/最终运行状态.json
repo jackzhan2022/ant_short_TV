@@ -1,0 +1,97 @@
+{
+  "projectId": 71,
+  "project": [
+    {
+      "id": 71,
+      "name": "乡厨闯大宴-分镜2.0全70集对比-20261101",
+      "tenantId": 1,
+      "skillVersion": "V2"
+    }
+  ],
+  "analysis": [
+    {
+      "id": 65,
+      "stage": null,
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorCode": null
+    }
+  ],
+  "counts": [
+    {
+      "boards": 432,
+      "episodes": 70,
+      "assetEpisodes": 70,
+      "boardEpisodes": 70,
+      "summaryEpisodes": 70
+    }
+  ],
+  "executions": [
+    {
+      "count": 1,
+      "scene": "script_analysis",
+      "status": "SUCCEEDED"
+    },
+    {
+      "count": 1,
+      "scene": "script_character_scene_recognition",
+      "status": "SUCCEEDED"
+    },
+    {
+      "count": 70,
+      "scene": "storyboard_breakdown",
+      "status": "SUCCEEDED"
+    }
+  ],
+  "agents": [
+    {
+      "agent": "short-drama-global-understanding",
+      "count": 1,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-episode-splitting",
+      "count": 1,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-asset-recognition",
+      "count": 70,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-episode-summary",
+      "count": 70,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-asset-recognition",
+      "count": 3,
+      "status": "FAILED"
+    },
+    {
+      "agent": "short-drama-asset-normalization",
+      "count": 2,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-storyboard",
+      "count": 70,
+      "status": "SUCCESS"
+    }
+  ],
+  "failures": [],
+  "autoEvents": [
+    {
+      "count": 70,
+      "status": "DISPATCHED"
+    }
+  ],
+  "skillRuns": [
+    {
+      "v2": 1,
+      "count": 70,
+      "status": "SUCCESS"
+    }
+  ]
+}

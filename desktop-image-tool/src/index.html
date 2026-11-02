@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: antv-media:; connect-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>ANTV生图</title>
+  <link rel="icon" href="icon.ico">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><img src="icon.png" alt="" width="42" height="42"><div><h1>ANTV生图</h1><span>让每个灵感，成为一张好图</span></div></div>
+    <div class="header-actions"><span class="local-label"><span class="dot"></span>个人工作空间</span><button type="button" id="settings-open" class="button">⚿ <span id="key-status">配置我的 Key</span></button></div>
+  </header>
+  <main class="workspace">
+    <section class="editor" aria-label="创作设置">
+      <div class="editor-scroll" id="drop-area">
+        <div class="editor-heading"><h2>图片创作</h2><span class="mode-pill" id="mode-label">文字生图</span></div>
+        <div class="field"><label for="model">生成模型 <span class="secondary">熊熊爱</span></label><input id="model" list="models" value="gpt-image-2" maxlength="100" spellcheck="false"><datalist id="models"><option value="gpt-image-2"></option></datalist></div>
+        <div class="field"><label for="prompt">创意描述 <span class="secondary">提示词</span></label><div class="prompt-box"><textarea id="prompt" maxlength="2000" placeholder="描述你想创作的画面：主体、场景、风格与光线…"></textarea><div class="prompt-footer"><button type="button" id="example" class="text-button">✧ 试试示例</button><span id="prompt-count">0 / 2000</span></div></div></div>
+        <div class="field"><div class="field-label">参考图片 <span class="secondary" id="reference-count">可选 · 0 / 8</span></div><div class="references" id="references"></div><button type="button" id="choose-reference" class="upload"><span class="upload-plus">＋</span><span>点击添加，或拖入图片<small>也可粘贴图片、从右侧创作记录添加</small></span></button><input id="reference-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><p class="help">PNG / JPEG / WEBP · 每张 ≤ 10 MB，总计 ≤ 30 MB</p></div>
+        <div class="field"><div class="field-label">画面比例 <span class="secondary" id="size-label">1024 × 1024</span></div><div class="ratio-options" id="ratios">
+          <button type="button" data-size="auto" aria-pressed="false"><span class="ratio-symbol auto">A</span>自动</button>
+          <button type="button" data-size="1024x1024" aria-pressed="true"><span class="ratio-symbol square"></span>1:1</button>
+          <button type="button" data-size="1536x1024" aria-pressed="false"><span class="ratio-symbol landscape"></span>3:2</button>
+          <button type="button" data-size="1024x1536" aria-pressed="false"><span class="ratio-symbol portrait"></span>2:3</button>
+          <button type="button" data-size="1536x864" aria-pressed="false"><span class="ratio-symbol wide"></span>16:9</button>
+          <button type="button" data-size="864x1536" aria-pressed="false"><span class="ratio-symbol tall"></span>9:16</button>
+        </div></div>
+        <div class="two-columns"><div class="field"><label for="quality">图片质量</label><select id="quality"><option value="auto">自动</option><option value="low">低 · 快速草稿</option><option value="medium">中 · 均衡</option><option value="high">高 · 精细画面</option></select></div><div class="field"><label for="format">输出格式</label><select id="format"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WEBP</option></select></div></div>
+      </div>
+      <div class="editor-footer"><div class="field filename-field"><label for="output-name">图片名称 <span class="secondary">可选 · 重名自动追加序号</span></label><input id="output-name" maxlength="85" placeholder="例如：角色A_正面（留空自动命名）"><button type="button" id="save-path" class="text-button save-path" aria-label="设置图片保存位置">选择图片保存位置</button></div><p class="error" id="editor-error" role="alert" hidden></p><button type="button" id="generate" class="button primary generate" disabled><span id="generate-text">✦ 生成图片</span><span class="shortcut">Ctrl ↵</span></button><p class="help center">每次生成 1 张 · 原图自动保存到所选目录</p></div>
+    </section>
+    <section class="results" aria-label="创作记录">
+      <div class="results-header"><div><h2>创作记录 <span id="record-count" class="count">0</span></h2><p>每一次尝试，都离想象更近一点。</p></div><button type="button" class="button quiet" id="open-folder">打开作品文件夹 ↗</button></div>
+      <div id="records" class="records"></div>
+      <div class="empty" id="empty"><div class="empty-art"><div class="art-frame back"></div><div class="art-frame front"><span>✦</span></div></div><h2>你的下一张作品，从这里开始</h2><p>写下画面描述，或添加一张参考图。<br>作品会保存在这里，随时查看、复用和继续创作。</p><div class="suggestions"><button type="button" class="button" data-example="portrait">人像写真</button><button type="button" class="button" data-example="product">产品摄影</button><button type="button" class="button" data-example="landscape">场景插画</button></div></div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-heading"><div><h2 id="settings-title">个人设置</h2><p>管理个人 Key 和图片保存位置。</p></div><button type="button" id="settings-close" class="icon-button" aria-label="关闭设置">×</button></div>
+    <form id="settings-form">
+      <div class="connection"><span class="dot"></span><div><strong>熊熊爱</strong><span id="server-address">http://89.58.47.162:8080</span></div><span class="secondary">服务地址已内置</span></div>
+      <div class="field"><label for="api-key">个人 API Key</label><div class="key-input"><input id="api-key" type="password" autocomplete="off" spellcheck="false" maxlength="4096" placeholder="粘贴你的 API Key"><button class="button quiet" type="button" id="show-key" aria-pressed="false">显示</button></div><p class="help" id="key-help">使用 Windows 用户凭据加密保存，仅当前用户可读取。</p></div>
+      <div class="field"><label for="output-directory">图片自动保存目录</label><div class="key-input"><input id="output-directory" readonly><button class="button" type="button" id="choose-directory">选择目录</button></div><p class="help">选中后立即生效，已有作品不移动；重名图片自动追加序号。</p></div>
+      <details><summary>高级设置</summary><div class="field advanced"><label for="response-model">请求模型</label><input id="response-model" value="gpt-6-astra" maxlength="100" spellcheck="false"><p class="help">与熊熊爱适配器默认值一致，通常无需修改。</p></div></details>
+      <p class="error" id="settings-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="text-button danger" id="clear-key" hidden>移除已保存的 Key</button><button type="submit" class="button primary" id="save-settings">保存配置</button></div>
+    </form>
+  </dialog>
+  <dialog id="image-dialog" class="image-dialog" aria-labelledby="image-title"><div class="dialog-heading"><h2 id="image-title">查看原图</h2><button type="button" id="image-close" class="icon-button" aria-label="关闭大图">×</button></div><div class="full-image-wrap"><img id="full-image" alt="生成的原图"></div><p class="image-prompt" id="image-prompt"></p><div class="dialog-actions"><button type="button" class="button" id="image-reference">＋ 添加为参考</button><button type="button" class="button" id="image-reuse">复用参数</button><button type="button" class="button primary" id="image-save">保存原图</button></div></dialog>
+  <script type="module" src="renderer/renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,2183 @@
+{
+  "snapshot": {
+    "database_time": "2026-10-31 09:48:52.000000",
+    "system_timezone": "CST",
+    "session_timezone": "SYSTEM"
+  },
+  "batches": [
+    {
+      "id": 30,
+      "type": "PROP",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:17.000000",
+      "project": 53,
+      "updated": "2026-10-31 09:43:35.000000"
+    },
+    {
+      "id": 31,
+      "type": "PROP",
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:45:32.000000",
+      "project": 53,
+      "updated": "2026-10-31 09:48:25.000000"
+    }
+  ],
+  "tasks": [
+    {
+      "item": 1519,
+      "task": 1700,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:18.000000",
+      "started": "2026-10-31 09:43:21.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180714,
+      "last_call": 8747,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1528,
+      "task": 1709,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:20.000000",
+      "started": "2026-10-31 09:43:28.000000",
+      "completed": "2026-10-31 09:43:28.000000",
+      "execution": 180723,
+      "last_call": 8753,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1530,
+      "task": 1711,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:21.000000",
+      "started": "2026-10-31 09:43:34.000000",
+      "completed": "2026-10-31 09:43:33.000000",
+      "execution": 180725,
+      "last_call": 8755,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1517,
+      "task": 1698,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:17.000000",
+      "started": "2026-10-31 09:43:21.000000",
+      "completed": "2026-10-31 09:43:21.000000",
+      "execution": 180712,
+      "last_call": 8742,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1518,
+      "task": 1699,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:17.000000",
+      "started": "2026-10-31 09:43:21.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180713,
+      "last_call": 8746,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1520,
+      "task": 1701,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:18.000000",
+      "started": "2026-10-31 09:43:21.000000",
+      "completed": "2026-10-31 09:43:21.000000",
+      "execution": 180715,
+      "last_call": 8743,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1521,
+      "task": 1702,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:18.000000",
+      "started": "2026-10-31 09:43:21.000000",
+      "completed": "2026-10-31 09:43:21.000000",
+      "execution": 180716,
+      "last_call": 8744,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1522,
+      "task": 1703,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:18.000000",
+      "started": "2026-10-31 09:43:22.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180717,
+      "last_call": 8745,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1523,
+      "task": 1704,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:19.000000",
+      "started": "2026-10-31 09:43:22.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180718,
+      "last_call": 8748,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1524,
+      "task": 1705,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:19.000000",
+      "started": "2026-10-31 09:43:22.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180719,
+      "last_call": 8749,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1525,
+      "task": 1706,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:19.000000",
+      "started": "2026-10-31 09:43:22.000000",
+      "completed": "2026-10-31 09:43:22.000000",
+      "execution": 180720,
+      "last_call": 8750,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1526,
+      "task": 1707,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:20.000000",
+      "started": "2026-10-31 09:43:27.000000",
+      "completed": "2026-10-31 09:43:27.000000",
+      "execution": 180721,
+      "last_call": 8751,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1527,
+      "task": 1708,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:20.000000",
+      "started": "2026-10-31 09:43:27.000000",
+      "completed": "2026-10-31 09:43:27.000000",
+      "execution": 180722,
+      "last_call": 8752,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1529,
+      "task": 1710,
+      "batch": 30,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "created": "2026-10-31 09:43:20.000000",
+      "started": "2026-10-31 09:43:28.000000",
+      "completed": "2026-10-31 09:43:28.000000",
+      "execution": 180724,
+      "last_call": 8754,
+      "dependency": null,
+      "item_status": "FAILED",
+      "item_created": "2026-10-31 09:43:17.000000",
+      "execution_error": "HANDLER_FAILURE",
+      "execution_status": "FAILED"
+    },
+    {
+      "item": 1533,
+      "task": 1714,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:33.000000",
+      "started": "2026-10-31 09:45:37.000000",
+      "completed": "2026-10-31 09:46:56.000000",
+      "execution": 180728,
+      "last_call": 8761,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1542,
+      "task": 1723,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:36.000000",
+      "started": "2026-10-31 09:46:34.000000",
+      "completed": "2026-10-31 09:48:25.000000",
+      "execution": 180737,
+      "last_call": 8769,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1544,
+      "task": 1725,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:37.000000",
+      "started": "2026-10-31 09:46:45.000000",
+      "completed": "2026-10-31 09:48:18.000000",
+      "execution": 180739,
+      "last_call": 8768,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1531,
+      "task": 1712,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:32.000000",
+      "started": "2026-10-31 09:45:37.000000",
+      "completed": "2026-10-31 09:46:19.000000",
+      "execution": 180726,
+      "last_call": 8756,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1532,
+      "task": 1713,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:33.000000",
+      "started": "2026-10-31 09:45:37.000000",
+      "completed": "2026-10-31 09:46:45.000000",
+      "execution": 180727,
+      "last_call": 8759,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1534,
+      "task": 1715,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:33.000000",
+      "started": "2026-10-31 09:45:37.000000",
+      "completed": "2026-10-31 09:46:56.000000",
+      "execution": 180729,
+      "last_call": 8760,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1535,
+      "task": 1716,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:33.000000",
+      "started": "2026-10-31 09:45:38.000000",
+      "completed": "2026-10-31 09:47:32.000000",
+      "execution": 180730,
+      "last_call": 8763,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1536,
+      "task": 1717,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:34.000000",
+      "started": "2026-10-31 09:45:38.000000",
+      "completed": "2026-10-31 09:46:45.000000",
+      "execution": 180731,
+      "last_call": 8758,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1537,
+      "task": 1718,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:34.000000",
+      "started": "2026-10-31 09:45:38.000000",
+      "completed": "2026-10-31 09:46:51.000000",
+      "execution": 180732,
+      "last_call": 8757,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1538,
+      "task": 1719,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:34.000000",
+      "started": "2026-10-31 09:45:38.000000",
+      "completed": "2026-10-31 09:47:11.000000",
+      "execution": 180733,
+      "last_call": 8762,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1539,
+      "task": 1720,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:34.000000",
+      "started": "2026-10-31 09:46:08.000000",
+      "completed": "2026-10-31 09:47:37.000000",
+      "execution": 180734,
+      "last_call": 8764,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1540,
+      "task": 1721,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:35.000000",
+      "started": "2026-10-31 09:46:34.000000",
+      "completed": "2026-10-31 09:47:58.000000",
+      "execution": 180735,
+      "last_call": 8765,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1541,
+      "task": 1722,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:36.000000",
+      "started": "2026-10-31 09:46:34.000000",
+      "completed": "2026-10-31 09:48:13.000000",
+      "execution": 180736,
+      "last_call": 8766,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    },
+    {
+      "item": 1543,
+      "task": 1724,
+      "batch": 31,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "created": "2026-10-31 09:45:36.000000",
+      "started": "2026-10-31 09:46:39.000000",
+      "completed": "2026-10-31 09:48:13.000000",
+      "execution": 180738,
+      "last_call": 8767,
+      "dependency": null,
+      "item_status": "SUCCEEDED",
+      "item_created": "2026-10-31 09:45:32.000000",
+      "execution_error": "RESOURCE_WAIT",
+      "execution_status": "SUCCEEDED"
+    }
+  ],
+  "calls": [
+    {
+      "id": 8747,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5095,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180714,
+      "duration_ms": 744,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8753,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5104,
+      "created": "2026-10-31 09:43:28.000000",
+      "provider": "OpenAI",
+      "execution": 180723,
+      "duration_ms": 195,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8755,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5115,
+      "created": "2026-10-31 09:43:34.000000",
+      "provider": "OpenAI",
+      "execution": 180725,
+      "duration_ms": 192,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8742,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5093,
+      "created": "2026-10-31 09:43:21.000000",
+      "provider": "OpenAI",
+      "execution": 180712,
+      "duration_ms": 377,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8746,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5094,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180713,
+      "duration_ms": 359,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8743,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5096,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180715,
+      "duration_ms": 380,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8744,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5097,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180716,
+      "duration_ms": 377,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8745,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5098,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180717,
+      "duration_ms": 193,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8748,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5099,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180718,
+      "duration_ms": 194,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8749,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5100,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180719,
+      "duration_ms": 191,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8750,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5101,
+      "created": "2026-10-31 09:43:22.000000",
+      "provider": "OpenAI",
+      "execution": 180720,
+      "duration_ms": 181,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8751,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5102,
+      "created": "2026-10-31 09:43:27.000000",
+      "provider": "OpenAI",
+      "execution": 180721,
+      "duration_ms": 191,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8752,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5103,
+      "created": "2026-10-31 09:43:28.000000",
+      "provider": "OpenAI",
+      "execution": 180722,
+      "duration_ms": 189,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8754,
+      "model": "gpt-image-2.5-flare",
+      "status": "FAILED",
+      "attempt": 5105,
+      "created": "2026-10-31 09:43:28.000000",
+      "provider": "OpenAI",
+      "execution": 180724,
+      "duration_ms": 181,
+      "error_codes": [
+        "AI_PROVIDER_ERROR"
+      ],
+      "http_status": [
+        "403"
+      ],
+      "error_categories": []
+    },
+    {
+      "id": 8761,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5137,
+      "created": "2026-10-31 09:46:40.000000",
+      "provider": "OpenAI",
+      "execution": 180728,
+      "duration_ms": 62349
+    },
+    {
+      "id": 8769,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5147,
+      "created": "2026-10-31 09:48:05.000000",
+      "provider": "OpenAI",
+      "execution": 180737,
+      "duration_ms": 91164
+    },
+    {
+      "id": 8768,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5149,
+      "created": "2026-10-31 09:48:00.000000",
+      "provider": "OpenAI",
+      "execution": 180739,
+      "duration_ms": 74627
+    },
+    {
+      "id": 8756,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5135,
+      "created": "2026-10-31 09:46:05.000000",
+      "provider": "OpenAI",
+      "execution": 180726,
+      "duration_ms": 27762
+    },
+    {
+      "id": 8759,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5136,
+      "created": "2026-10-31 09:46:32.000000",
+      "provider": "OpenAI",
+      "execution": 180727,
+      "duration_ms": 54788
+    },
+    {
+      "id": 8760,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5138,
+      "created": "2026-10-31 09:46:34.000000",
+      "provider": "OpenAI",
+      "execution": 180729,
+      "duration_ms": 56293
+    },
+    {
+      "id": 8763,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5139,
+      "created": "2026-10-31 09:47:15.000000",
+      "provider": "OpenAI",
+      "execution": 180730,
+      "duration_ms": 97482
+    },
+    {
+      "id": 8758,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5140,
+      "created": "2026-10-31 09:46:31.000000",
+      "provider": "OpenAI",
+      "execution": 180731,
+      "duration_ms": 53421
+    },
+    {
+      "id": 8757,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5141,
+      "created": "2026-10-31 09:46:28.000000",
+      "provider": "OpenAI",
+      "execution": 180732,
+      "duration_ms": 50057
+    },
+    {
+      "id": 8762,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5142,
+      "created": "2026-10-31 09:46:51.000000",
+      "provider": "OpenAI",
+      "execution": 180733,
+      "duration_ms": 72749
+    },
+    {
+      "id": 8764,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5143,
+      "created": "2026-10-31 09:47:25.000000",
+      "provider": "OpenAI",
+      "execution": 180734,
+      "duration_ms": 76468
+    },
+    {
+      "id": 8765,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5145,
+      "created": "2026-10-31 09:47:43.000000",
+      "provider": "OpenAI",
+      "execution": 180735,
+      "duration_ms": 69147
+    },
+    {
+      "id": 8766,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5146,
+      "created": "2026-10-31 09:47:55.000000",
+      "provider": "OpenAI",
+      "execution": 180736,
+      "duration_ms": 80967
+    },
+    {
+      "id": 8767,
+      "model": "gpt-image-2.5-flare",
+      "status": "SUCCESS",
+      "attempt": 5148,
+      "created": "2026-10-31 09:47:57.000000",
+      "provider": "OpenAI",
+      "execution": 180738,
+      "duration_ms": 77833
+    }
+  ],
+  "attempts": [
+    {
+      "id": 5095,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180714
+    },
+    {
+      "id": 5108,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180714
+    },
+    {
+      "id": 5118,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180714
+    },
+    {
+      "id": 5104,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:27.000000",
+      "finished": "2026-10-31 09:43:29.000000",
+      "execution": 180723
+    },
+    {
+      "id": 5127,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:40.000000",
+      "execution": 180723
+    },
+    {
+      "id": 5132,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:50.000000",
+      "finished": "2026-10-31 09:43:50.000000",
+      "execution": 180723
+    },
+    {
+      "id": 5115,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:34.000000",
+      "execution": 180725
+    },
+    {
+      "id": 5129,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:45.000000",
+      "finished": "2026-10-31 09:43:45.000000",
+      "execution": 180725
+    },
+    {
+      "id": 5134,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:55.000000",
+      "finished": "2026-10-31 09:43:56.000000",
+      "execution": 180725
+    },
+    {
+      "id": 5093,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:21.000000",
+      "execution": 180712
+    },
+    {
+      "id": 5106,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180712
+    },
+    {
+      "id": 5116,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180712
+    },
+    {
+      "id": 5094,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180713
+    },
+    {
+      "id": 5107,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180713
+    },
+    {
+      "id": 5117,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180713
+    },
+    {
+      "id": 5096,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180715
+    },
+    {
+      "id": 5109,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180715
+    },
+    {
+      "id": 5119,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180715
+    },
+    {
+      "id": 5097,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180716
+    },
+    {
+      "id": 5110,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180716
+    },
+    {
+      "id": 5120,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180716
+    },
+    {
+      "id": 5098,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180717
+    },
+    {
+      "id": 5111,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180717
+    },
+    {
+      "id": 5121,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180717
+    },
+    {
+      "id": 5099,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:22.000000",
+      "execution": 180718
+    },
+    {
+      "id": 5112,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180718
+    },
+    {
+      "id": 5122,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180718
+    },
+    {
+      "id": 5100,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:23.000000",
+      "execution": 180719
+    },
+    {
+      "id": 5113,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180719
+    },
+    {
+      "id": 5123,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180719
+    },
+    {
+      "id": 5101,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:21.000000",
+      "finished": "2026-10-31 09:43:23.000000",
+      "execution": 180720
+    },
+    {
+      "id": 5114,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:32.000000",
+      "finished": "2026-10-31 09:43:33.000000",
+      "execution": 180720
+    },
+    {
+      "id": 5124,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:39.000000",
+      "execution": 180720
+    },
+    {
+      "id": 5102,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:27.000000",
+      "finished": "2026-10-31 09:43:28.000000",
+      "execution": 180721
+    },
+    {
+      "id": 5125,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:40.000000",
+      "execution": 180721
+    },
+    {
+      "id": 5130,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:50.000000",
+      "finished": "2026-10-31 09:43:50.000000",
+      "execution": 180721
+    },
+    {
+      "id": 5103,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:27.000000",
+      "finished": "2026-10-31 09:43:28.000000",
+      "execution": 180722
+    },
+    {
+      "id": 5126,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:40.000000",
+      "execution": 180722
+    },
+    {
+      "id": 5131,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:50.000000",
+      "finished": "2026-10-31 09:43:50.000000",
+      "execution": 180722
+    },
+    {
+      "id": 5105,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:27.000000",
+      "finished": "2026-10-31 09:43:29.000000",
+      "execution": 180724
+    },
+    {
+      "id": 5128,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:39.000000",
+      "finished": "2026-10-31 09:43:40.000000",
+      "execution": 180724
+    },
+    {
+      "id": 5133,
+      "call": null,
+      "error": "HANDLER_FAILURE",
+      "phase": "SUBMIT",
+      "status": "FAILED",
+      "started": "2026-10-31 09:43:50.000000",
+      "finished": "2026-10-31 09:43:50.000000",
+      "execution": 180724
+    },
+    {
+      "id": 5137,
+      "call": 8761,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:41.000000",
+      "execution": 180728
+    },
+    {
+      "id": 5153,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:56.000000",
+      "finished": "2026-10-31 09:46:56.000000",
+      "execution": 180728
+    },
+    {
+      "id": 5147,
+      "call": 8769,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:34.000000",
+      "finished": "2026-10-31 09:48:07.000000",
+      "execution": 180737
+    },
+    {
+      "id": 5162,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:48:23.000000",
+      "finished": "2026-10-31 09:48:25.000000",
+      "execution": 180737
+    },
+    {
+      "id": 5149,
+      "call": 8768,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:44.000000",
+      "finished": "2026-10-31 09:48:01.000000",
+      "execution": 180739
+    },
+    {
+      "id": 5161,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:48:18.000000",
+      "finished": "2026-10-31 09:48:18.000000",
+      "execution": 180739
+    },
+    {
+      "id": 5135,
+      "call": 8756,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:07.000000",
+      "execution": 180726
+    },
+    {
+      "id": 5144,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:18.000000",
+      "finished": "2026-10-31 09:46:19.000000",
+      "execution": 180726
+    },
+    {
+      "id": 5136,
+      "call": 8759,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:33.000000",
+      "execution": 180727
+    },
+    {
+      "id": 5150,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:44.000000",
+      "finished": "2026-10-31 09:46:45.000000",
+      "execution": 180727
+    },
+    {
+      "id": 5138,
+      "call": 8760,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:35.000000",
+      "execution": 180729
+    },
+    {
+      "id": 5154,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:56.000000",
+      "finished": "2026-10-31 09:46:56.000000",
+      "execution": 180729
+    },
+    {
+      "id": 5139,
+      "call": 8763,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:47:17.000000",
+      "execution": 180730
+    },
+    {
+      "id": 5156,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:47:32.000000",
+      "finished": "2026-10-31 09:47:32.000000",
+      "execution": 180730
+    },
+    {
+      "id": 5140,
+      "call": 8758,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:32.000000",
+      "execution": 180731
+    },
+    {
+      "id": 5151,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:44.000000",
+      "finished": "2026-10-31 09:46:45.000000",
+      "execution": 180731
+    },
+    {
+      "id": 5141,
+      "call": 8757,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:29.000000",
+      "execution": 180732
+    },
+    {
+      "id": 5152,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:46:50.000000",
+      "finished": "2026-10-31 09:46:51.000000",
+      "execution": 180732
+    },
+    {
+      "id": 5142,
+      "call": 8762,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:45:37.000000",
+      "finished": "2026-10-31 09:46:52.000000",
+      "execution": 180733
+    },
+    {
+      "id": 5155,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:47:11.000000",
+      "finished": "2026-10-31 09:47:11.000000",
+      "execution": 180733
+    },
+    {
+      "id": 5143,
+      "call": 8764,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:08.000000",
+      "finished": "2026-10-31 09:47:26.000000",
+      "execution": 180734
+    },
+    {
+      "id": 5157,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:47:37.000000",
+      "finished": "2026-10-31 09:47:37.000000",
+      "execution": 180734
+    },
+    {
+      "id": 5145,
+      "call": 8765,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:34.000000",
+      "finished": "2026-10-31 09:47:44.000000",
+      "execution": 180735
+    },
+    {
+      "id": 5158,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:47:58.000000",
+      "finished": "2026-10-31 09:47:58.000000",
+      "execution": 180735
+    },
+    {
+      "id": 5146,
+      "call": 8766,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:34.000000",
+      "finished": "2026-10-31 09:47:56.000000",
+      "execution": 180736
+    },
+    {
+      "id": 5159,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:48:13.000000",
+      "finished": "2026-10-31 09:48:13.000000",
+      "execution": 180736
+    },
+    {
+      "id": 5148,
+      "call": 8767,
+      "error": "RESOURCE_WAIT",
+      "phase": "SUBMIT",
+      "status": "CANCELED",
+      "started": "2026-10-31 09:46:39.000000",
+      "finished": "2026-10-31 09:47:58.000000",
+      "execution": 180738
+    },
+    {
+      "id": 5160,
+      "call": null,
+      "error": null,
+      "phase": "SUBMIT",
+      "status": "SUCCEEDED",
+      "started": "2026-10-31 09:48:13.000000",
+      "finished": "2026-10-31 09:48:13.000000",
+      "execution": 180738
+    }
+  ],
+  "results": [
+    {
+      "id": 1691,
+      "task": 1714,
+      "bytes": 1960716,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:40.000000",
+      "updated": "2026-10-31 09:46:55.000000"
+    },
+    {
+      "id": 1699,
+      "task": 1723,
+      "bytes": 2566848,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:48:05.000000",
+      "updated": "2026-10-31 09:48:24.000000"
+    },
+    {
+      "id": 1698,
+      "task": 1725,
+      "bytes": 2389745,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:48:00.000000",
+      "updated": "2026-10-31 09:48:18.000000"
+    },
+    {
+      "id": 1686,
+      "task": 1712,
+      "bytes": 1975008,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:05.000000",
+      "updated": "2026-10-31 09:46:18.000000"
+    },
+    {
+      "id": 1689,
+      "task": 1713,
+      "bytes": 2005684,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:32.000000",
+      "updated": "2026-10-31 09:46:45.000000"
+    },
+    {
+      "id": 1690,
+      "task": 1715,
+      "bytes": 1900104,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:34.000000",
+      "updated": "2026-10-31 09:46:55.000000"
+    },
+    {
+      "id": 1693,
+      "task": 1716,
+      "bytes": 2324165,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:47:15.000000",
+      "updated": "2026-10-31 09:47:32.000000"
+    },
+    {
+      "id": 1688,
+      "task": 1717,
+      "bytes": 2117971,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:31.000000",
+      "updated": "2026-10-31 09:46:45.000000"
+    },
+    {
+      "id": 1687,
+      "task": 1718,
+      "bytes": 2107394,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:28.000000",
+      "updated": "2026-10-31 09:46:50.000000"
+    },
+    {
+      "id": 1692,
+      "task": 1719,
+      "bytes": 2899824,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:46:51.000000",
+      "updated": "2026-10-31 09:47:10.000000"
+    },
+    {
+      "id": 1694,
+      "task": 1720,
+      "bytes": 2238405,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:47:25.000000",
+      "updated": "2026-10-31 09:47:37.000000"
+    },
+    {
+      "id": 1695,
+      "task": 1721,
+      "bytes": 2366162,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:47:43.000000",
+      "updated": "2026-10-31 09:47:57.000000"
+    },
+    {
+      "id": 1696,
+      "task": 1722,
+      "bytes": 2300095,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:47:55.000000",
+      "updated": "2026-10-31 09:48:13.000000"
+    },
+    {
+      "id": 1697,
+      "task": 1724,
+      "bytes": 2122626,
+      "status": "ACTIVE",
+      "created": "2026-10-31 09:47:57.000000",
+      "updated": "2026-10-31 09:48:13.000000"
+    }
+  ],
+  "media": [
+    {
+      "id": 3782,
+      "bytes": 1975008,
+      "result": 1686,
+      "status": "READY",
+      "created": "2026-10-31 09:46:06.000000",
+      "updated": "2026-10-31 09:46:06.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3783,
+      "bytes": 758811,
+      "result": 1686,
+      "status": "READY",
+      "created": "2026-10-31 09:46:06.000000",
+      "updated": "2026-10-31 09:46:09.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3784,
+      "bytes": 2107394,
+      "result": 1687,
+      "status": "READY",
+      "created": "2026-10-31 09:46:29.000000",
+      "updated": "2026-10-31 09:46:29.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3785,
+      "bytes": 1181543,
+      "result": 1687,
+      "status": "READY",
+      "created": "2026-10-31 09:46:29.000000",
+      "updated": "2026-10-31 09:46:31.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3786,
+      "bytes": 2117971,
+      "result": 1688,
+      "status": "READY",
+      "created": "2026-10-31 09:46:32.000000",
+      "updated": "2026-10-31 09:46:32.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3787,
+      "bytes": 815694,
+      "result": 1688,
+      "status": "READY",
+      "created": "2026-10-31 09:46:32.000000",
+      "updated": "2026-10-31 09:46:35.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3788,
+      "bytes": 2005684,
+      "result": 1689,
+      "status": "READY",
+      "created": "2026-10-31 09:46:33.000000",
+      "updated": "2026-10-31 09:46:33.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3789,
+      "bytes": 730209,
+      "result": 1689,
+      "status": "READY",
+      "created": "2026-10-31 09:46:33.000000",
+      "updated": "2026-10-31 09:46:35.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3790,
+      "bytes": 1900104,
+      "result": 1690,
+      "status": "READY",
+      "created": "2026-10-31 09:46:35.000000",
+      "updated": "2026-10-31 09:46:35.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3791,
+      "bytes": 804091,
+      "result": 1690,
+      "status": "READY",
+      "created": "2026-10-31 09:46:35.000000",
+      "updated": "2026-10-31 09:46:37.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3792,
+      "bytes": 1960716,
+      "result": 1691,
+      "status": "READY",
+      "created": "2026-10-31 09:46:40.000000",
+      "updated": "2026-10-31 09:46:40.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3793,
+      "bytes": 718270,
+      "result": 1691,
+      "status": "READY",
+      "created": "2026-10-31 09:46:40.000000",
+      "updated": "2026-10-31 09:46:43.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3794,
+      "bytes": 2899824,
+      "result": 1692,
+      "status": "READY",
+      "created": "2026-10-31 09:46:52.000000",
+      "updated": "2026-10-31 09:46:52.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3795,
+      "bytes": 1095925,
+      "result": 1692,
+      "status": "READY",
+      "created": "2026-10-31 09:46:52.000000",
+      "updated": "2026-10-31 09:46:55.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3796,
+      "bytes": 2324165,
+      "result": 1693,
+      "status": "READY",
+      "created": "2026-10-31 09:47:16.000000",
+      "updated": "2026-10-31 09:47:16.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3797,
+      "bytes": 848990,
+      "result": 1693,
+      "status": "READY",
+      "created": "2026-10-31 09:47:16.000000",
+      "updated": "2026-10-31 09:47:18.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3798,
+      "bytes": 2238405,
+      "result": 1694,
+      "status": "READY",
+      "created": "2026-10-31 09:47:26.000000",
+      "updated": "2026-10-31 09:47:26.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3799,
+      "bytes": 910830,
+      "result": 1694,
+      "status": "READY",
+      "created": "2026-10-31 09:47:26.000000",
+      "updated": "2026-10-31 09:47:28.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3800,
+      "bytes": 2366162,
+      "result": 1695,
+      "status": "READY",
+      "created": "2026-10-31 09:47:44.000000",
+      "updated": "2026-10-31 09:47:44.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3801,
+      "bytes": 1032285,
+      "result": 1695,
+      "status": "READY",
+      "created": "2026-10-31 09:47:44.000000",
+      "updated": "2026-10-31 09:47:47.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3802,
+      "bytes": 2300095,
+      "result": 1696,
+      "status": "READY",
+      "created": "2026-10-31 09:47:56.000000",
+      "updated": "2026-10-31 09:47:56.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3803,
+      "bytes": 852126,
+      "result": 1696,
+      "status": "READY",
+      "created": "2026-10-31 09:47:56.000000",
+      "updated": "2026-10-31 09:47:58.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3804,
+      "bytes": 2122626,
+      "result": 1697,
+      "status": "READY",
+      "created": "2026-10-31 09:47:58.000000",
+      "updated": "2026-10-31 09:47:58.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3805,
+      "bytes": 808351,
+      "result": 1697,
+      "status": "READY",
+      "created": "2026-10-31 09:47:58.000000",
+      "updated": "2026-10-31 09:48:00.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3806,
+      "bytes": 2389745,
+      "result": 1698,
+      "status": "READY",
+      "created": "2026-10-31 09:48:01.000000",
+      "updated": "2026-10-31 09:48:01.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3807,
+      "bytes": 998008,
+      "result": 1698,
+      "status": "READY",
+      "created": "2026-10-31 09:48:01.000000",
+      "updated": "2026-10-31 09:48:03.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    },
+    {
+      "id": 3808,
+      "bytes": 2566848,
+      "result": 1699,
+      "status": "READY",
+      "created": "2026-10-31 09:48:06.000000",
+      "updated": "2026-10-31 09:48:06.000000",
+      "rendition": "ORIGINAL"
+    },
+    {
+      "id": 3809,
+      "bytes": 942101,
+      "result": 1699,
+      "status": "READY",
+      "created": "2026-10-31 09:48:06.000000",
+      "updated": "2026-10-31 09:48:09.000000",
+      "rendition": "DISPLAY_IMAGE_SLIM"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1896,
+      "object": 3783,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:06.000000",
+      "completed": "2026-10-31 09:46:10.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:06.000000"
+    },
+    {
+      "id": 1897,
+      "object": 3785,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:29.000000",
+      "completed": "2026-10-31 09:46:32.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:29.000000"
+    },
+    {
+      "id": 1898,
+      "object": 3787,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:32.000000",
+      "completed": "2026-10-31 09:46:35.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:32.000000"
+    },
+    {
+      "id": 1899,
+      "object": 3789,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:33.000000",
+      "completed": "2026-10-31 09:46:36.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:33.000000"
+    },
+    {
+      "id": 1900,
+      "object": 3791,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:35.000000",
+      "completed": "2026-10-31 09:46:37.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:35.000000"
+    },
+    {
+      "id": 1901,
+      "object": 3793,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:40.000000",
+      "completed": "2026-10-31 09:46:43.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:41.000000"
+    },
+    {
+      "id": 1902,
+      "object": 3795,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:46:52.000000",
+      "completed": "2026-10-31 09:46:55.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:46:52.000000"
+    },
+    {
+      "id": 1903,
+      "object": 3797,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:47:16.000000",
+      "completed": "2026-10-31 09:47:18.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:47:16.000000"
+    },
+    {
+      "id": 1904,
+      "object": 3799,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:47:26.000000",
+      "completed": "2026-10-31 09:47:29.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:47:26.000000"
+    },
+    {
+      "id": 1905,
+      "object": 3801,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:47:44.000000",
+      "completed": "2026-10-31 09:47:47.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:47:44.000000"
+    },
+    {
+      "id": 1906,
+      "object": 3803,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:47:56.000000",
+      "completed": "2026-10-31 09:47:59.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:47:56.000000"
+    },
+    {
+      "id": 1907,
+      "object": 3805,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:47:58.000000",
+      "completed": "2026-10-31 09:48:01.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:47:58.000000"
+    },
+    {
+      "id": 1908,
+      "object": 3807,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:48:01.000000",
+      "completed": "2026-10-31 09:48:04.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:48:01.000000"
+    },
+    {
+      "id": 1909,
+      "object": 3809,
+      "status": "SUCCEEDED",
+      "created": "2026-10-31 09:48:06.000000",
+      "completed": "2026-10-31 09:48:10.000000",
+      "operation": "DISPLAY_IMAGE_SLIM",
+      "submitted": "2026-10-31 09:48:06.000000"
+    }
+  ],
+  "query_ms": 1259.4,
+  "summary": [
+    {
+      "batch": 30,
+      "items": 14,
+      "statuses": {
+        "FAILED": 14
+      },
+      "batch_seconds": 18.0,
+      "metrics": {},
+      "estimated_peak_requests": 0,
+      "provider_calls": 14,
+      "results": 0
+    },
+    {
+      "batch": 31,
+      "items": 14,
+      "statuses": {
+        "SUCCESS": 14
+      },
+      "batch_seconds": 173.0,
+      "metrics": {
+        "creation_s": {
+          "n": 14,
+          "avg": 2.29,
+          "p50": 2.0,
+          "p95": 5.0,
+          "min": 0.0,
+          "max": 5.0
+        },
+        "queue_s": {
+          "n": 14,
+          "avg": 26.36,
+          "p50": 4.5,
+          "p95": 67.0,
+          "min": 3.0,
+          "max": 67.0
+        },
+        "pre_call_s": {
+          "n": 14,
+          "avg": 0.49,
+          "p50": 0.52,
+          "p95": 1.37,
+          "min": -0.16,
+          "max": 1.37
+        },
+        "provider_s": {
+          "n": 14,
+          "avg": 67.51,
+          "p50": 70.95,
+          "p95": 97.48,
+          "min": 27.76,
+          "max": 97.48
+        },
+        "post_call_s": {
+          "n": 14,
+          "avg": 17.0,
+          "p50": 16.5,
+          "p95": 23.0,
+          "min": 12.0,
+          "max": 23.0
+        },
+        "total_s": {
+          "n": 14,
+          "avg": 111.36,
+          "p50": 108.0,
+          "p95": 169.0,
+          "min": 47.0,
+          "max": 169.0
+        }
+      },
+      "estimated_peak_requests": 8,
+      "provider_calls": 14,
+      "results": 14
+    }
+  ],
+  "post_processing": {
+    "return_to_submit_s": {
+      "n": 14,
+      "avg": 1.0,
+      "p50": 1.0,
+      "p95": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "processing_s": {
+      "n": 14,
+      "avg": 2.93,
+      "p50": 3.0,
+      "p95": 4.0,
+      "min": 2.0,
+      "max": 4.0
+    },
+    "ready_to_success_s": {
+      "n": 14,
+      "avg": 13.07,
+      "p50": 13.5,
+      "p95": 19.0,
+      "min": 8.0,
+      "max": 19.0
+    }
+  }
+}

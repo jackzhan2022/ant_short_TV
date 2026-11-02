@@ -1,0 +1,261 @@
+[
+  {
+    "episode": 3,
+    "board": 4,
+    "shotSeconds": 10.5,
+    "generationSeconds": 11,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 3,
+    "board": 6,
+    "shotSeconds": 11.5,
+    "generationSeconds": 12,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 6,
+    "board": 4,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 6,
+    "board": 6,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 6,
+    "board": 8,
+    "shotSeconds": 6.5,
+    "generationSeconds": 7,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 10,
+    "board": 3,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 11,
+    "board": 1,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 12,
+    "board": 1,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 17,
+    "board": 2,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 18,
+    "board": 1,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 18,
+    "board": 5,
+    "shotSeconds": 8.5,
+    "generationSeconds": 9,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 19,
+    "board": 1,
+    "shotSeconds": 4.5,
+    "generationSeconds": 5,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 19,
+    "board": 5,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 19,
+    "board": 6,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 20,
+    "board": 4,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 20,
+    "board": 5,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 24,
+    "board": 5,
+    "shotSeconds": 9.5,
+    "generationSeconds": 10,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 29,
+    "board": 3,
+    "shotSeconds": 4.5,
+    "generationSeconds": 5,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 29,
+    "board": 5,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 29,
+    "board": 7,
+    "shotSeconds": 5.5,
+    "generationSeconds": 6,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 30,
+    "board": 5,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 32,
+    "board": 1,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 33,
+    "board": 9,
+    "shotSeconds": 8.5,
+    "generationSeconds": 9,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 34,
+    "board": 2,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 34,
+    "board": 4,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 34,
+    "board": 6,
+    "shotSeconds": 9.5,
+    "generationSeconds": 10,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 37,
+    "board": 4,
+    "shotSeconds": 8.5,
+    "generationSeconds": 9,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 39,
+    "board": 5,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 57,
+    "board": 4,
+    "shotSeconds": 9.5,
+    "generationSeconds": 10,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 57,
+    "board": 7,
+    "shotSeconds": 11.5,
+    "generationSeconds": 12,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 59,
+    "board": 2,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 65,
+    "board": 1,
+    "shotSeconds": 13.5,
+    "generationSeconds": 14,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 67,
+    "board": 6,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 67,
+    "board": 7,
+    "shotSeconds": 5.5,
+    "generationSeconds": 6,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 68,
+    "board": 3,
+    "shotSeconds": 14.5,
+    "generationSeconds": 15,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 68,
+    "board": 5,
+    "shotSeconds": 10.5,
+    "generationSeconds": 11,
+    "extraSeconds": 0.5
+  },
+  {
+    "episode": 70,
+    "board": 6,
+    "shotSeconds": 12.5,
+    "generationSeconds": 13,
+    "extraSeconds": 0.5
+  }
+]

@@ -1,0 +1,129 @@
+{
+  "projectId": 72,
+  "project": [
+    {
+      "id": 72,
+      "name": "乡厨闯大宴-节奏优化验证-原1、46、51集",
+      "tenantId": 1,
+      "skillVersion": "V2"
+    }
+  ],
+  "analysis": [
+    {
+      "id": 66,
+      "stage": null,
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorCode": null
+    }
+  ],
+  "counts": [
+    {
+      "boards": 20,
+      "episodes": 3,
+      "assetEpisodes": 3,
+      "boardEpisodes": 3,
+      "summaryEpisodes": 3
+    }
+  ],
+  "executions": [
+    {
+      "count": 1,
+      "scene": "script_analysis",
+      "status": "SUCCEEDED"
+    },
+    {
+      "count": 1,
+      "scene": "storyboard_breakdown",
+      "status": "FAILED"
+    },
+    {
+      "count": 6,
+      "scene": "storyboard_breakdown",
+      "status": "SUCCEEDED"
+    }
+  ],
+  "agents": [
+    {
+      "agent": "short-drama-global-understanding",
+      "count": 1,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-episode-splitting",
+      "count": 1,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-episode-summary",
+      "count": 3,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-asset-recognition",
+      "count": 3,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-asset-normalization",
+      "count": 1,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-storyboard",
+      "count": 6,
+      "status": "SUCCESS"
+    },
+    {
+      "agent": "short-drama-storyboard",
+      "count": 3,
+      "status": "FAILED"
+    }
+  ],
+  "failures": [
+    {
+      "id": 180908,
+      "scene": "storyboard_breakdown",
+      "status": "FAILED",
+      "errorCode": "HANDLER_FAILURE"
+    }
+  ],
+  "autoEvents": [
+    {
+      "count": 3,
+      "status": "DISPATCHED"
+    }
+  ],
+  "latestRuns": [
+    {
+      "id": 5227,
+      "status": "SUCCESS",
+      "episodeNo": 1,
+      "currentRevision": true
+    },
+    {
+      "id": 5228,
+      "status": "SUCCESS",
+      "episodeNo": 2,
+      "currentRevision": true
+    },
+    {
+      "id": 5229,
+      "status": "SUCCESS",
+      "episodeNo": 3,
+      "currentRevision": true
+    }
+  ],
+  "skillRuns": [
+    {
+      "v2": 1,
+      "count": 6,
+      "status": "SUCCESS"
+    },
+    {
+      "v2": 1,
+      "count": 3,
+      "status": "FAILED"
+    }
+  ]
+}

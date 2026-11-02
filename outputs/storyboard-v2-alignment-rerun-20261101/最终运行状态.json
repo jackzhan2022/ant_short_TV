@@ -1,0 +1,642 @@
+{
+  "projectId": 71,
+  "revision": "a3fa74cc4da73b1bad1dfe567e71e4a169fe49bc97c067ec071a21d63d8cdf69",
+  "latest": [
+    {
+      "id": 5301,
+      "status": "SUCCESS",
+      "episode": 1,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:24.000000",
+      "finishedAt": "2026-11-01 19:09:07.000000"
+    },
+    {
+      "id": 5302,
+      "status": "SUCCESS",
+      "episode": 2,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:32.000000",
+      "finishedAt": "2026-11-01 19:09:03.000000"
+    },
+    {
+      "id": 5303,
+      "status": "SUCCESS",
+      "episode": 3,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:35.000000",
+      "finishedAt": "2026-11-01 19:09:19.000000"
+    },
+    {
+      "id": 5304,
+      "status": "SUCCESS",
+      "episode": 4,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:53.000000",
+      "finishedAt": "2026-11-01 19:09:39.000000"
+    },
+    {
+      "id": 5305,
+      "status": "SUCCESS",
+      "episode": 5,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:53.000000",
+      "finishedAt": "2026-11-01 19:09:37.000000"
+    },
+    {
+      "id": 5306,
+      "status": "SUCCESS",
+      "episode": 6,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:07:59.000000",
+      "finishedAt": "2026-11-01 19:09:53.000000"
+    },
+    {
+      "id": 5307,
+      "status": "SUCCESS",
+      "episode": 7,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:08:30.000000",
+      "finishedAt": "2026-11-01 19:10:27.000000"
+    },
+    {
+      "id": 5308,
+      "status": "SUCCESS",
+      "episode": 8,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:08:36.000000",
+      "finishedAt": "2026-11-01 19:10:10.000000"
+    },
+    {
+      "id": 5309,
+      "status": "SUCCESS",
+      "episode": 9,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:12.000000",
+      "finishedAt": "2026-11-01 19:10:50.000000"
+    },
+    {
+      "id": 5310,
+      "status": "SUCCESS",
+      "episode": 10,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:13.000000",
+      "finishedAt": "2026-11-01 19:10:50.000000"
+    },
+    {
+      "id": 5311,
+      "status": "SUCCESS",
+      "episode": 11,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:22.000000",
+      "finishedAt": "2026-11-01 19:11:14.000000"
+    },
+    {
+      "id": 5312,
+      "status": "SUCCESS",
+      "episode": 12,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:45.000000",
+      "finishedAt": "2026-11-01 19:11:28.000000"
+    },
+    {
+      "id": 5313,
+      "status": "SUCCESS",
+      "episode": 13,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:51.000000",
+      "finishedAt": "2026-11-01 19:11:32.000000"
+    },
+    {
+      "id": 5314,
+      "status": "SUCCESS",
+      "episode": 14,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:09:57.000000",
+      "finishedAt": "2026-11-01 19:11:20.000000"
+    },
+    {
+      "id": 5315,
+      "status": "SUCCESS",
+      "episode": 15,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:10:13.000000",
+      "finishedAt": "2026-11-01 19:11:22.000000"
+    },
+    {
+      "id": 5316,
+      "status": "SUCCESS",
+      "episode": 16,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:10:29.000000",
+      "finishedAt": "2026-11-01 19:11:39.000000"
+    },
+    {
+      "id": 5317,
+      "status": "SUCCESS",
+      "episode": 17,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:10:58.000000",
+      "finishedAt": "2026-11-01 19:12:39.000000"
+    },
+    {
+      "id": 5318,
+      "status": "SUCCESS",
+      "episode": 18,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:10:59.000000",
+      "finishedAt": "2026-11-01 19:12:27.000000"
+    },
+    {
+      "id": 5319,
+      "status": "SUCCESS",
+      "episode": 19,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:19.000000",
+      "finishedAt": "2026-11-01 19:12:57.000000"
+    },
+    {
+      "id": 5320,
+      "status": "SUCCESS",
+      "episode": 20,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:31.000000",
+      "finishedAt": "2026-11-01 19:12:53.000000"
+    },
+    {
+      "id": 5321,
+      "status": "SUCCESS",
+      "episode": 21,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:34.000000",
+      "finishedAt": "2026-11-01 19:13:11.000000"
+    },
+    {
+      "id": 5322,
+      "status": "SUCCESS",
+      "episode": 22,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:35.000000",
+      "finishedAt": "2026-11-01 19:13:20.000000"
+    },
+    {
+      "id": 5323,
+      "status": "SUCCESS",
+      "episode": 23,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:35.000000",
+      "finishedAt": "2026-11-01 19:12:42.000000"
+    },
+    {
+      "id": 5324,
+      "status": "SUCCESS",
+      "episode": 24,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:11:40.000000",
+      "finishedAt": "2026-11-01 19:13:06.000000"
+    },
+    {
+      "id": 5325,
+      "status": "SUCCESS",
+      "episode": 25,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:12:36.000000",
+      "finishedAt": "2026-11-01 19:14:20.000000"
+    },
+    {
+      "id": 5326,
+      "status": "SUCCESS",
+      "episode": 26,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:12:47.000000",
+      "finishedAt": "2026-11-01 19:14:04.000000"
+    },
+    {
+      "id": 5327,
+      "status": "SUCCESS",
+      "episode": 27,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:12:48.000000",
+      "finishedAt": "2026-11-01 19:13:48.000000"
+    },
+    {
+      "id": 5328,
+      "status": "SUCCESS",
+      "episode": 28,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:00.000000",
+      "finishedAt": "2026-11-01 19:14:30.000000"
+    },
+    {
+      "id": 5329,
+      "status": "SUCCESS",
+      "episode": 29,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:05.000000",
+      "finishedAt": "2026-11-01 19:14:19.000000"
+    },
+    {
+      "id": 5330,
+      "status": "SUCCESS",
+      "episode": 30,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:10.000000",
+      "finishedAt": "2026-11-01 19:14:38.000000"
+    },
+    {
+      "id": 5331,
+      "status": "SUCCESS",
+      "episode": 31,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:27.000000",
+      "finishedAt": "2026-11-01 19:14:50.000000"
+    },
+    {
+      "id": 5332,
+      "status": "SUCCESS",
+      "episode": 32,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:27.000000",
+      "finishedAt": "2026-11-01 19:14:45.000000"
+    },
+    {
+      "id": 5333,
+      "status": "SUCCESS",
+      "episode": 33,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:13:53.000000",
+      "finishedAt": "2026-11-01 19:15:44.000000"
+    },
+    {
+      "id": 5334,
+      "status": "SUCCESS",
+      "episode": 34,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:09.000000",
+      "finishedAt": "2026-11-01 19:15:54.000000"
+    },
+    {
+      "id": 5335,
+      "status": "SUCCESS",
+      "episode": 35,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:24.000000",
+      "finishedAt": "2026-11-01 19:15:37.000000"
+    },
+    {
+      "id": 5336,
+      "status": "SUCCESS",
+      "episode": 36,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:24.000000",
+      "finishedAt": "2026-11-01 19:15:51.000000"
+    },
+    {
+      "id": 5338,
+      "status": "SUCCESS",
+      "episode": 37,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:44.000000",
+      "finishedAt": "2026-11-01 19:16:25.000000"
+    },
+    {
+      "id": 5337,
+      "status": "SUCCESS",
+      "episode": 38,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:42.000000",
+      "finishedAt": "2026-11-01 19:16:06.000000"
+    },
+    {
+      "id": 5339,
+      "status": "SUCCESS",
+      "episode": 39,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:14:52.000000",
+      "finishedAt": "2026-11-01 19:16:14.000000"
+    },
+    {
+      "id": 5340,
+      "status": "SUCCESS",
+      "episode": 40,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:15:06.000000",
+      "finishedAt": "2026-11-01 19:16:20.000000"
+    },
+    {
+      "id": 5341,
+      "status": "SUCCESS",
+      "episode": 41,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:15:39.000000",
+      "finishedAt": "2026-11-01 19:17:02.000000"
+    },
+    {
+      "id": 5342,
+      "status": "SUCCESS",
+      "episode": 42,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:15:52.000000",
+      "finishedAt": "2026-11-01 19:16:54.000000"
+    },
+    {
+      "id": 5344,
+      "status": "SUCCESS",
+      "episode": 43,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:00.000000",
+      "finishedAt": "2026-11-01 19:17:16.000000"
+    },
+    {
+      "id": 5343,
+      "status": "SUCCESS",
+      "episode": 44,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:15:58.000000",
+      "finishedAt": "2026-11-01 19:17:06.000000"
+    },
+    {
+      "id": 5345,
+      "status": "SUCCESS",
+      "episode": 45,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:11.000000",
+      "finishedAt": "2026-11-01 19:17:32.000000"
+    },
+    {
+      "id": 5346,
+      "status": "SUCCESS",
+      "episode": 46,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:17.000000",
+      "finishedAt": "2026-11-01 19:18:12.000000"
+    },
+    {
+      "id": 5347,
+      "status": "SUCCESS",
+      "episode": 47,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:22.000000",
+      "finishedAt": "2026-11-01 19:17:19.000000"
+    },
+    {
+      "id": 5348,
+      "status": "SUCCESS",
+      "episode": 48,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:27.000000",
+      "finishedAt": "2026-11-01 19:17:37.000000"
+    },
+    {
+      "id": 5349,
+      "status": "SUCCESS",
+      "episode": 49,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:16:58.000000",
+      "finishedAt": "2026-11-01 19:18:17.000000"
+    },
+    {
+      "id": 5350,
+      "status": "SUCCESS",
+      "episode": 50,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:11.000000",
+      "finishedAt": "2026-11-01 19:18:25.000000"
+    },
+    {
+      "id": 5351,
+      "status": "SUCCESS",
+      "episode": 51,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:14.000000",
+      "finishedAt": "2026-11-01 19:18:19.000000"
+    },
+    {
+      "id": 5352,
+      "status": "SUCCESS",
+      "episode": 52,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:19.000000",
+      "finishedAt": "2026-11-01 19:19:07.000000"
+    },
+    {
+      "id": 5353,
+      "status": "SUCCESS",
+      "episode": 53,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:24.000000",
+      "finishedAt": "2026-11-01 19:18:25.000000"
+    },
+    {
+      "id": 5354,
+      "status": "SUCCESS",
+      "episode": 54,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:35.000000",
+      "finishedAt": "2026-11-01 19:19:04.000000"
+    },
+    {
+      "id": 5355,
+      "status": "SUCCESS",
+      "episode": 55,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:17:51.000000",
+      "finishedAt": "2026-11-01 19:19:27.000000"
+    },
+    {
+      "id": 5356,
+      "status": "SUCCESS",
+      "episode": 56,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:18:17.000000",
+      "finishedAt": "2026-11-01 19:19:51.000000"
+    },
+    {
+      "id": 5357,
+      "status": "SUCCESS",
+      "episode": 57,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:18:22.000000",
+      "finishedAt": "2026-11-01 19:20:05.000000"
+    },
+    {
+      "id": 5358,
+      "status": "SUCCESS",
+      "episode": 58,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:18:22.000000",
+      "finishedAt": "2026-11-01 19:19:39.000000"
+    },
+    {
+      "id": 5359,
+      "status": "SUCCESS",
+      "episode": 59,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:18:27.000000",
+      "finishedAt": "2026-11-01 19:19:44.000000"
+    },
+    {
+      "id": 5360,
+      "status": "SUCCESS",
+      "episode": 60,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:18:27.000000",
+      "finishedAt": "2026-11-01 19:19:26.000000"
+    },
+    {
+      "id": 5361,
+      "status": "SUCCESS",
+      "episode": 61,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:09.000000",
+      "finishedAt": "2026-11-01 19:20:07.000000"
+    },
+    {
+      "id": 5362,
+      "status": "SUCCESS",
+      "episode": 62,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:14.000000",
+      "finishedAt": "2026-11-01 19:20:28.000000"
+    },
+    {
+      "id": 5363,
+      "status": "SUCCESS",
+      "episode": 63,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:30.000000",
+      "finishedAt": "2026-11-01 19:20:51.000000"
+    },
+    {
+      "id": 5364,
+      "status": "SUCCESS",
+      "episode": 64,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:36.000000",
+      "finishedAt": "2026-11-01 19:20:55.000000"
+    },
+    {
+      "id": 5365,
+      "status": "SUCCESS",
+      "episode": 65,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:42.000000",
+      "finishedAt": "2026-11-01 19:20:51.000000"
+    },
+    {
+      "id": 5366,
+      "status": "SUCCESS",
+      "episode": 66,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:47.000000",
+      "finishedAt": "2026-11-01 19:21:12.000000"
+    },
+    {
+      "id": 5367,
+      "status": "SUCCESS",
+      "episode": 67,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:19:56.000000",
+      "finishedAt": "2026-11-01 19:21:41.000000"
+    },
+    {
+      "id": 5369,
+      "status": "SUCCESS",
+      "episode": 68,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:20:14.000000",
+      "finishedAt": "2026-11-01 19:21:29.000000"
+    },
+    {
+      "id": 5368,
+      "status": "SUCCESS",
+      "episode": 69,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:20:12.000000",
+      "finishedAt": "2026-11-01 19:21:36.000000"
+    },
+    {
+      "id": 5370,
+      "status": "SUCCESS",
+      "episode": 70,
+      "newSkill": true,
+      "errorCode": null,
+      "startedAt": "2026-11-01 19:20:32.000000",
+      "finishedAt": "2026-11-01 19:22:23.000000"
+    }
+  ],
+  "counts": {
+    "SUCCESS": 70,
+    "RUNNING": 0,
+    "FAILED": 0
+  },
+  "notSubmitted": []
+}

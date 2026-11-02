@@ -1,0 +1,27 @@
+{
+  "before": {
+    "shotSeconds": 5155.0,
+    "meanShotSeconds": 4.151,
+    "shotsPerBoard": {
+      "1": 3,
+      "2": 101,
+      "3": 277,
+      "4": 49,
+      "5": 2
+    },
+    "shortBoards": 62
+  },
+  "after": {
+    "shotSeconds": 4736.5,
+    "meanShotSeconds": 3.68,
+    "shotsPerBoard": {
+      "1": 5,
+      "2": 65,
+      "3": 193,
+      "4": 112,
+      "5": 19,
+      "6": 5
+    },
+    "shortBoards": 66
+  }
+}

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+release/
+release-antv/
+smoke-output/

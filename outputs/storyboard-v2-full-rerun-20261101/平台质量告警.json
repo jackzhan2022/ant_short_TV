@@ -1,0 +1,249 @@
+[
+  {
+    "episode": 4,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4
+  },
+  {
+    "episode": 5,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4
+  },
+  {
+    "episode": 5,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6
+  },
+  {
+    "episode": 9,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0016"
+  },
+  {
+    "episode": 11,
+    "code": "ACTION_DENSITY",
+    "shotNo": 4,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5
+  },
+  {
+    "episode": 13,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1
+  },
+  {
+    "episode": 13,
+    "code": "ACTION_DENSITY",
+    "shotNo": 5,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 13,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0026"
+  },
+  {
+    "episode": 15,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2
+  },
+  {
+    "episode": 15,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5
+  },
+  {
+    "episode": 16,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2
+  },
+  {
+    "episode": 21,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5
+  },
+  {
+    "episode": 27,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2
+  },
+  {
+    "episode": 28,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0014"
+  },
+  {
+    "episode": 29,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6
+  },
+  {
+    "episode": 29,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0030"
+  },
+  {
+    "episode": 32,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6
+  },
+  {
+    "episode": 34,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0022"
+  },
+  {
+    "episode": 37,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2
+  },
+  {
+    "episode": 41,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0003"
+  },
+  {
+    "episode": 41,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0015"
+  },
+  {
+    "episode": 43,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 44,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 45,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0019"
+  },
+  {
+    "episode": 47,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 53,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2
+  },
+  {
+    "episode": 54,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5
+  },
+  {
+    "episode": 60,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1
+  },
+  {
+    "episode": 61,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 61,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0009"
+  },
+  {
+    "episode": 63,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0006"
+  },
+  {
+    "episode": 64,
+    "code": "ACTION_DENSITY",
+    "shotNo": 4,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4
+  },
+  {
+    "episode": 66,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6
+  },
+  {
+    "episode": 67,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5
+  },
+  {
+    "episode": 68,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4
+  },
+  {
+    "episode": 69,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0002"
+  },
+  {
+    "episode": 70,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3
+  },
+  {
+    "episode": 70,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0019"
+  },
+  {
+    "episode": 70,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0022"
+  }
+]

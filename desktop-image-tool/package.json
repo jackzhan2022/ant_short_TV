@@ -1,0 +1,63 @@
+{
+  "name": "antv-image-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ANTV生图 · 个人图片创作桌面工具",
+  "author": "Ant Short TV",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.cjs",
+    "start": "npm run build && electron .",
+    "lint": "biome check src tests scripts package.json tsconfig.json tsconfig.renderer.json && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "npm run build && node --test tests/*.cjs",
+    "pack": "npm run build && electron-builder --win nsis portable --x64",
+    "smoke": "npm run build && node scripts/smoke.cjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@types/node": "24.10.0",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "playwright-core": "^1.58.2",
+    "typescript": "5.9.3"
+  },
+  "build": {
+    "appId": "com.antshorttv.antv-image-studio",
+    "productName": "ANTV生图",
+    "directories": {
+      "output": "release-antv"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/renderer.js",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "shortcutName": "ANTV生图",
+      "artifactName": "ANTV生图-${version}-Setup.exe",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052"
+    },
+    "portable": {
+      "artifactName": "ANTV生图-${version}-Portable.exe"
+    }
+  }
+}

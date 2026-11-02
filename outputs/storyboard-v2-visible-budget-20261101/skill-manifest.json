@@ -1,0 +1,10 @@
+{
+  "commit": "27f51f54a7dcfe6cc3fe7429f3c91660e32c25e3",
+  "previousSha256": "629326feb9ac998033b6a4d7f2bab47c732b468bfcd07754afd6fe99948d41be",
+  "newSha256": "9f431d7a88a9d5b2a0eae2d7ce3faf26d0defdb8a70fd63f7c5754c3cecf6c07",
+  "description": "可见信息与屏幕时间预算：过程结果同镜、代表工序计时和无效停留检查",
+  "targetProjectId": 72,
+  "targetEpisodes": [
+    3
+  ]
+}

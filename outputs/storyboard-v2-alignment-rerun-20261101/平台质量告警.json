@@ -1,0 +1,711 @@
+[
+  {
+    "episode": 9,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0016"
+  },
+  {
+    "episode": 11,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 7,
+    "seconds": 4.5,
+    "shot": {
+      "action": "中景从盛菜动作入镜，以明确工序跳切省略重复盛取，保留最后一勺入盘；随后王大山双手端盘从灶前移到近旁桌边，放稳盘子并松手。保留落盘轻响。",
+      "camera": "缓慢横向跟随端盘路径，动作结果落在桌面。",
+      "shotNo": 2,
+      "performance": "无对白，盛菜、端盘、落桌按顺序，不表现为瞬间完成。",
+      "positioning": "王大山在灶前，盘子紧靠锅边，操作桌距灶位一步，顾总站桌子另一端画外。",
+      "sourceAnchor": "S0018",
+      "durationSeconds": 4.5,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 13,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0026"
+  },
+  {
+    "episode": 14,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 3,
+    "shot": {
+      "action": "中景，王大山喘着气摘下围裙，接着拿干净毛巾擦汗。",
+      "camera": "固定中景保留连续动作。",
+      "shotNo": 1,
+      "performance": "肩部随喘息起伏，动作结束时毛巾仍在手中，围裙已经脱下。",
+      "positioning": "王大山在出餐台旁仍穿围裙，干净毛巾就在手边；王晓梅在他左侧一米外。",
+      "sourceAnchor": "S0019",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 14,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 3,
+    "shot": {
+      "action": "王大山把毛巾搭到脖子上，随后用左臂揽住王晓梅肩头，带她沿通道往门口走。",
+      "camera": "侧后方平稳跟随至门边。",
+      "shotNo": 2,
+      "performance": "搭毛巾与揽肩按先后完成，二人并行。",
+      "positioning": "王大山在王晓梅右侧，两人距门口数步；王大山已脱围裙，毛巾仍在手里。",
+      "sourceAnchor": "S0025",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 15,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2,
+    "seconds": 3,
+    "shot": {
+      "action": "切双人中景显露共同面对的人手问题，王大山接着问“恁、建国、春桃仨人能来不？”",
+      "camera": "固定双人中景。",
+      "shotNo": 2,
+      "performance": "承接上一镜同句同期声音，不重新起句；王晓梅只听。",
+      "positioning": "相同轴线，王大山左、王晓梅右，手机保持胸前。",
+      "sourceAnchor": "S0006",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 20,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 2.5,
+    "shot": {
+      "action": "胡百德中近景，接着说完把李老板要的狮子头端出来。",
+      "camera": "同轴固定紧构图。",
+      "shotNo": 3,
+      "performance": "胡百德延续同期“把李老板要的狮子头端出来”，不重起；冷笑不变，无额外反应停留。",
+      "positioning": "胡百德右侧站定朝左，晓梅肩部在左前景，李老板画外左侧。",
+      "sourceAnchor": "S0012",
+      "durationSeconds": 2.5,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 21,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6,
+    "seconds": 4,
+    "shot": {
+      "action": "中景，桂兰婶从托盘递来下一只狮子头至李明手边；随后赵建国往另一口锅添汤。两项协作在同框内依次清楚呈现，不另演李明重复下锅。",
+      "camera": "固定，沿灶台斜拍三人协作。",
+      "shotNo": 1,
+      "positioning": "李明在右侧灶前，漏勺托着刚煎好的肉团；桂兰婶在左侧托盘旁，赵建国在另一口锅边。",
+      "sourceAnchor": "S0026",
+      "durationSeconds": 4,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 22,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5,
+    "seconds": 3,
+    "shot": {
+      "action": "中景，王大山把狮子头放回托盘，随后拍了拍李明肩膀；李明重新拢起肉馅，恢复做菜。",
+      "camera": "固定稍俯，让落盘、拍肩与重新拢馅均可见。",
+      "shotNo": 2,
+      "performance": "王大山完成落盘后用空手轻拍李明肩部，接触可见；李明视线回到工作。",
+      "positioning": "托盘在王大山与李明前方，原放置位置空着；李明双手在肉馅上方。",
+      "sourceAnchor": "S0022",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 24,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 2,
+    "shot": {
+      "action": "中近景，李母说“我尝尝”，随后夹起一口送进嘴里。",
+      "camera": "固定，完整保留从盘到嘴的路径。",
+      "shotNo": 3,
+      "dialogue": "李母:“我尝尝。”",
+      "performance": "李母同期短句说完后进食，不边含食物边说话。",
+      "positioning": "李母右手筷子停在已分开的一口肉旁，台面盘子下沿可见。",
+      "sourceAnchor": "S0012",
+      "durationSeconds": 2,
+      "soundSegmentIds": [
+        "S0011"
+      ]
+    }
+  },
+  {
+    "episode": 26,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5,
+    "seconds": 6.5,
+    "shot": {
+      "action": "三人中景，王晓梅抬头认真说：“您给我五分钟，我问清楚再给您个准话。”梁会长随后答：“行。”",
+      "camera": "固定，保留提出请求与获准的完整关系。",
+      "shotNo": 1,
+      "dialogue": "王晓梅（认真）：“您给我五分钟，我问清楚再给您个准话。”\n梁会长：“行。”",
+      "performance": "晓梅同期完整说完，眼神重新对准梁会长；会长只在自己的短答时张嘴，两人声音不重叠。",
+      "positioning": "三人维持原位，王晓梅左中，大山在她左侧，梁会长在右侧；通道位于晓梅左后方。",
+      "sourceAnchor": "S0019",
+      "durationSeconds": 6.5,
+      "soundSegmentIds": [
+        "S0018",
+        "S0019"
+      ]
+    }
+  },
+  {
+    "episode": 28,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0014"
+  },
+  {
+    "episode": 29,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6,
+    "seconds": 5,
+    "shot": {
+      "action": "中景，胡百德一掌拍桌，继而抬手直指高师傅，禁止接百味楼的活。",
+      "camera": "固定保持拍桌接指人路径。",
+      "shotNo": 1,
+      "dialogue": "胡百德：“挣谁的钱都可以，百味楼的，绝对不行！”",
+      "performance": "胡百德同期说：挣谁的钱都可以，百味楼的，绝对不行！强调“绝对不行”。",
+      "positioning": "胡百德撑桌面向站在右侧的高师傅，马强坐左侧。",
+      "sourceAnchor": "S0022",
+      "durationSeconds": 5,
+      "soundSegmentIds": [
+        "S0022"
+      ]
+    }
+  },
+  {
+    "episode": 29,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0030"
+  },
+  {
+    "episode": 30,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1,
+    "seconds": 6,
+    "shot": {
+      "action": "双人中景，高师傅急忙起身，俯身越过茶桌，以右手握住胡百德持手机的右手，将其拦住，随后急切求情。接触位置清楚入画。",
+      "camera": "固定桌侧机位，看清起身路径和两手接触。",
+      "shotNo": 3,
+      "dialogue": "高师傅（急切、哭腔）：“师傅，别打！那可是我平时吃饭的活呀！”",
+      "performance": "高师傅带哭腔同期说：师傅，别打！那可是我平时吃饭的活呀！胡百德不说话。",
+      "positioning": "高师傅画右坐起，胡百德画左仍坐，手机在胡百德右手。",
+      "sourceAnchor": "S0004",
+      "durationSeconds": 6,
+      "soundSegmentIds": [
+        "S0004"
+      ]
+    }
+  },
+  {
+    "episode": 30,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5,
+    "seconds": 1.5,
+    "shot": {
+      "action": "双人中景，胡百德松开手腕，双手砸向桌面，随后撑桌俯身逼近高师傅。保留双掌砸桌声，桌面保持完整。",
+      "camera": "桌侧固定，清楚呈现松腕、砸桌和逼近结果。",
+      "shotNo": 2,
+      "positioning": "胡百德站画左，右手原压高师傅手腕；高师傅画右坐着持机。",
+      "sourceAnchor": "S0017",
+      "durationSeconds": 1.5,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 31,
+    "code": "ACTION_DENSITY",
+    "shotNo": 4,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1,
+    "seconds": 3,
+    "shot": {
+      "action": "中近景，王晓梅右手从口袋掏出手机，划开屏幕拨号，随后举至右耳。",
+      "camera": "固定，兼顾手部与面部。",
+      "shotNo": 4,
+      "performance": "眉头紧锁，动作急促，不添加拨号提示台词。",
+      "positioning": "王晓梅位于右侧灶台旁，手机在衣袋内，李明在画外左侧。",
+      "sourceAnchor": "S0005",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 34,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 4,
+    "shot": {
+      "action": "斜俯中近景，牛肉分别落入两口锅；明确工序跳切至检查两锅密封、随后开火，两口锅均置于火上。不是即时煮熟。",
+      "camera": "固定，保持两口锅始终可辨。",
+      "shotNo": 3,
+      "positioning": "赵建国在灶边，两口商用压力锅并列，改刀焯水牛肉在手边。",
+      "sourceAnchor": "S0019",
+      "durationSeconds": 4,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 34,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0022"
+  },
+  {
+    "episode": 37,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1,
+    "seconds": 3,
+    "shot": {
+      "action": "中景，旺火中赵建国颠锅，接着倾锅将菜倒入盘中，菜落盘后切走；保留炒菜与落盘声。集名只作内容索引，不叠字。",
+      "camera": "固定斜侧机位，同时看清锅口与接菜盘。",
+      "shotNo": 1,
+      "positioning": "赵建国在画面左侧灶台前，锅在手中，盘在灶旁台面；后方通道通向餐车。",
+      "sourceAnchor": "S0002",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 37,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2,
+    "seconds": 5,
+    "shot": {
+      "action": "中景，李明靠墙坐下，大口喘气，随后笑着感叹。",
+      "camera": "固定侧面中景，保留坐下的完整动作。",
+      "shotNo": 1,
+      "dialogue": "李明（笑）：“娘嘞，一百桌！还真让咱做完了！”",
+      "performance": "李明同期：“娘嘞，一百桌！还真让咱做完了！”喘气转为带笑发声。",
+      "positioning": "李明在灶台旁的墙边，刘春桃站在他侧前方约一步半，手里有干净毛巾。王大山在灶位，现场画外。",
+      "sourceAnchor": "S0009",
+      "durationSeconds": 5,
+      "soundSegmentIds": [
+        "S0009"
+      ]
+    }
+  },
+  {
+    "episode": 41,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0003"
+  },
+  {
+    "episode": 41,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0015"
+  },
+  {
+    "episode": 42,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 5.5,
+    "shot": {
+      "action": "双人中景，胡百德猛地一掌拍在桌上，紧接着站起，任国华仍坐着。保留清楚的拍桌声与高低位置变化。",
+      "camera": "固定略宽中景，预留站起的头部空间。",
+      "shotNo": 1,
+      "dialogue": "胡百德（怒）：“任国华！你请我来撑场面，还处处防着我？想找个听话的，你雇伙夫去！”",
+      "performance": "胡百德拍桌后怒声起句：任国华！你请我来撑场面，还处处防着我？整句声音延续到下一镜，不重起。任国华无新增反应。",
+      "positioning": "胡百德起始坐桌左，任国华坐桌右靠椅背；送货单仍在胡百德面前桌上。",
+      "sourceAnchor": "S0011",
+      "durationSeconds": 5.5,
+      "soundSegmentIds": [
+        "S0011"
+      ]
+    }
+  },
+  {
+    "episode": 42,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 5,
+    "shot": {
+      "action": "双人中景，任国华双手撑住桌面发力站起，随后抬手指向胡百德，两人形成隔桌平视对峙。",
+      "camera": "固定侧面中景，清楚呈现撑桌、站起与指向。",
+      "shotNo": 1,
+      "dialogue": "任国华（喝斥）：“少跟我叫板！我请你来做菜，没请你当老板！采购的事，没得谈！”",
+      "performance": "任国华起身喝斥：少跟我叫板！我请你来做菜，没请你当老板！发声连续到下一镜。胡百德不对口型。",
+      "positioning": "胡百德已站桌左，任国华起始仍坐桌右，送货单留在桌左侧。",
+      "sourceAnchor": "S0013",
+      "durationSeconds": 5,
+      "soundSegmentIds": [
+        "S0013"
+      ]
+    }
+  },
+  {
+    "episode": 43,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 6,
+    "shot": {
+      "action": "任国华收回手，笑了两声，继而笑着发起厨艺赛邀约。",
+      "camera": "从王晓梅肩后固定看任国华中近景。",
+      "shotNo": 2,
+      "dialogue": "任国华（得意地笑）：“市里办厨艺赛，想跟您这边切磋切磋，听说你大伯手艺不错，敢不敢来比比？”",
+      "performance": "任国华同期：“市里办厨艺赛，想跟您这边切磋切磋，听说你大伯手艺不错，敢不敢来比比？”本镜说至“切磋切磋”，余句续至下镜。王晓梅不对口型。",
+      "positioning": "邀请函留在王晓梅面前，任国华手还在台面上，王晓梅在近前景。",
+      "sourceAnchor": "S0015",
+      "durationSeconds": 6,
+      "soundSegmentIds": [
+        "S0015"
+      ]
+    }
+  },
+  {
+    "episode": 45,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0019"
+  },
+  {
+    "episode": 46,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 4,
+    "shot": {
+      "action": "观众中景，群像瞪大眼睛；甲吃惊开口，乙随后点头称赞，二人保持同框。",
+      "camera": "固定在看台侧前方，用不同表情承载同一成品反应。",
+      "shotNo": 1,
+      "dialogue": "观众甲（吃惊）：“这萝卜丝，切得跟针似的！”\n观众乙（点头）：“不愧是名厨。”",
+      "performance": "观众甲同期说“这萝卜丝，切得跟针似的！”观众乙随后同期说“不愧是名厨。”其他人只做无声反应。",
+      "positioning": "观众甲与观众乙并立看台旁，其他观众在二人侧后方，均望向胡百德右侧厨艺台；命名人物不在群像中重复生成。",
+      "sourceAnchor": "S0021",
+      "durationSeconds": 4,
+      "soundSegmentIds": [
+        "S0020",
+        "S0021"
+      ]
+    }
+  },
+  {
+    "episode": 49,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5,
+    "seconds": 3.5,
+    "shot": {
+      "action": "斜侧中近景，大山拎起一只虾查看，继而用另一手抬斜盘沿查看装虾的盘底，盘中虾不倒出；检查过程和盘底同时可读，不新增问题食材结论。",
+      "camera": "固定斜侧机位，面部与手中食材同框。",
+      "shotNo": 2,
+      "performance": "大山目光从虾转到盘底，无对白。",
+      "positioning": "大山在左台后，双手空出；鲜虾在面前盘内，菌菇及葱姜蒜留在旁边。",
+      "sourceAnchor": "S0022",
+      "durationSeconds": 3.5,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 50,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 4.5,
+    "shot": {
+      "action": "双人中景偏重胡百德，他轻蔑地哼一声“哼。”随后挑出一只开背虾，朝王大山面前举起，说“要吃就吃这上等的肉”。举起的虾与两人视线同框。",
+      "camera": "固定侧向关系机位，保持王左胡右，展示手臂伸向对方的路径。",
+      "shotNo": 1,
+      "dialogue": "胡百德（不屑）：“哼。”\n胡百德：“要吃就吃这上等的肉”",
+      "performance": "只有胡百德同期发声；动作段的哼声与台词“哼”为同一次，不重复。说到“上等的肉”时把虾稳在展示高度，王大山不增添反应。",
+      "positioning": "右台胡百德面向左侧王大山；左侧画边可见王大山端锅的身侧。开背虾在胡百德台前，白瓷盘在他手边。",
+      "sourceAnchor": "S0020",
+      "durationSeconds": 4.5,
+      "soundSegmentIds": [
+        "S0018",
+        "S0020"
+      ]
+    }
+  },
+  {
+    "episode": 51,
+    "code": "ACTION_DENSITY",
+    "shotNo": 4,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2,
+    "seconds": 4,
+    "shot": {
+      "action": "中近景，胡百德向虾背逐个铺入蒜蓉，跳切省略重复填料；随后双手托起整盘虾送入蒸箱，盘面保持水平。",
+      "camera": "单次向右短摇，跟随白瓷盘从操作台进入蒸箱。",
+      "shotNo": 4,
+      "performance": "动作精确，无对白，不表现即刻蒸熟。",
+      "positioning": "胡百德立于右台，花形虾盘在面前，蒜蓉置于手边，蒸箱紧邻右台外侧。",
+      "sourceAnchor": "S0016",
+      "durationSeconds": 4,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 52,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 1,
+    "seconds": 3,
+    "shot": {
+      "action": "斜俯近景，一勺虾茸落入砂锅，随后接连挖出几只虾丸；以明确工序跳切省去重复成形时间。片名仅作来源标题，不叠字。",
+      "camera": "固定，手与锅同框。",
+      "shotNo": 1,
+      "performance": "注意力落在勺尖，无对白。",
+      "positioning": "王大山在左侧操作台后，砂锅在身前，右手持勺，虾茸在锅旁。",
+      "sourceAnchor": "S0002",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 52,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 4,
+    "shot": {
+      "action": "中近景，魏评委舀一匙汤尝下，眼睛一亮，随后换筷夹起虾丸品尝。",
+      "camera": "固定，把手到嘴的路径和眼神同时纳入。",
+      "shotNo": 2,
+      "performance": "先尝汤再吃丸，嘴中有食物时不说话。",
+      "positioning": "魏评委坐在桌后，砂锅置前景左侧，手边有勺和筷子。",
+      "sourceAnchor": "S0016",
+      "durationSeconds": 4,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 53,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 2,
+    "seconds": 6.5,
+    "shot": {
+      "action": "双人中景，李明用力拍两下手，朝赛台竖起大拇指，随后笑着转看王晓梅，兴奋地说：“大山叔这一锅，真给咱挣脸！”王晓梅微笑回应：“还有最后一轮呢。”",
+      "camera": "固定双人中景，不因换发声者切镜。",
+      "shotNo": 1,
+      "emotion": "李明兴奋，王晓梅喜悦中保持冷静",
+      "dialogue": "李明（兴奋）：“大山叔这一锅，真给咱挣脸！”\n王晓梅（微笑）：“还有最后一轮呢。”",
+      "performance": "先清楚呈现两次拍手与拇指，再转头同期说话；王晓梅接句时李明闭口听。掌声作为现场背景逐渐减弱。",
+      "positioning": "李明在观众席画左、王晓梅在其右侧相邻座位，两人面朝赛台，后方是鼓掌观众。",
+      "sourceAnchor": "S0011",
+      "durationSeconds": 6.5,
+      "soundSegmentIds": [
+        "S0010",
+        "S0011"
+      ]
+    }
+  },
+  {
+    "episode": 54,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 2.5,
+    "shot": {
+      "action": "三人中景，马强紧张应声：“是！”随后厨师甲和厨师乙紧张地对视一眼，命令的压力落实到群体反应。",
+      "camera": "固定三人同框反向关系镜头，不改变物理站位。",
+      "shotNo": 3,
+      "dialogue": "马强（紧张）：“是！”",
+      "performance": "只有马强说话对口型；甲乙闭口交换眼神，嘴角绷紧，不另加动作。",
+      "positioning": "马强位于画面左，厨师甲和厨师乙并排位于右侧，三人面对画外左方胡百德。",
+      "sourceAnchor": "S0011",
+      "durationSeconds": 2.5,
+      "soundSegmentIds": [
+        "S0010"
+      ]
+    }
+  },
+  {
+    "episode": 54,
+    "code": "ACTION_DENSITY",
+    "shotNo": 4,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 5,
+    "shot": {
+      "action": "中景桂兰婶满脸笑容地挽起袖子，随后双手兴奋合拍；动作间同期笑说：“俺在底下看了半天，可算轮着俺动手了！”以合掌后的兴奋神情收尾，不新增开工动作。",
+      "camera": "固定中景，同时看清袖口、双手接触及面部。",
+      "shotNo": 4,
+      "dialogue": "桂兰婶（笑）：“俺在底下看了半天，可算轮着俺动手了！”",
+      "performance": "桂兰婶边挽袖边说前半句，完成挽袖后双掌拍合，说完后半句；保留清脆拍掌声，其他人不对口型。",
+      "positioning": "桂兰婶在画面中央，面向右侧王大山，双手空着，袖口尚未挽起；赵建国与刘春桃留在侧后景。",
+      "sourceAnchor": "S0017",
+      "durationSeconds": 5,
+      "soundSegmentIds": [
+        "S0017"
+      ]
+    }
+  },
+  {
+    "episode": 55,
+    "code": "ACTION_DENSITY",
+    "shotNo": 3,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 5,
+    "shot": {
+      "action": "双人中景，马强焦急抗议：“师傅！一会来不及了！”胡百德瞪着马强，紧接着说：“我还没看完，谁都不许送！”",
+      "camera": "固定关系构图，不为换说话者反打。",
+      "shotNo": 3,
+      "dialogue": "马强（着急）：“师傅！一会来不及了！”\n胡百德（瞪着马强）：“我还没看完，谁都不许送！”",
+      "performance": "先马强同期发声约2秒，后胡百德发声约3秒，听者不对口型；马强不擅自送走菜盘。",
+      "positioning": "马强与胡百德隔着餐车相对，马强继续双手端盘，胡百德仍挡在出口侧。",
+      "sourceAnchor": "S0023",
+      "durationSeconds": 5,
+      "soundSegmentIds": [
+        "S0022",
+        "S0023"
+      ]
+    }
+  },
+  {
+    "episode": 58,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 5,
+    "seconds": 3,
+    "shot": {
+      "action": "近景，胡百德收起笑容，脸色阴沉，说：“行，明天面谈。”随后按下挂断，手机随右手降至身侧。",
+      "camera": "固定近景含手机，读清表情转变与挂断结果。",
+      "shotNo": 1,
+      "dialogue": "胡百德（阴沉）：“行，明天面谈。”",
+      "performance": "胡百德同期低沉回应，挂断后电话声结束。",
+      "positioning": "胡百德面对手机，右手持机于胸前；胡美兰在车门边，马强在右后侧。",
+      "sourceAnchor": "S0022",
+      "durationSeconds": 3,
+      "soundSegmentIds": [
+        "S0021"
+      ]
+    }
+  },
+  {
+    "episode": 61,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0009"
+  },
+  {
+    "episode": 63,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0006"
+  },
+  {
+    "episode": 66,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 6,
+    "seconds": 4.5,
+    "shot": {
+      "action": "双人中近景，孙晴紧接着同期说：“可胡美兰把货车横在卸货口，不肯挪！”",
+      "camera": "固定双人中近景突出消息转折。",
+      "shotNo": 2,
+      "dialogue": "孙晴（焦急）：“可胡美兰把货车横在卸货口，不肯挪！”",
+      "performance": "孙晴焦急说清堵门原因；王晓梅听，不替孙晴对口型；胡美兰仅被提及，不入画。",
+      "positioning": "孙晴停在王晓梅侧前方，王晓梅面向她；胡百德位于右侧画外。",
+      "sourceAnchor": "S0028",
+      "durationSeconds": 4.5,
+      "soundSegmentIds": [
+        "S0028"
+      ]
+    }
+  },
+  {
+    "episode": 69,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0002"
+  },
+  {
+    "episode": 70,
+    "code": "ACTION_DENSITY",
+    "shotNo": 1,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 3,
+    "seconds": 4.5,
+    "shot": {
+      "action": "中全景，胡美兰起身跟出门；周调解员和林记录员同时收拢桌面材料，随后携材料离开会议室。",
+      "camera": "固定，门与桌端同时可见。",
+      "shotNo": 1,
+      "performance": "动作利落，无新增对白；纸张收拢声接脚步声。",
+      "positioning": "胡美兰在桌右侧地面，胡百德已出门；两名工作人员在桌端，王晓梅坐在对面。",
+      "sourceAnchor": "S0006",
+      "durationSeconds": 4.5,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 70,
+    "code": "ACTION_DENSITY",
+    "shotNo": 2,
+    "message": "动作描述可能包含多个连续节拍，请按需人工检查。",
+    "storyboardNo": 4,
+    "seconds": 3,
+    "shot": {
+      "action": "中近景，李明用筷子夹起锅中菜送入口中试吃，随后松口气。",
+      "camera": "固定，锅口与李明脸部同框。",
+      "shotNo": 2,
+      "performance": "尝过后肩头放松，不新增评价台词。",
+      "positioning": "李明在右侧炒锅前，手持试菜筷子，王大山在画外水槽边。",
+      "sourceAnchor": "S0009",
+      "durationSeconds": 3,
+      "soundSegmentIds": []
+    }
+  },
+  {
+    "episode": 70,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0019"
+  },
+  {
+    "episode": 70,
+    "code": "SOURCE_SPEAKER_UNCONFIRMED",
+    "segmentId": "S0022"
+  }
+]

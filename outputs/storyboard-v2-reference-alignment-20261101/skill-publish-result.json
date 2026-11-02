@@ -1,0 +1,18 @@
+{
+  "commit": "18d84b95e3de2b863c137ad032ece639c9365723",
+  "previousSha256": "9f431d7a88a9d5b2a0eae2d7ce3faf26d0defdb8a70fd63f7c5754c3cecf6c07",
+  "newSha256": "a3fa74cc4da73b1bad1dfe567e71e4a169fe49bc97c067ec071a21d63d8cdf69",
+  "description": "参考组织方式、切镜门槛、整句对白预算和生成前对齐检查",
+  "scope": "skill-only",
+  "generationPerformed": false,
+  "validation": {
+    "backendTests": 9,
+    "backendFailures": 0,
+    "frontendLint": "passed with existing warnings",
+    "antdLint": "passed with 9 existing usage warnings",
+    "genericSkillValidator": "Chinese display name intentionally retained; application parser tests passed"
+  },
+  "published": true,
+  "backup": "/opt/antv/backups/20261101-storyboard-v2-reference-alignment-094409",
+  "restartedBackend": false
+}

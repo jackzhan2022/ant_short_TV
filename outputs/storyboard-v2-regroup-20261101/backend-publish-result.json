@@ -1,0 +1,14 @@
+{
+  "commit": "6f9fea1ae29d5fd66d11a8ec49d7ba3b5a7d1cf7",
+  "previous": "/opt/antv/releases/20261101-storyboard-v2-5049fb4b",
+  "target": "/opt/antv/releases/20261101-regroup-sql-fix-6f9fea1a",
+  "backendSha256": "766d40d0ff755aea82be340b5b29ff36da1e60b2ca6912c91a4f43c594b14d5e",
+  "skillSha256": "629326feb9ac998033b6a4d7f2bab47c732b468bfcd07754afd6fe99948d41be",
+  "change": "MySQL保留字别名修正，仅后端代码；无数据库迁移",
+  "sourcePatchSha256": "9d69e2d1047906e896b53aea915238d3bc64f556982dc956916349e92ab935a0",
+  "sourcePushStatus": "pending-network",
+  "backup": "/opt/antv/backups/20261101-regroup-sql-fix-054759",
+  "success": true,
+  "existingStoryboardsPreserved": true,
+  "schemaUnchanged": true
+}
