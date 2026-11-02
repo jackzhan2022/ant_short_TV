@@ -318,18 +318,52 @@ public class FreeCreationService {
         Long total=jdbc.queryForObject("select count(*)"+base,Long.class,args.toArray());
         args.add(pageSize); args.add((current-1)*pageSize);
         var ids=jdbc.queryForList("select f.id"+base+" order by f.created_at desc,f.id desc limit ? offset ?",Long.class,args.toArray());
+        var batch=presentationBatch(context,ids);
         Map<Long,FreeCreationMediaEntity> selectedMedia=new LinkedHashMap<>();
         Map<Long,Map<String,Object>> mediaViews=new HashMap<>();
-        var records=ids.stream().map(id->present(context,creations.selectById(id),0,item->{
+        var records=ids.stream().map(id->present(context,batch.creations().get(id),0,item->{
             selectedMedia.putIfAbsent(item.id,item);
             return mediaViews.computeIfAbsent(item.id,ignored->new LinkedHashMap<>());
-        })).toList();
+        },batch)).toList();
         if(!selectedMedia.isEmpty()) media.presentAll(context,new ArrayList<>(selectedMedia.values()))
             .forEach((id,view)->mediaViews.get(id).putAll(view));
         return Map.of("records",records,"total",total,"current",current,"pageSize",pageSize);
     }
 
-    public Map<String,Object> detail(Long tenantId,Long id) { var context=authorize(tenantId);return present(context,require(context,id)); }
+    public Map<String,Object> detail(Long tenantId,Long id) {
+        var context=authorize(tenantId);var item=creations.selectForPresentation(id);
+        if(item==null || !context.tenantId().equals(item.tenantId))throw new BusinessException(ErrorCode.NOT_FOUND,"自由创作记录不存在。");
+        return present(context,item);
+    }
+
+    private record PresentationBatch(Map<Long,FreeCreationEntity> creations,Map<Long,AiExecutionTaskEntity> tasks,
+        Map<Long,String> authors,Map<Long,List<FreeCreationMediaEntity>> references,
+        Map<Long,List<FreeCreationMediaEntity>> outputs,Map<Long,Map<String,Object>> recoveries) {}
+
+    private PresentationBatch presentationBatch(TenantContext context,List<Long> ids) {
+        Map<Long,FreeCreationEntity> items=new HashMap<>();Map<Long,AiExecutionTaskEntity> tasks=new HashMap<>();
+        Map<Long,String> authors=new HashMap<>();Map<Long,List<FreeCreationMediaEntity>> references=new HashMap<>(),outputs=new HashMap<>();
+        if(ids.isEmpty())return new PresentationBatch(items,tasks,authors,references,outputs,Map.of());
+        creations.selectForPresentation(context.tenantId(),ids).forEach(item->items.put(item.id,item));
+        var taskIds=items.values().stream().map(item->item.executionId).distinct().toList();
+        var authorIds=items.values().stream().map(item->item.creatorId).distinct().toList();
+        if(!taskIds.isEmpty()) {
+            var args=new ArrayList<Object>();args.add(context.tenantId());args.addAll(taskIds);
+            jdbc.query("select id,status,phase,error_message from ai_execution_task where tenant_id=? and id in ("
+                +String.join(",",Collections.nCopies(taskIds.size(),"?"))+")",rs->{
+                    var task=new AiExecutionTaskEntity();task.id=rs.getLong("id");task.status=rs.getString("status");
+                    task.phase=rs.getString("phase");task.errorMessage=rs.getString("error_message");tasks.put(task.id,task);
+                },args.toArray());
+        }
+        if(!authorIds.isEmpty())jdbc.query("select id,nickname from app_user where id in ("
+            +String.join(",",Collections.nCopies(authorIds.size(),"?"))+")",rs->{authors.put(rs.getLong("id"),rs.getString("nickname"));},authorIds.toArray());
+        for(var item:mediaMapper.selectList(new QueryWrapper<FreeCreationMediaEntity>().eq("tenant_id",context.tenantId())
+            .in("creation_id",ids).in("role",List.of("REFERENCE","OUTPUT")).orderByAsc("position"))) {
+            var target="REFERENCE".equals(item.role)?references:outputs;
+            target.computeIfAbsent(item.creationId,ignored->new ArrayList<>()).add(item);
+        }
+        return new PresentationBatch(items,tasks,authors,references,outputs,avatarRecovery==null?Map.of():avatarRecovery.getAll(context.tenantId(),ids));
+    }
     FreeCreationEntity require(TenantContext context,Long id) {
         var item=creations.selectById(id); if(item==null || !context.tenantId().equals(item.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"自由创作记录不存在。");return item;
     }
@@ -369,23 +403,28 @@ public class FreeCreationService {
         if(output==null || !creation.id.equals(output.creationId) || !"OUTPUT".equals(output.role) || !context.tenantId().equals(output.tenantId)) throw new BusinessException(ErrorCode.NOT_FOUND,"生成作品不存在。");
         return output;
     }
-    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0,value->media.present(context,value));}
+    Map<String,Object> present(TenantContext context,FreeCreationEntity item) {return present(context,item,0,value->media.present(context,value),null);}
     private Map<String,Object> present(TenantContext context,FreeCreationEntity item,int depth,
-        java.util.function.Function<FreeCreationMediaEntity,Map<String,Object>> mediaPresenter) {
-        var task=executions.requireTask(item.executionId); Map<String,Object> result=new LinkedHashMap<>();
+        java.util.function.Function<FreeCreationMediaEntity,Map<String,Object>> mediaPresenter,PresentationBatch batch) {
+        if(item==null)throw new BusinessException(ErrorCode.NOT_FOUND,"自由创作记录不存在。");
+        var task=batch==null?executions.requireTask(item.executionId):batch.tasks().get(item.executionId);
+        if(task==null)throw new BusinessException(ErrorCode.AI_EXECUTION_NOT_FOUND,"AI execution not found: "+item.executionId);
+        Map<String,Object> result=new LinkedHashMap<>();
         result.put("id",item.id); result.put("executionId",item.executionId); result.put("mediaType",item.mediaType);
         result.put("status",status(task,item));result.put("phase",task.phase);result.put("prompt",item.prompt);result.put("creatorId",item.creatorId);
-        result.put("creatorName",jdbc.queryForObject("select nickname from app_user where id=?",String.class,item.creatorId));
+        result.put("creatorName",batch==null?jdbc.queryForObject("select nickname from app_user where id=?",String.class,item.creatorId):batch.authors().get(item.creatorId));
         result.put("createdAt",item.createdAt); result.put("modelId",item.modelId); result.put("modelName",item.modelName);
-        result.put("parameters",read(item.parametersJson)); result.put("references",media.items(item.id,"REFERENCE").stream().map(mediaPresenter).toList());
+        result.put("parameters",read(item.parametersJson)); result.put("references",(batch==null?media.items(item.id,"REFERENCE"):
+            batch.references().getOrDefault(item.id,List.of())).stream().map(mediaPresenter).toList());
         result.put("taskKey","FREE_CREATION:"+item.id);
-        var recovery=avatarRecovery==null?null:avatarRecovery.get(item.tenantId,item.id);
+        var recovery=batch==null?(avatarRecovery==null?null:avatarRecovery.get(item.tenantId,item.id)):batch.recoveries().get(item.id);
         result.put("avatarRecovery",recovery);
         result.put("avatarRecoverySourceCreationId",item.avatarRecoverySourceCreationId);
         boolean recovering=recovery!=null && Set.of("PENDING","RUNNING","SUCCEEDED").contains(recovery.get("status"));
         result.put("allowedActions",context.userId().equals(item.creatorId)?controlActions(task.status).stream()
             .filter(action->!recovering || !"RETRY".equals(action)).toList():List.of());
-        result.put("outputs","SUCCEEDED".equals(task.status)?media.items(item.id,"OUTPUT").stream().map(mediaPresenter).toList():List.of());
+        result.put("outputs","SUCCEEDED".equals(task.status)?(batch==null?media.items(item.id,"OUTPUT"):
+            batch.outputs().getOrDefault(item.id,List.of())).stream().map(mediaPresenter).toList():List.of());
         result.put("errorMessage",Set.of("FAILED","TIMED_OUT").contains(task.status)?errorMessage(item,task):null);
         if(recovery!=null) {
             result.put("originalExecutionId",item.executionId);result.put("originalStatus",status(task,item));
@@ -397,7 +436,7 @@ public class FreeCreationService {
                 if(linked==null || depth>=FreeCreationAvatarRecoveryService.HARD_MAX_ATTEMPTS) {
                     result.put("status","FAILED");result.put("errorMessage","关联视频不可用，请查看任务记录。");result.put("allowedActions",List.of());
                 } else {
-                    var current=present(context,linked,depth+1,mediaPresenter);
+                    var current=present(context,linked,depth+1,mediaPresenter,null);
                     for(String key:List.of("executionId","phase","taskKey","allowedActions","outputs","errorMessage"))result.put(key,current.get(key));
                     if(current.get("avatarRecovery")!=null)result.put("avatarRecovery",current.get("avatarRecovery"));
                     result.put("status","QUEUED".equals(current.get("status"))?"RUNNING":current.get("status"));
@@ -410,7 +449,7 @@ public class FreeCreationService {
     }
     private FreeCreationEntity linkedCreation(TenantContext context,FreeCreationEntity source,Map<String,Object> recovery) {
         if(!(recovery.get("retryCreationId") instanceof Number id))return null;
-        var linked=creations.selectById(id.longValue());
+        var linked=creations.selectForPresentation(id.longValue());
         return linked!=null && context.tenantId().equals(linked.tenantId) && source.creatorId.equals(linked.creatorId)
             && source.id.equals(linked.avatarRecoverySourceCreationId) && "VIDEO".equals(linked.mediaType)?linked:null;
     }

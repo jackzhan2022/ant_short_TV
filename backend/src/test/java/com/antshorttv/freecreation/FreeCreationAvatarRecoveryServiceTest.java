@@ -50,6 +50,7 @@ class FreeCreationAvatarRecoveryServiceTest {
         source.mediaType="VIDEO";source.providerCode="VOLCENGINE_ARK";
         source.videoRequestSnapshotJson="{\"references\":[{\"reference\":{\"mediaType\":\"IMAGE\"},\"objectStoragePath\":\"original.png\",\"providerUrl\":\"https://example.com/original.png\"}]}";
         when(creations.selectById(source.id)).thenReturn(source);
+        when(creations.selectForPresentation(anyLong())).thenAnswer(call->creations.selectById((Long)call.getArgument(0)));
         var execution=new AiExecutionTaskEntity();execution.status="FAILED";when(executions.requireTask(14L)).thenReturn(execution);
         when(pool.configured()).thenReturn(true);
         when(free.authorize(12L)).thenReturn(new TenantContext(13L,12L,15L,"MEMBER"));

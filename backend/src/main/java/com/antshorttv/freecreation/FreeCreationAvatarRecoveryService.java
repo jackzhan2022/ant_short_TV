@@ -78,7 +78,7 @@ public class FreeCreationAvatarRecoveryService {
             if(!seen.add(current.id) || !"VIDEO".equals(current.mediaType) || !VolcengineProviderCodes.isArk(current.providerCode))return 0;
             if(current.avatarRecoverySourceCreationId==null)return attempt;
             if(attempt>HARD_MAX_ATTEMPTS)return 0;
-            Long parentId=current.avatarRecoverySourceCreationId;var parent=creations.selectById(parentId);
+            Long parentId=current.avatarRecoverySourceCreationId;var parent=creations.selectForPresentation(parentId);
             if(parent==null || !parentId.equals(parent.id) || !source.tenantId.equals(parent.tenantId) || !source.creatorId.equals(parent.creatorId))return 0;
             current=parent;attempt++;
         }
@@ -118,13 +118,27 @@ public class FreeCreationAvatarRecoveryService {
         } finally { SecurityContextHolder.setContext(previous); }
     }
     public Map<String,Object> get(long tenant,long source) {
-        var rows=jdbc.queryForList("select r.*,e.status as retry_status from seedance_avatar_recovery r left join free_creation f on f.id=r.retry_creation_id and f.tenant_id=r.tenant_id left join ai_execution_task e on e.id=f.execution_id where r.tenant_id=? and r.source_creation_id=?",tenant,source);
-        if(rows.isEmpty()) return null;
-        var row=rows.get(0);var result=new LinkedHashMap<String,Object>();
+        return getAll(tenant,List.of(source)).get(source);
+    }
+    public Map<Long,Map<String,Object>> getAll(long tenant,List<Long> sources) {
+        if(sources.isEmpty())return Map.of();
+        var args=new ArrayList<Object>();args.add(tenant);args.addAll(sources);
+        String slots=String.join(",",Collections.nCopies(sources.size(),"?"));
+        var rows=jdbc.queryForList("select r.id,r.source_creation_id,r.status,r.phase,r.retry_creation_id,r.error_message,e.status as retry_status "
+            +"from seedance_avatar_recovery r left join free_creation f on f.id=r.retry_creation_id and f.tenant_id=r.tenant_id "
+            +"left join ai_execution_task e on e.id=f.execution_id where r.tenant_id=? and r.source_creation_id in ("+slots+")",args.toArray());
+        Map<Long,Map<String,Object>> results=new HashMap<>();
+        for(var row:rows) {
+            long source=((Number)row.get("source_creation_id")).longValue();
+            results.put(source,presentRecovery(row,creations.selectForPresentation(source)));
+        }
+        return results;
+    }
+    private Map<String,Object> presentRecovery(Map<String,Object> row,FreeCreationEntity sourceCreation) {
+        var result=new LinkedHashMap<String,Object>();
         for(String key:List.of("id","status","phase"))result.put(key,row.get(key));
         result.put("retryCreationId",row.get("retry_creation_id"));result.put("errorMessage",row.get("error_message"));
         String status=(String)row.get("retry_status");
-        var sourceCreation=creations.selectById(source);
         result.put("attempt",Math.max(1,nextAttempt(sourceCreation)));result.put("maxAttempts",maxAttempts);
         result.put("retryStatus",status==null?null:"PENDING".equals(status)?"QUEUED":"TIMED_OUT".equals(status)?"FAILED":status);
         return result;

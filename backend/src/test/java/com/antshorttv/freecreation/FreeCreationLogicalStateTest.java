@@ -28,12 +28,16 @@ class FreeCreationLogicalStateTest {
     @BeforeEach void setup() {
         jdbc=new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","sa",""));
         jdbc.execute("create table free_creation(id bigint primary key,tenant_id bigint,creator_id bigint,execution_id bigint,media_type varchar(16),prompt varchar(200),provider_started_at timestamp,created_at timestamp,avatar_recovery_source_creation_id bigint)");
-        jdbc.execute("create table ai_execution_task(id bigint primary key,tenant_id bigint,status varchar(32))");
+        jdbc.execute("create table ai_execution_task(id bigint primary key,tenant_id bigint,status varchar(32),phase varchar(64),error_message varchar(1000))");
         jdbc.execute("create table app_user(id bigint primary key,nickname varchar(80))");jdbc.update("insert into app_user values(2,'author')");
         jdbc.execute("create table seedance_avatar_recovery(id bigint primary key,source_creation_id bigint,tenant_id bigint,status varchar(32),phase varchar(128),retry_creation_id bigint,error_message varchar(500))");
         var tenants=mock(TenantContextResolver.class);when(tenants.requireActiveMember(1L)).thenReturn(context);
         when(executions.requireTask(anyLong())).thenAnswer(call->tasks.get(call.getArgument(0)));
         when(creations.selectById(anyLong())).thenAnswer(call->records.get(call.getArgument(0)));
+        when(creations.selectForPresentation(anyLong())).thenAnswer(call->records.get(call.getArgument(0)));
+        when(creations.selectForPresentation(anyLong(),anyList())).thenAnswer(call->
+            ((List<Long>)call.getArgument(1)).stream().map(records::get).filter(Objects::nonNull)
+                .filter(row->row.tenantId.equals(call.getArgument(0))).toList());
         service=new FreeCreationService(creations,mediaMapper,media,tenants,mock(com.antshorttv.ai.AiModelRouter.class),executions,
             mock(AiVideoTaskService.class),mock(SeedanceVideoRequestValidator.class),storage,new ObjectMapper(),jdbc,mock(jakarta.validation.Validator.class));
         service.setAvatarRecovery(new FreeCreationAvatarRecoveryService(jdbc,creations,executions,null,null,true),mock(com.antshorttv.avatar.ArkAssetPool.class),mock(ModelAccessibleVideoUrlResolver.class));
@@ -51,7 +55,7 @@ class FreeCreationLogicalStateTest {
     }
     void task(long id,String status,String phase) {
         var task=new AiExecutionTaskEntity();task.id=id;task.tenantId=1L;task.status=status;task.phase=phase;task.errorMessage="原参考图片拒绝";tasks.put(id,task);
-        jdbc.update("merge into ai_execution_task key(id) values(?,1,?)",id,status);
+        jdbc.update("merge into ai_execution_task key(id) values(?,1,?,?,?)",id,status,phase,task.errorMessage);
     }
     void recovered(String childStatus) {
         jdbc.update("update seedance_avatar_recovery set status='SUCCEEDED',retry_creation_id=4,phase='已创建关联重试视频' where id=1");task(11,childStatus,"QUERY");
