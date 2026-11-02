@@ -67,7 +67,7 @@ public class AuthBootstrapService {
 
         return new AuthBootstrapResponse(
             UserProfileResponse.from(user),
-            new BootstrapSessionResponse(principal.sessionId(), principal.expiresAt()),
+            new BootstrapSessionResponse(principal.sessionId(), principal.expiresAt(), principal.impersonation()),
             new PlatformAccessResponse(
                 platformAuthorizationService.roleCodes(principal.userId()),
                 platformAuthorizationService.permissionCodes(principal.userId())),

@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
 import SystemMonitoring from '@/components/SystemMonitoring';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 import { PointEstimateProvider } from '@/services/point-estimate';
 
 // Initialize dayjs plugins globally
@@ -260,6 +261,7 @@ export function rootContainer(container: React.ReactNode) {
       <SystemMonitoring />
       <OfflineBanner />
       <AntdApp>
+        <ImpersonationBanner />
         <PointEstimateProvider>
           <ErrorBoundary>{container}</ErrorBoundary>
         </PointEstimateProvider>

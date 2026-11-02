@@ -1,7 +1,7 @@
 /**
  * @see https://umijs.org/docs/max/access#access
  * */
-import type { LayoutCurrentUser } from '@/services/account-team/types';
+import type { BootstrapSession, LayoutCurrentUser } from '@/services/account-team/types';
 
 export default function access(
   initialState:
@@ -9,7 +9,7 @@ export default function access(
         currentUser?: LayoutCurrentUser;
         tenantPermissions?: string[];
         platformPermissions?: string[];
-        bootstrap?: { platform: { roles: string[] } };
+        bootstrap?: { platform: { roles: string[] }; session?: Pick<BootstrapSession, 'impersonation'> };
         selectedTenant?: {
           membership?: { status?: string; memberType?: string };
           roles?: string[];
@@ -86,6 +86,9 @@ export default function access(
       currentUser && platformPermissions.includes('PLATFORM_TENANT_VIEW'),
     canGrantPlatformTenantPackage:
       !!currentUser && initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true,
+    canImpersonateTenantMember:
+      !!currentUser && initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true &&
+      !initialState?.bootstrap?.session?.impersonation,
     canAssignPlatformTenantTrial:
       !!currentUser && platformPermissions.includes('PLATFORM_TENANT_TRIAL_ASSIGN'),
     canEditPlatformTenantStatus:

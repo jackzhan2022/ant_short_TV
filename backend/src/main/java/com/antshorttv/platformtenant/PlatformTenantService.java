@@ -70,7 +70,28 @@ public class PlatformTenantService {
             summary.id(), summary.code(), summary.name(), summary.type(), summary.status(),
             tenant.logo(), tenant.description(), summary.owner(), summary.activeMemberCount(),
             summary.pointBalance(), summary.trialPointBalance(), summary.trialAssigned(), summary.currentPackage(), queuedPackages(tenantId),
-            summary.createdAt(), tenant.updatedAt());
+            summary.createdAt(), tenant.updatedAt(), members(tenant));
+    }
+
+    private List<PlatformTenantMemberResponse> members(TenantRow tenant) {
+        var caller = currentPrincipal.get().orElse(null);
+        boolean administrator = caller != null && caller.impersonation() == null && Boolean.TRUE.equals(jdbc.queryForObject("""
+            select exists (select 1 from platform_user_role ur join platform_role r on r.id=ur.role_id
+                where ur.user_id=? and r.code='PLATFORM_ADMIN' and r.status='ACTIVE')
+            """, Boolean.class, caller.userId()));
+        return jdbc.query("""
+            select m.id member_id, m.user_id, m.member_type, m.status, m.joined_at, u.nickname, u.mobile,
+                case when u.id is null or u.deleted_at is not null then 'DELETED' else u.status end user_status,
+                exists (select 1 from platform_user_role ur join platform_role r on r.id=ur.role_id
+                    where ur.user_id=m.user_id and r.code='PLATFORM_ADMIN' and r.status='ACTIVE') target_admin
+            from tenant_member m left join app_user u on u.id=m.user_id
+            where m.tenant_id=? order by case when m.member_type='OWNER' then 0 else 1 end, m.joined_at, m.id
+            """, (rs, n) -> new PlatformTenantMemberResponse(
+                rs.getLong("member_id"), rs.getLong("user_id"), rs.getString("nickname"), rs.getString("mobile"),
+                rs.getString("member_type"), rs.getString("status"), rs.getString("user_status"),
+                localDateTime(rs.getTimestamp("joined_at")), administrator && "ACTIVE".equals(tenant.status())
+                    && "ACTIVE".equals(rs.getString("status")) && "ACTIVE".equals(rs.getString("user_status"))
+                    && !rs.getBoolean("target_admin") && !caller.userId().equals(rs.getLong("user_id"))), tenant.id());
     }
 
     @Transactional

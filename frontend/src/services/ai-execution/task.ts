@@ -3,12 +3,13 @@ import {
   detail4,
 } from '@/services/ant-design-pro/aiExecutionController';
 import { pointEstimatedRequest } from '@/services/point-estimate';
+import { pollingDelay } from '@/utils/polling';
 
 const TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 const STORAGE_PREFIX = 'ai-execution:pending:';
 
 export interface AiExecutionClient {
-  detail(tenantId: number, executionId: number): Promise<API.AiExecutionResponse>;
+  detail(tenantId: number, executionId: number, signal?: AbortSignal): Promise<API.AiExecutionResponse>;
   cancel(tenantId: number, executionId: number): Promise<API.AiExecutionResponse>;
   retry(tenantId: number, executionId: number, idempotencyKey: string): Promise<API.AiExecutionResponse>;
   regenerate(
@@ -18,7 +19,7 @@ export interface AiExecutionClient {
   ): Promise<API.AiExecutionResponse>;
 }
 
-export type Sleep = (milliseconds: number) => Promise<void>;
+export type Sleep = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 
 export function isTerminalExecution(task: Pick<API.AiExecutionResponse, 'status'>) {
   return typeof task.status === 'string' && TERMINAL_STATUSES.has(task.status);
@@ -29,8 +30,7 @@ export class AiExecutionTaskService {
   constructor(
     private readonly client: AiExecutionClient = generatedClient,
     private readonly storage: Storage = localStorage,
-    private readonly sleep: Sleep = (milliseconds) =>
-      new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    private readonly sleep: Sleep = pollingDelay,
   ) {}
 
   async poll(
@@ -43,14 +43,15 @@ export class AiExecutionTaskService {
     this.remember(tenantId, executionId);
     while (true) {
       signal?.throwIfAborted();
-      const task = await this.client.detail(tenantId, executionId);
+      const task = await this.client.detail(tenantId, executionId, signal);
       signal?.throwIfAborted();
       this.track(tenantId, task);
-      onUpdate?.(task);
+      await onUpdate?.(task);
+      signal?.throwIfAborted();
       if (isTerminalExecution(task)) {
         return task;
       }
-      await this.sleep(intervalMs);
+      await this.sleep(intervalMs, signal);
     }
   }
 
@@ -143,8 +144,8 @@ function responseData(response: API.ApiResponseAiExecutionResponse) {
 }
 
 const generatedClient: AiExecutionClient = {
-  detail: async (tenantId, executionId) =>
-    responseData(await detail4({ tenantId, executionId })),
+  detail: async (tenantId, executionId, signal) =>
+    responseData(await detail4({ tenantId, executionId }, { signal, skipErrorHandler: Boolean(signal) })),
   cancel: async (tenantId, executionId) =>
     responseData(await cancel1({ tenantId, executionId })),
   retry: async (tenantId, executionId, idempotencyKey) =>

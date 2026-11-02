@@ -1,5 +1,5 @@
-import '@root/tests/mockPointEstimate';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { recordedPointEstimates } from '@root/tests/mockPointEstimate';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbench, { preserveReferenceClientKeys } from './storyboard';
 import {
@@ -9,6 +9,12 @@ import {
 } from './StoryboardAssetReferenceEditor';
 import type { AiVideoTask, ScriptEpisode } from './service';
 import { PointEstimateCancelledError } from '@/services/point-estimate';
+import { hydratePromptDocument } from './storyboard-references';
+
+vi.mock('./storyboard-references', async (original) => {
+  const actual = await original<typeof import('./storyboard-references')>();
+  return { ...actual, hydratePromptDocument: vi.fn(actual.hydratePromptDocument) };
+});
 
 const mocks = vi.hoisted(() => ({
   querySubtitleEraseTasks: vi.fn(),
@@ -61,6 +67,8 @@ const mocks = vi.hoisted(() => ({
   queryLatestStoryboardBatch: vi.fn(),
   pollExecution: vi.fn(),
   pollVideoTask: vi.fn(),
+  successMessage: vi.fn(),
+  errorMessage: vi.fn(),
   cancelExecution: vi.fn(),
   retryExecution: vi.fn(),
 }));
@@ -210,7 +218,7 @@ vi.mock('@ant-design/icons', () => ({
 vi.mock('antd', () => ({
   App: {
     useApp: () => ({
-      message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+      message: { error: mocks.errorMessage, success: mocks.successMessage, warning: vi.fn() },
       modal: { confirm: mocks.confirmMissingImages },
     }),
   },
@@ -787,8 +795,21 @@ const pendingImageStoryboard = () => ({
     referenceRole: 'VISIBLE', sortOrder: 0, resolutionStatus: 'ASSET_PENDING', sourceType: 'AI', lockedByUser: false }],
 });
 
+const blurAndSavePrompt = async (editor: HTMLElement) => {
+  vi.useFakeTimers();
+  try {
+    fireEvent.blur(editor);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+  } finally {
+    vi.useRealTimers();
+  }
+};
+
 describe('ProductionWorkbench script page', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(async () => {
+    await act(async () => { cleanup(); });
+    vi.unstubAllGlobals();
+  });
   it('keeps draft card identity stable after persistence and resolves default variant images', () => {
     const draft = {
       clientKey: 'draft-local-1',
@@ -991,6 +1012,34 @@ describe('ProductionWorkbench script page', () => {
       expect.objectContaining({ modelId: 10 }), true));
   });
 
+  it('updates card estimates when model IDs change despite identical model names', async () => {
+    const catalog = await mocks.queryProjectAiModels();
+    mocks.queryProjectAiModels.mockResolvedValue({ data: { ...catalog.data,
+      videoModels: [10, 11].map(id => ({ ...catalog.data.videoModels[0], id, name: '同名模型' })),
+    } });
+    render(<ProductionWorkbench />);
+    await screen.findByRole('button', { name: '生成分镜1视频' });
+    await screen.findAllByRole('option', { name: '同名模型' });
+    recordedPointEstimates().length = 0;
+    fireEvent.change(screen.getByRole('combobox', { name: '视频生成模型' }), { target: { value: '11' } });
+    const operations = recordedPointEstimates().flatMap(call => call.operations || []);
+    expect(operations.filter(operation => operation.url === '/api/projects/1/ai-video-tasks').at(-1)?.data)
+      .toEqual(expect.objectContaining({ modelId: 11 }));
+  });
+
+  it('updates card estimates when shared project aspect ratio changes', async () => {
+    mocks.outletContext = { project: { id: 1, aspectRatio: '16:9' } };
+    const view = render(<ProductionWorkbench />);
+    await screen.findByRole('button', { name: '生成分镜1视频' });
+    await act(async () => {});
+    recordedPointEstimates().length = 0;
+    mocks.outletContext = { project: { id: 1, aspectRatio: '9:16' } };
+    view.rerender(<ProductionWorkbench />);
+    const operations = recordedPointEstimates().flatMap(call => call.operations || []);
+    expect(operations.filter(operation => operation.url === '/api/projects/1/ai-video-tasks').at(-1)?.data)
+      .toEqual(expect.objectContaining({ aspectRatio: '9:16' }));
+  });
+
   it('keeps editing available when current episode details fail', async () => {
     mocks.queryStoryboardEpisodeDetails.mockRejectedValue(new Error('summary unavailable'));
     render(<ProductionWorkbench />);
@@ -1075,7 +1124,7 @@ describe('ProductionWorkbench script page', () => {
     const editor = await screen.findByLabelText('分镜1视频提示词');
     editor.textContent = '已经保存的提示词';
     fireEvent.input(editor);
-    fireEvent.blur(editor);
+    await blurAndSavePrompt(editor);
     await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101,
       expect.objectContaining({ videoPrompt: expect.stringContaining('已经保存的提示词') })));
     const response = await mocks.queryStoryboardEditorPage();
@@ -1410,7 +1459,7 @@ describe('ProductionWorkbench script page', () => {
     expect(editor).toHaveTextContent('参考酒店后厨-夜 大图，保持灯光一致。');
     chip?.remove();
     fireEvent.input(editor);
-    fireEvent.blur(editor);
+    await blurAndSavePrompt(editor);
     await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 301,
       expect.objectContaining({ promptDocument: { version: 2, nodes: [{ type: 'text', text: '参考，保持灯光一致。' }] } }),
     ));
@@ -1480,6 +1529,7 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.keyDown(picker, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '分镜1视频提示词引用素材' })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent('原文@');
+    await blurAndSavePrompt(editor);
     await waitFor(() => expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 301,
       expect.objectContaining({ promptDocument: { version: 2, nodes: [{ type: 'text', text: '原文@' }] } }),
     ));
@@ -1671,7 +1721,7 @@ describe('ProductionWorkbench script page', () => {
     expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(pageCalls);
   });
 
-  it('opens the shared variant generator and shows loading on the submitted thumbnail', async () => {
+  it.each(['complete', 'unmount', 'project-return', 'legacy-unmount'])('follows reference generation through %s', async (ending) => {
     const character = {
       id: 1, name: 'Serena', roleType: 'LEAD', gender: '女', ageRange: '成年',
       identity: '女主角', personality: [], appearance: '黑色长发', prompt: '人物主体提示词',
@@ -1707,7 +1757,7 @@ describe('ProductionWorkbench script page', () => {
     } });
     mocks.queryProjectAiConfig.mockResolvedValue({ data: { projectId: 1, imageModelId: 8 } });
     mocks.createAiImageTask.mockResolvedValueOnce({ data: {
-      id: 1201, executionId: 7201, taskType: 'CHARACTER', targetType: 'VISUAL_VARIANT',
+      id: 1201, executionId: ending === 'legacy-unmount' ? undefined : 7201, taskType: 'CHARACTER', targetType: 'VISUAL_VARIANT',
       targetId: 12, status: 'PENDING', results: [],
     } });
     mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: {
@@ -1716,10 +1766,13 @@ describe('ProductionWorkbench script page', () => {
         variant.id === 12 ? { ...variant, generationStatus: 'GENERATING' } : variant),
     } });
     let resolvePoll!: (value: API.AiExecutionResponse) => void;
-    mocks.pollExecution.mockReturnValueOnce(new Promise((resolve) => {
-      resolvePoll = resolve;
-    }));
-    render(<ProductionWorkbench />);
+    let resolveLegacy!: (value: unknown) => void;
+    if (ending === 'legacy-unmount') {
+      mocks.queryAiImageTask.mockReturnValueOnce(new Promise((resolve) => { resolveLegacy = resolve; }));
+    } else {
+      mocks.pollExecution.mockReturnValueOnce(new Promise((resolve) => { resolvePoll = resolve; }));
+    }
+    const view = render(<ProductionWorkbench />);
 
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
     expect(screen.getByLabelText('晚宴礼服引用图')).toHaveAttribute('src', '/serena-primary-display.png');
@@ -1741,8 +1794,35 @@ describe('ProductionWorkbench script page', () => {
       expect(screen.getByRole('status', { name: '分镜1角色1资产图生成中' })).toBeInTheDocument();
       expect(screen.queryByRole('status', { name: '分镜2角色1资产图生成中' })).not.toBeInTheDocument();
     });
+    if (ending !== 'complete') {
+      if (ending === 'legacy-unmount') {
+        await waitFor(() => expect(mocks.queryAiImageTask).toHaveBeenCalled(), { timeout: 2500 });
+      }
+      const signal = (ending === 'legacy-unmount'
+        ? mocks.queryAiImageTask.mock.calls.at(-1)?.[2]
+        : mocks.pollExecution.mock.calls.at(-1)?.[4]) as AbortSignal;
+      if (ending === 'unmount' || ending === 'legacy-unmount') view.unmount();
+      else {
+        mocks.projectId = '2';
+        view.rerender(<ProductionWorkbench />);
+        await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+        mocks.projectId = '1';
+        view.rerender(<ProductionWorkbench />);
+        await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      }
+      const calls = mocks.queryAssetVisualWorkspace.mock.calls.length;
+      await act(async () => {
+        if (ending === 'legacy-unmount') resolveLegacy({ data: { id: 1201, status: 'SUCCESS' } });
+        else resolvePoll({ id: 7201, status: 'SUCCEEDED' });
+      });
+      expect(signal?.aborted).toBe(true);
+      expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(calls);
+      expect(mocks.cancelAiImageTask).not.toHaveBeenCalled();
+      expect(mocks.cancelExecution).not.toHaveBeenCalled();
+      return;
+    }
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
-      .toHaveBeenCalledWith(1, 'CHARACTER', 1), { timeout: 2500 });
+      .toHaveBeenCalledWith(1, 'CHARACTER', 1, {}, expect.any(AbortSignal)), { timeout: 2500 });
 
     mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({ data: {
       ...character.visual,
@@ -1830,7 +1910,7 @@ describe('ProductionWorkbench script page', () => {
       name: '分镜1角色1资产图生成中',
     })).toBeInTheDocument();
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
-      .toHaveBeenCalledWith(1, 'CHARACTER', 1), { timeout: 2500 });
+      .toHaveBeenCalledWith(1, 'CHARACTER', 1, {}, expect.any(AbortSignal)), { timeout: 2500 });
     await waitFor(() => {
       expect(screen.queryByRole('status', {
         name: '分镜1角色1资产图生成中',
@@ -2007,6 +2087,228 @@ describe('ProductionWorkbench script page', () => {
     expect(screen.queryByText('按画面推断，待确认')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '确认分镜1出镜角色' })).not.toBeInTheDocument();
     expect(screen.getByText('未生成场景参考图')).toBeInTheDocument();
+  });
+
+  describe('isolated storyboard editing', () => {
+    it.each([2, 20])('only assembles the edited card prompt once per input with %s mounted cards', async (count) => {
+      if (count === 20) {
+        const response = await mocks.queryStoryboardEditorPage();
+        setupWorkspaceResponse({ storyboards: Array.from({ length: count }, (_, index) => ({
+          ...response.data.storyboards[0], id: 101 + index, shotNo: 1 + index,
+        })) });
+      }
+      render(<ProductionWorkbench />);
+      const first = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      const second = await screen.findByRole('textbox', { name: '分镜2视频提示词' });
+      const secondText = second.textContent;
+      await act(async () => {});
+      vi.mocked(hydratePromptDocument).mockClear();
+      for (const value of ['新', '新的', '新的提示词']) {
+        first.textContent = value;
+        fireEvent.input(first);
+      }
+      expect(hydratePromptDocument).toHaveBeenCalledTimes(3);
+      expect(second.textContent).toBe(secondText);
+      await blurAndSavePrompt(first);
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101,
+        expect.objectContaining({ videoPrompt: '新的提示词' }));
+    });
+
+    it('does not assemble prompts for cards that have not entered the viewport', async () => {
+      vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+      const response = await mocks.queryStoryboardEditorPage();
+      setupWorkspaceResponse({ storyboards: Array.from({ length: 20 }, (_, index) => ({
+        ...response.data.storyboards[0], id: 301 + index, shotNo: index + 1,
+        videoPrompt: `卡片${index + 1}`, promptDocument: undefined,
+      })) });
+      vi.mocked(hydratePromptDocument).mockClear();
+      render(<ProductionWorkbench />);
+      await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      expect(screen.queryByRole('textbox', { name: '分镜3视频提示词' })).not.toBeInTheDocument();
+      expect(vi.mocked(hydratePromptDocument).mock.calls.some(([, text]) => text === '卡片3')).toBe(false);
+    });
+  });
+
+  describe('delayed prompt save', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('saves the edited prompt 2.5 seconds after blur', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      fireEvent.focus(editor);
+      editor.textContent = '延迟保存的提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2499); });
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(1);
+      expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 101, expect.objectContaining({
+        videoPrompt: '延迟保存的提示词',
+      }));
+    });
+
+    it('pauses on refocus and saves only the latest edit after the next blur', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      editor.textContent = '第一次编辑';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      fireEvent.focus(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+
+      editor.textContent = '第二次编辑';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(2499); });
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(1);
+      expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 101, expect.objectContaining({
+        videoPrompt: '第二次编辑',
+      }));
+    });
+
+    it('keeps a failed prompt visible and retries only its own card', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      const second = await screen.findByRole('textbox', { name: '分镜2视频提示词' });
+      const secondText = second.textContent;
+      mocks.updateStoryboard.mockRejectedValueOnce(new Error('offline'));
+      vi.useFakeTimers();
+      editor.textContent = '失败后仍保留的提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+      expect(editor).toHaveTextContent('失败后仍保留的提示词');
+      expect(screen.queryByRole('button', { name: '重试保存分镜2' })).not.toBeInTheDocument();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重试保存分镜1' })); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(2);
+      expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 101,
+        expect.objectContaining({ videoPrompt: '失败后仍保留的提示词' }));
+      expect(screen.queryByRole('button', { name: '重试保存分镜1' })).not.toBeInTheDocument();
+      expect(editor).toHaveTextContent('失败后仍保留的提示词');
+      expect(second.textContent).toBe(secondText);
+    });
+
+    it('does not save an untouched prompt on blur', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      fireEvent.focus(editor);
+      fireEvent.blur(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    });
+
+    it('flushes a pending prompt when the card unmounts without a later timer save', async () => {
+      const view = render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      editor.textContent = '离开前的提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+      await act(async () => { view.unmount(); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(1);
+      expect(mocks.updateStoryboard).toHaveBeenLastCalledWith(1, 101, expect.objectContaining({
+        videoPrompt: '离开前的提示词',
+      }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes pending edits when switching episodes', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      editor.textContent = '第一集尚未保存的提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '2' })); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({
+        videoPrompt: '第一集尚未保存的提示词',
+      }));
+      expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
+    });
+
+    it('does not save a pending prompt after deleting its storyboard', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      editor.textContent = '准备删除的分镜提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '删除分镜1' })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(mocks.deleteStoryboard).toHaveBeenCalledWith(1, 101);
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+    });
+
+    it('resumes the pending prompt save if deletion fails', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      mocks.deleteStoryboard.mockRejectedValueOnce(new Error('offline'));
+      vi.useFakeTimers();
+      editor.textContent = '删除失败后保留的提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '删除分镜1' })); });
+      expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({
+        videoPrompt: '删除失败后保留的提示词',
+      }));
+    });
+
+    it('uses the latest prompt when generating before the delay expires', async () => {
+      render(<ProductionWorkbench />);
+      const editor = await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      vi.useFakeTimers();
+      editor.textContent = '立即生成使用的最新提示词';
+      fireEvent.input(editor);
+      fireEvent.blur(editor);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
+      });
+      expect(mocks.createAiVideoTask).toHaveBeenCalledWith(1, expect.objectContaining({
+        prompt: expect.stringContaining('立即生成使用的最新提示词'),
+      }), true);
+      const saveCount = mocks.updateStoryboard.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      expect(mocks.updateStoryboard).toHaveBeenCalledTimes(saveCount);
+    });
+  });
+
+  it.each(['saving', 'creating'] as const)('discards the old project video result while %s after navigation', async (phase) => {
+    let finish!: (value: unknown) => void;
+    const pending = new Promise(resolve => { finish = resolve; });
+    if (phase === 'saving') mocks.updateStoryboard.mockReturnValueOnce(pending);
+    else mocks.createAiVideoTask.mockReturnValueOnce(pending);
+    const view = render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '生成分镜1视频' }));
+    await waitFor(() => expect(phase === 'saving' ? mocks.updateStoryboard : mocks.createAiVideoTask).toHaveBeenCalledTimes(1));
+    mocks.projectId = '2';
+    view.rerender(<ProductionWorkbench />);
+    await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledWith(2));
+    await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+    await act(async () => {});
+    const currentPrompt = screen.getByRole('textbox', { name: '分镜1视频提示词' }).textContent;
+    mocks.successMessage.mockClear();
+    mocks.pollVideoTask.mockClear();
+    await act(async () => finish({ data: phase === 'saving' ? {} : {
+      id: 98001, storyboardId: 101, status: 'GENERATING', results: [],
+    } }));
+    expect(mocks.createAiVideoTask).toHaveBeenCalledTimes(phase === 'saving' ? 0 : 1);
+    expect(mocks.pollVideoTask).not.toHaveBeenCalled();
+    expect(mocks.successMessage).not.toHaveBeenCalledWith('视频任务已创建');
+    expect(screen.getByRole('textbox', { name: '分镜1视频提示词' }).textContent).toBe(currentPrompt);
+    expect(screen.queryByRole('region', { name: '分镜1视频生成进度' })).not.toBeInTheDocument();
   });
 
   it('waits for the latest prompt document to save before creating a video task', async () => {
@@ -2785,7 +3087,7 @@ describe('ProductionWorkbench script page', () => {
       resolveEpisodeOne = resolve;
     });
     render(<ProductionWorkbench />);
-    await screen.findByText('分镜表');
+    await screen.findByRole('button', { name: '2' });
     mocks.queryStoryboardEditorPage
       .mockImplementationOnce(() => episodeTwo)
       .mockImplementationOnce(() => episodeOne);
@@ -2864,8 +3166,228 @@ describe('ProductionWorkbench script page', () => {
         1,
         7100,
         expect.any(Function),
+        1500,
+        expect.any(AbortSignal),
       );
       expect(mocks.queryStoryboardEditorPage.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('generation refresh scope', () => {
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+      return { promise, resolve, reject };
+    };
+
+    const setupPages = async () => {
+      const original = await mocks.queryStoryboardEditorPage();
+      const page = (episodeNo = 1, current = 1) => ({ data: {
+        ...original.data, episodeNo, current, total: 21,
+        storyboards: [{ ...original.data.storyboards[0],
+          id: episodeNo * 100 + (current - 1) * 20 + 1, episodeNo,
+          shotNo: (current - 1) * 20 + 1, storyboardNo: (current - 1) * 20 + 1,
+          videoPrompt: `第${episodeNo}集第${current}页`,
+          promptDocument: { version: 2, nodes: [{ type: 'text', text: `第${episodeNo}集第${current}页` }] },
+        }],
+      } });
+      mocks.queryStoryboardEditorPage.mockImplementation(async (_project, params) => page(params?.episodeNo, params?.current));
+      mocks.queryStoryboardEditorPage.mockClear();
+      return page;
+    };
+
+    const startGeneration = async () => {
+      const task = deferred<API.AiExecutionResponse>();
+      mocks.pollExecution.mockReturnValueOnce(task.promise);
+      const view = render(<ProductionWorkbench />);
+      await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
+      await waitFor(() => expect(mocks.pollExecution).toHaveBeenCalled());
+      return { task, view };
+    };
+
+    it('keeps project polling on episode changes and aborts it on unmount', async () => {
+      await setupPages();
+      const { task, view } = await startGeneration();
+      const signal = mocks.pollExecution.mock.calls.at(-1)?.[4] as AbortSignal;
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      await screen.findByText('第2集第1页');
+      expect(signal?.aborted).toBe(false);
+      view.unmount();
+      expect(signal.aborted).toBe(true);
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.cancelExecution).not.toHaveBeenCalled();
+      expect(mocks.errorMessage).not.toHaveBeenCalled();
+    });
+
+    it('cancels an in-flight batch query when the page unmounts', async () => {
+      await setupPages();
+      const batch = { id: 88, projectId: 1, status: 'RUNNING', items: [], succeeded: 0, warning: 0, failed: 0 };
+      mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: batch });
+      const pending = deferred<{ data: typeof batch }>();
+      mocks.queryStoryboardBatch.mockReturnValueOnce(pending.promise);
+      const view = render(<ProductionWorkbench />);
+      await waitFor(() => expect(mocks.queryStoryboardBatch).toHaveBeenCalled());
+      const signal = mocks.queryStoryboardBatch.mock.calls.at(-1)?.[2] as AbortSignal;
+      view.unmount();
+      await act(async () => pending.resolve({ data: { ...batch, status: 'SUCCEEDED' } }));
+      expect(signal?.aborted).toBe(true);
+      expect(mocks.queryStoryboardBatch).toHaveBeenCalledTimes(1);
+      expect(mocks.errorMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps another episode visible when the original generation completes', async () => {
+      await setupPages();
+      const { task } = await startGeneration();
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      await screen.findByText('第2集第1页');
+      const calls = mocks.queryStoryboardEditorPage.mock.calls.length;
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(calls);
+      expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toHaveTextContent('第2集第1页');
+      expect(mocks.successMessage).toHaveBeenCalledWith('第1集分镜已生成');
+      fireEvent.click(screen.getByRole('button', { name: '1' }));
+      await screen.findByText('第1集第1页');
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 1, pageSize: 20 });
+    });
+
+    it('refreshes the latest page after navigating within the generating episode', async () => {
+      await setupPages();
+      const { task } = await startGeneration();
+      fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+      await screen.findByText('第1集第2页');
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 });
+      expect(screen.getByRole('textbox', { name: '分镜21视频提示词' })).toHaveTextContent('第1集第2页');
+    });
+
+    it('refreshes the navigation target if generation completes while a page is loading', async () => {
+      const page = await setupPages();
+      const { task } = await startGeneration();
+      const navigation = deferred<ReturnType<typeof page>>();
+      mocks.queryStoryboardEditorPage.mockReturnValueOnce(navigation.promise);
+      fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 1, current: 2, pageSize: 20 });
+      expect(screen.getByRole('textbox', { name: '分镜21视频提示词' })).toHaveTextContent('第1集第2页');
+      await act(async () => navigation.resolve(page(1, 2)));
+    });
+
+    it('refreshes after leaving and returning to the generating episode', async () => {
+      await setupPages();
+      const { task } = await startGeneration();
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      await screen.findByText('第2集第1页');
+      fireEvent.click(screen.getByRole('button', { name: '1' }));
+      await screen.findByText('第1集第1页');
+      const calls = mocks.queryStoryboardEditorPage.mock.calls.length;
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(calls + 1);
+      expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toHaveTextContent('第1集第1页');
+    });
+
+    it.each(['response', 'error'])('ignores a refresh %s after switching episodes', async (outcome) => {
+      const page = await setupPages();
+      const { task } = await startGeneration();
+      const refresh = deferred<ReturnType<typeof page>>();
+      mocks.queryStoryboardEditorPage.mockReturnValueOnce(refresh.promise);
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      await screen.findByText('第2集第1页');
+      await act(async () => {
+        if (outcome === 'response') refresh.resolve(page(1));
+        else refresh.reject(new Error('old refresh failed'));
+      });
+      expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toHaveTextContent('第2集第1页');
+      expect(mocks.errorMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['unmount', 'project', 'project-return'])('ignores generation callbacks after %s', async (destination) => {
+      await setupPages();
+      const { task, view } = await startGeneration();
+      if (destination === 'unmount') view.unmount();
+      else {
+        mocks.projectId = '2';
+        view.rerender(<ProductionWorkbench />);
+        await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(2));
+        await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+        if (destination === 'project-return') {
+          mocks.projectId = '1';
+          view.rerender(<ProductionWorkbench />);
+          await waitFor(() => expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1));
+          await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+        }
+      }
+      const calls = mocks.queryStoryboardEditorPage.mock.calls.length;
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(calls);
+      expect(mocks.successMessage).not.toHaveBeenCalled();
+    });
+
+    it('preserves unsaved prompts and their delayed save during generation refresh', async () => {
+      const page = await setupPages();
+      const { task } = await startGeneration();
+      const editor = screen.getByRole('textbox', { name: '分镜1视频提示词' });
+      editor.textContent = '我正在编辑的提示词';
+      fireEvent.input(editor);
+      vi.useFakeTimers();
+      try {
+        fireEvent.blur(editor);
+        const refreshed = page();
+        refreshed.data.storyboards[0].videoPrompt = '生成后的提示词';
+        refreshed.data.storyboards[0].promptDocument.nodes[0].text = '生成后的提示词';
+        mocks.queryStoryboardEditorPage.mockResolvedValueOnce(refreshed);
+        await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+        expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toBe(editor);
+        expect(editor).toHaveTextContent('我正在编辑的提示词');
+        expect(mocks.updateStoryboard).not.toHaveBeenCalled();
+        await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+        expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({ videoPrompt: '我正在编辑的提示词' }));
+      } finally { vi.useRealTimers(); }
+    });
+
+    it('reports a refresh failure separately from successful generation and allows reloading', async () => {
+      await setupPages();
+      const { task } = await startGeneration();
+      mocks.queryStoryboardEditorPage.mockRejectedValueOnce(new Error('offline'));
+      await act(async () => task.resolve({ id: 7100, status: 'SUCCEEDED' }));
+      expect(mocks.successMessage).toHaveBeenCalledWith('第1集分镜已生成');
+      expect(mocks.errorMessage).toHaveBeenCalledWith('分镜生成已结束，但页面刷新失败，请重试加载');
+      expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toHaveTextContent('第1集第1页');
+      fireEvent.click(screen.getByRole('button', { name: '重试加载分镜' }));
+      await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      expect(screen.queryByRole('button', { name: '重试加载分镜' })).not.toBeInTheDocument();
+      expect(mocks.breakdownStoryboards).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['background', false], ['background', true], ['retry', false], ['retry', true],
+    ] as const)('scopes %s batch completion to affected episodes (current affected: %s)', async (source, affectsCurrent) => {
+      await setupPages();
+      const batch = {
+        id: 88, projectId: 1, status: source === 'background' ? 'RUNNING' : 'COMPLETED_WITH_FAILURES',
+        total: 1, pending: 0, running: 0, succeeded: 0, warning: 0, failed: 1,
+        items: [{ id: 1, episodeId: 1001, episodeNo: 1, status: 'FAILED', errorMessage: '原分集失败' }],
+      };
+      if (affectsCurrent) batch.items.push({ id: 2, episodeId: 1002, episodeNo: 2, status: 'FAILED', errorMessage: '第二集失败' });
+      mocks.queryLatestStoryboardBatch.mockResolvedValue({ data: batch });
+      mocks.createStoryboardBatch.mockResolvedValue({ data: { ...batch, status: 'RUNNING' } });
+      const polling = deferred<{ data: typeof batch }>();
+      mocks.queryStoryboardBatch.mockReturnValueOnce(polling.promise);
+      render(<ProductionWorkbench />);
+      await screen.findByRole('textbox', { name: '分镜1视频提示词' });
+      if (source === 'retry') fireEvent.click(await screen.findByRole('button', { name: '重试失败分镜' }));
+      await waitFor(() => expect(mocks.queryStoryboardBatch).toHaveBeenCalledWith(1, 88, expect.any(AbortSignal)));
+      fireEvent.click(screen.getByRole('button', { name: '2' }));
+      await screen.findByText('第2集第1页');
+      const calls = mocks.queryStoryboardEditorPage.mock.calls.length;
+      await act(async () => polling.resolve({ data: { ...batch, status: 'SUCCEEDED',
+        items: batch.items.map((item) => ({ ...item, status: 'SUCCESS' })),
+      } }));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenCalledTimes(calls + (affectsCurrent ? 1 : 0));
+      expect(mocks.queryStoryboardEditorPage).toHaveBeenLastCalledWith(1, { episodeNo: 2, current: 1, pageSize: 20 });
+      expect(screen.getByRole('textbox', { name: '分镜1视频提示词' })).toHaveTextContent('第2集第1页');
     });
   });
 
@@ -3055,7 +3577,7 @@ describe('ProductionWorkbench script page', () => {
     editor.textContent = '李慧';
     fireEvent.input(editor);
     await waitFor(() => expect(editor).toHaveTextContent('李慧'));
-    fireEvent.blur(editor);
+    await blurAndSavePrompt(editor);
 
     await waitFor(() => {
       expect(mocks.updateStoryboard).toHaveBeenCalledWith(

@@ -38,7 +38,20 @@ export type PlatformTenantSummary = {
   createdAt: string;
 };
 
+export type PlatformTenantMember = {
+  memberId: number;
+  userId: number;
+  nickname: string | null;
+  mobile: string | null;
+  memberType: 'OWNER' | 'MEMBER';
+  status: 'ACTIVE' | 'REMOVED';
+  userStatus: 'ACTIVE' | 'DISABLED' | 'DELETED';
+  joinedAt: string;
+  canImpersonate: boolean;
+};
+
 export type PlatformTenantDetail = PlatformTenantSummary & {
+  members: PlatformTenantMember[];
   logo?: string;
   description?: string;
   queuedPackages: PlatformTenantPackage[];

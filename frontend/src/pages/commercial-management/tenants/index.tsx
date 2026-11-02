@@ -15,17 +15,20 @@ import {
   Popconfirm,
   Space,
   Statistic,
+  Table,
   Tag,
   Typography,
 } from 'antd';
 import { useRef, useState } from 'react';
 import { formatPoints } from '@/utils/points';
 import GrantPackageModal from './GrantPackageModal';
+import ImpersonationModal from './ImpersonationModal';
 import {
   assignPlatformTenantTrial,
   getPlatformTenant,
   queryPlatformTenants,
   type PlatformTenantDetail,
+  type PlatformTenantMember,
   type PlatformTenantQuery,
   type PlatformTenantStatus,
   type PlatformTenantSummary,
@@ -54,6 +57,7 @@ const PlatformTenantManagementPage = () => {
   const [detail, setDetail] = useState<PlatformTenantDetail>();
   const [detailLoading, setDetailLoading] = useState(false);
   const [grantTenant, setGrantTenant] = useState<PlatformTenantSummary>();
+  const [impersonationMember, setImpersonationMember] = useState<PlatformTenantMember>();
 
   const loadDetail = async (tenantId: number) => {
     setDetailLoading(true);
@@ -239,7 +243,7 @@ const PlatformTenantManagementPage = () => {
         loading={detailLoading}
         size="large"
         destroyOnHidden
-        onClose={() => setDetail(undefined)}
+        onClose={() => { setDetail(undefined); setImpersonationMember(undefined); }}
       >
         {detail && (
           <>
@@ -254,6 +258,23 @@ const PlatformTenantManagementPage = () => {
                 { key: 'createdAt', label: '创建时间', children: dateTime(detail.createdAt) },
                 { key: 'updatedAt', label: '更新时间', children: dateTime(detail.updatedAt) },
                 { key: 'description', label: '简介', children: detail.description ?? '-', span: 2 },
+              ]}
+            />
+            <Divider>全部成员</Divider>
+            <Table<PlatformTenantMember>
+              rowKey="memberId" size="small" dataSource={detail.members ?? []}
+              pagination={{ pageSize: 10 }} scroll={{ x: 760 }}
+              columns={[
+                { title: '成员', dataIndex: 'nickname', render: (value) => value || '-' },
+                { title: '手机号', dataIndex: 'mobile', render: (value) => value || '-' },
+                { title: '成员类型', dataIndex: 'memberType', render: (value) => value === 'OWNER' ? 'Owner' : '成员' },
+                { title: '成员状态', dataIndex: 'status', render: (value) => value === 'ACTIVE' ? '有效' : '已移除' },
+                { title: '账号状态', dataIndex: 'userStatus', render: (value: PlatformTenantMember['userStatus']) => ({ ACTIVE: '正常', DISABLED: '已停用', DELETED: '已删除' })[value] },
+                { title: '加入时间', dataIndex: 'joinedAt', render: dateTime },
+                ...(access.canImpersonateTenantMember ? [{
+                  title: '操作', key: 'action', fixed: 'right' as const, width: 100,
+                  render: (_: unknown, member: PlatformTenantMember) => <Button type="link" disabled={detail.status !== 'ACTIVE' || !member.canImpersonate} onClick={() => setImpersonationMember(member)}>切换登录</Button>,
+                }] : []),
               ]}
             />
             <Divider>账户摘要</Divider>
@@ -298,6 +319,9 @@ const PlatformTenantManagementPage = () => {
           </>
         )}
       </Drawer>
+      {access.canImpersonateTenantMember && detail && impersonationMember && (
+        <ImpersonationModal tenant={detail} member={impersonationMember} onClose={() => setImpersonationMember(undefined)} />
+      )}
       {access.canGrantPlatformTenantPackage && grantTenant && (
         <GrantPackageModal tenant={grantTenant} onClose={() => setGrantTenant(undefined)} onGranted={() => {
           const tenantId = grantTenant.id;

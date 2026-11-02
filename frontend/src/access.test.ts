@@ -2,6 +2,13 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('only platform administrators outside impersonation can switch member login', () => {
+    const state = { currentUser: { userid: '1' }, bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } } };
+    expect(access(state).canImpersonateTenantMember).toBe(true);
+    expect(access({ ...state, bootstrap: { platform: { roles: ['PLATFORM_OPERATOR'] } } }).canImpersonateTenantMember).toBe(false);
+    expect(access({ ...state, bootstrap: { ...state.bootstrap, session: { impersonation: { administratorId: 1, administratorName: '管理员', tenantId: 9 } } } }).canImpersonateTenantMember).toBe(false);
+    expect(access(undefined).canImpersonateTenantMember).toBe(false);
+  });
   it('自由创作需要有效团队身份和菜单权限', () => {
     const state = {
       currentUser: { userid: '1', access: 'user' },

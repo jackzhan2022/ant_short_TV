@@ -10,6 +10,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.eq;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SpringBootTest
 class AuthSessionServiceTest {
@@ -20,7 +24,7 @@ class AuthSessionServiceTest {
     @Autowired
     private AuthSessionMapper authSessionMapper;
 
-    @Autowired
+    @SpyBean
     private UserMapper userMapper;
 
     private UserEntity user;
@@ -133,5 +137,24 @@ class AuthSessionServiceTest {
 
         assertThat(authSessionMapper.selectBySessionId(issued.sessionId()).getLastSeenAt())
             .isEqualTo(originalLastSeen);
+    }
+
+    @Test
+    void activityUpdateCannotResurrectSessionRevokedDuringAuthentication() {
+        IssuedSession issued = authSessionService.issue(user, null, null);
+        AuthSessionEntity stored = authSessionMapper.selectBySessionId(issued.sessionId());
+        stored.setLastSeenAt(LocalDateTime.now().minusHours(1));
+        authSessionMapper.updateById(stored);
+        AtomicBoolean revoked = new AtomicBoolean();
+        doAnswer(invocation -> {
+            if (revoked.compareAndSet(false, true)) {
+                authSessionMapper.revokeForExchange(issued.sessionId(), "IMPERSONATION_START", LocalDateTime.now());
+            }
+            return user;
+        }).when(userMapper).selectById(eq(user.getId()));
+
+        authSessionService.authenticate(issued.credential());
+
+        assertThat(authSessionMapper.selectBySessionId(issued.sessionId()).getStatus()).isEqualTo("REVOKED");
     }
 }

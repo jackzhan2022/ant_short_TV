@@ -48,6 +48,9 @@ public class SecurityConfig {
                     "/api/wechat/component/callback", "/api/wechat/component/events", "/api/wechat/component/messages/*").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.POST,
                     "/api/wechat/component/events", "/api/wechat/component/messages/*").permitAll()
+                // Recovery validates the real session owner even when the impersonated account is disabled.
+                // CSRF protection remains enabled for this endpoint.
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/auth/impersonation/stop").permitAll()
                 .requestMatchers(
                     "/api/auth/login", "/api/auth/register",
                     "/api/auth/verification-code/**",

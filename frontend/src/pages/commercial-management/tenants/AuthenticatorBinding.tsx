@@ -9,8 +9,10 @@ import {
 
 export default function AuthenticatorBinding({
   onBound,
+  description = '发放套餐或积分包前，需要使用本人验证器进行身份验证。',
 }: {
   onBound: () => void;
+  description?: string;
 }) {
   const [passwordForm] = Form.useForm<{ password: string }>();
   const [codeForm] = Form.useForm<{ code: string }>();
@@ -55,7 +57,7 @@ export default function AuthenticatorBinding({
         type="info"
         showIcon
         title="请先绑定本人验证器"
-        description="发放套餐或积分包前，需要使用本人验证器进行身份验证。"
+        description={description}
       />
       {error && <Alert type="error" showIcon title={error} />}
       {!enrollment ? (

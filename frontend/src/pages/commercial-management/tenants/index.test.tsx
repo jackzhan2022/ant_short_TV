@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     canEditPlatformTenantStatus: true,
     canAssignPlatformTenantTrial: false,
     canGrantPlatformTenantPackage: false,
+    canImpersonateTenantMember: false,
   },
   queryTenants: vi.fn(),
   getTenant: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./GrantPackageModal', () => ({ default: ({ tenant }: any) => <div>发放至：{tenant.name}</div> }));
+vi.mock('./ImpersonationModal', () => ({ default: ({ member }: any) => <div>切换至：{member.nickname}</div> }));
 vi.mock('@umijs/max', () => ({ useAccess: () => mocks.access }));
 vi.mock('./service', () => ({
   queryPlatformTenants: mocks.queryTenants,
@@ -44,7 +46,8 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 vi.mock('antd', () => ({
   App: { useApp: () => ({ message: { success: mocks.success } }) },
-  Button: ({ children, onClick }: any) => <button type="button" onClick={onClick}>{children}</button>,
+  Button: ({ children, onClick, disabled }: any) => <button type="button" disabled={disabled} onClick={onClick}>{children}</button>,
+  Table: ({ dataSource, columns }: any) => <div>{dataSource.map((record: any) => <div key={record.memberId}>{columns.map((column: any) => <span key={column.key ?? column.dataIndex}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>,
   Descriptions: ({ items }: any) => <dl>{items.map((item: any) => <div key={item.key}><dt>{item.label}</dt><dd>{item.children}</dd></div>)}</dl>,
   Divider: ({ children }: any) => <h3>{children}</h3>,
   Drawer: ({ children, open, title }: any) => open ? <section aria-label={title}>{children}</section> : null,
@@ -77,6 +80,7 @@ describe('PlatformTenantManagementPage', () => {
     mocks.access.canViewPlatformTenants = true;
     mocks.access.canAssignPlatformTenantTrial = false;
     mocks.access.canGrantPlatformTenantPackage = false;
+    mocks.access.canImpersonateTenantMember = false;
     mocks.access.canEditPlatformTenantStatus = true;
     mocks.queryTenants.mockResolvedValue({ data: { records: [tenant], total: 1, current: 2, pageSize: 20 } });
     mocks.getTenant.mockResolvedValue({ data: { ...tenant, description: '运营租户', queuedPackages: [{ subscriptionId: 11, name: '专业版', packageType: 'SUBSCRIPTION', subscriptionStatus: 'QUEUED', startsAt: '2026-10-01T00:00:00', endsAt: '2026-11-01T00:00:00' }] } });
@@ -91,6 +95,39 @@ describe('PlatformTenantManagementPage', () => {
     view.rerender(<PlatformTenantManagementPage />);
     fireEvent.click(screen.getByRole('button', { name: '添加套餐/积分包' }));
     expect(screen.getByText('发放至：Alpha Studio')).toBeInTheDocument();
+  });
+
+  it('shows all members in detail and only allows eligible members to switch login', async () => {
+    mocks.access.canImpersonateTenantMember = true;
+    mocks.getTenant.mockResolvedValue({ data: { ...tenant, queuedPackages: [], members: [
+      { memberId: 11, nickname: '可用成员', mobile: '13800000001', memberType: 'MEMBER', status: 'ACTIVE', userStatus: 'ACTIVE', canImpersonate: true },
+      { memberId: 12, nickname: '已移除成员', memberType: 'MEMBER', status: 'REMOVED', userStatus: 'ACTIVE', canImpersonate: false },
+      { memberId: 13, nickname: '停用成员', memberType: 'MEMBER', status: 'ACTIVE', userStatus: 'DISABLED', canImpersonate: false },
+      { memberId: 14, nickname: null, mobile: null, memberType: 'MEMBER', status: 'REMOVED', userStatus: 'DELETED', canImpersonate: false },
+    ] } });
+    const view = render(<PlatformTenantManagementPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+    await screen.findByText('全部成员');
+    expect(screen.getByText('已移除成员')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: '切换登录' });
+    expect(buttons[0]).toBeEnabled();
+    expect(buttons[1]).toBeDisabled();
+    expect(buttons[2]).toBeDisabled();
+    expect(buttons[3]).toBeDisabled();
+    expect(screen.getByText('已删除')).toBeInTheDocument();
+    fireEvent.click(buttons[0]);
+    expect(screen.getByText('切换至：可用成员')).toBeInTheDocument();
+    mocks.access.canImpersonateTenantMember = false;
+    view.rerender(<PlatformTenantManagementPage />);
+    expect(screen.queryByRole('button', { name: '切换登录' })).not.toBeInTheDocument();
+  });
+
+  it('disables member impersonation when tenant is disabled', async () => {
+    mocks.access.canImpersonateTenantMember = true;
+    mocks.getTenant.mockResolvedValue({ data: { ...tenant, status: 'DISABLED', queuedPackages: [], members: [{ memberId: 11, nickname: '成员', memberType: 'MEMBER', status: 'ACTIVE', userStatus: 'ACTIVE', canImpersonate: true }] } });
+    render(<PlatformTenantManagementPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '查看详情' }));
+    expect(await screen.findByRole('button', { name: '切换登录' })).toBeDisabled();
   });
 
   it('assigns trial after confirmation and refreshes list and open detail', async () => {

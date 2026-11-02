@@ -102,8 +102,12 @@ record PlatformTenantDetailResponse(
     PlatformTenantPackageResponse currentPackage,
     List<PlatformTenantPackageResponse> queuedPackages,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    List<PlatformTenantMemberResponse> members
 ) {}
+
+record PlatformTenantMemberResponse(Long memberId, Long userId, String nickname, String mobile,
+    String memberType, String status, String userStatus, LocalDateTime joinedAt, boolean canImpersonate) {}
 
 record PlatformTenantPageResponse(
     List<PlatformTenantSummaryResponse> records,

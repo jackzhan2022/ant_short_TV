@@ -12,6 +12,9 @@ public class AuthSessionEntity {
     private Long id;
     private String sessionId;
     private Long userId;
+    private Long impersonatedUserId;
+    private Long impersonatedTokenVersion;
+    private Long impersonationTenantId;
     private String tokenHash;
     private Long tokenVersion;
     private String status;
@@ -30,6 +33,12 @@ public class AuthSessionEntity {
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+    public Long getImpersonatedUserId() { return impersonatedUserId; }
+    public void setImpersonatedUserId(Long value) { impersonatedUserId = value; }
+    public Long getImpersonatedTokenVersion() { return impersonatedTokenVersion; }
+    public void setImpersonatedTokenVersion(Long value) { impersonatedTokenVersion = value; }
+    public Long getImpersonationTenantId() { return impersonationTenantId; }
+    public void setImpersonationTenantId(Long value) { impersonationTenantId = value; }
     public String getTokenHash() { return tokenHash; }
     public void setTokenHash(String tokenHash) { this.tokenHash = tokenHash; }
     public Long getTokenVersion() { return tokenVersion; }

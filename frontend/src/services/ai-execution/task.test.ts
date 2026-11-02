@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AiExecutionTaskService,
   isTerminalExecution,
   type AiExecutionClient,
 } from './task';
 
+vi.mock('@umijs/max', () => ({ request: vi.fn() }));
+vi.mock('@/services/point-estimate', () => ({ pointEstimatedRequest: vi.fn() }));
+
 describe('AiExecutionTaskService', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     localStorage.clear();
   });
@@ -30,6 +34,57 @@ describe('AiExecutionTaskService', () => {
     ]);
     expect(sleep).toHaveBeenCalledTimes(2);
     expect(service.recoverable(7)).toEqual([]);
+  });
+
+  it('aborts a pending polling delay without canceling the backend task', async () => {
+    vi.useFakeTimers();
+    const client = clientWithDetails([{ id: 11, status: 'RUNNING' }]);
+    const service = new AiExecutionTaskService(client, localStorage);
+    const controller = new AbortController();
+    const polling = service.poll(7, 11, undefined, 1500, controller.signal);
+    const rejected = expect(polling).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1500);
+    await rejected;
+    expect(client.detail).toHaveBeenCalledTimes(1);
+    expect(client.cancel).not.toHaveBeenCalled();
+    expect(service.recoverable(7)).toEqual([11]);
+  });
+
+  it('passes cancellation to the in-flight status request and ignores its late result', async () => {
+    const client = clientWithDetails([]);
+    let finish!: (task: API.AiExecutionResponse) => void;
+    client.detail.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const controller = new AbortController();
+    const updates = vi.fn();
+    const service = new AiExecutionTaskService(client, localStorage);
+    const polling = service.poll(7, 11, updates, 1500, controller.signal);
+    const rejected = expect(polling).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+    finish({ id: 11, status: 'SUCCEEDED' });
+    await rejected;
+    expect(client.detail).toHaveBeenCalledWith(7, 11, controller.signal);
+    expect(updates).not.toHaveBeenCalled();
+    expect(client.cancel).not.toHaveBeenCalled();
+  });
+
+  it('waits for an async update and stops without scheduling again if aborted during it', async () => {
+    const client = clientWithDetails([{ id: 11, status: 'RUNNING' }]);
+    const controller = new AbortController();
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    let finish!: () => void;
+    const update = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const service = new AiExecutionTaskService(client, localStorage, sleep);
+    const polling = service.poll(7, 11, update, 1500, controller.signal);
+    const rejected = expect(polling).rejects.toMatchObject({ name: 'AbortError' });
+    await Promise.resolve();
+    controller.abort();
+    finish();
+    await rejected;
+    expect(sleep).not.toHaveBeenCalled();
+    expect(client.detail).toHaveBeenCalledTimes(1);
   });
 
   it('delegates retry and cancel and retains only non-terminal tasks for recovery', async () => {

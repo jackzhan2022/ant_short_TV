@@ -637,10 +637,11 @@ export const queryAssetVisualWorkspace = async (
   elementType: Exclude<ScriptElementType, 'ALL'>,
   elementId: number,
   params: MediaPageParams & { selectedVariantId?: number } = {},
+  signal?: AbortSignal,
 ) =>
   request<ApiResponse<AssetVisualWorkspace>>(
     `/api/projects/${projectId}/script-elements/${elementType}/${elementId}/visual-workspace`,
-    { params, skipErrorHandler: true },
+    { params, skipErrorHandler: true, signal },
   );
 
 export const queryStoryboardWorkspace = async (
@@ -1001,9 +1002,11 @@ export const createStoryboardBatch = async (
 export const queryStoryboardBatch = async (
   projectId: number,
   batchId: number,
+  signal?: AbortSignal,
 ) =>
   request<ApiResponse<StoryboardBatch>>(
     `/api/projects/${projectId}/storyboard-batches/${batchId}`,
+    { signal, skipErrorHandler: Boolean(signal) },
   );
 
 export const queryLatestStoryboardBatch = async (projectId: number) =>
@@ -1090,9 +1093,10 @@ export const queryAiImageTasks = async (
     },
   );
 
-export const queryAiImageTask = async (projectId: number, taskId: number) =>
+export const queryAiImageTask = async (projectId: number, taskId: number, signal?: AbortSignal) =>
   request<ApiResponse<AiImageTask>>(
     `/api/projects/${projectId}/ai-image-tasks/${taskId}`,
+    { signal, skipErrorHandler: Boolean(signal) },
   );
 
 export const queryAiImageResults = (

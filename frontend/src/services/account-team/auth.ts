@@ -1,5 +1,6 @@
 import { request } from '@umijs/max';
 import type { ApiResponse, AuthBootstrap, AuthSession } from './types';
+import { setExpectedSessionId, setImpersonationDisplay } from './sessionIdentity';
 
 const CURRENT_TENANT_ID_KEY = 'currentTenantId';
 
@@ -45,20 +46,25 @@ export function clearCurrentTenantId() {
 }
 
 export function clearAuthSession() {
+  setExpectedSessionId(undefined);
+  setImpersonationDisplay(undefined);
   localStorage.removeItem('accessToken');
   clearCurrentTenantId();
 }
 
 export async function loginByMobile(params: LoginByMobileParams) {
-  return request<ApiResponse<AuthSession>>('/api/auth/login', {
+  const response = await request<ApiResponse<AuthSession>>('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     data: params,
   });
+  setExpectedSessionId(undefined);
+  setImpersonationDisplay(undefined);
+  return response;
 }
 
 export async function registerByMobile(params: RegisterParams) {
-  return request<ApiResponse<AuthSession>>(
+  const response = await request<ApiResponse<AuthSession>>(
     '/api/auth/register',
     {
       method: 'POST',
@@ -66,6 +72,9 @@ export async function registerByMobile(params: RegisterParams) {
       data: params,
     },
   );
+  setExpectedSessionId(undefined);
+  setImpersonationDisplay(undefined);
+  return response;
 }
 
 export async function logout() {

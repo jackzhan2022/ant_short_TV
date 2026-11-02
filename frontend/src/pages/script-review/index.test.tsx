@@ -23,8 +23,11 @@ const mocks = vi.hoisted(() => ({
   batchRepairReview: vi.fn(),
   rollbackReviewVersion: vi.fn(),
   exportReviewReport: vi.fn(),
+  createDownloadTask: vi.fn(),
   pollExecution: vi.fn(),
 }));
+
+vi.mock('@/pages/downloads/service', () => ({ createDownloadTask: mocks.createDownloadTask }));
 
 vi.mock('@ant-design/icons', () => ({
   AuditOutlined: () => <span />,
@@ -578,27 +581,12 @@ describe('ScriptReviewPage', () => {
       },
     });
     mocks.queryReviewTask.mockResolvedValueOnce({ data: markdownTask });
-    mocks.exportReviewReport.mockResolvedValue({
-      data: { fileName: 'report.md' },
-    });
+    mocks.createDownloadTask.mockResolvedValue({ id: 'report-download', status: 'QUEUED' });
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
     });
-    const createObjectURL = vi
-      .spyOn(URL, 'createObjectURL')
-      .mockReturnValue('blob:markdown-report');
-    const revokeObjectURL = vi
-      .spyOn(URL, 'revokeObjectURL')
-      .mockImplementation(() => undefined);
-    let downloadedFile: { download: string; href: string } | undefined;
-    const downloadClick = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(function captureDownload(this: HTMLAnchorElement) {
-        downloadedFile = { download: this.download, href: this.href };
-      });
-
     render(<ScriptReviewPage />);
 
     expect(
@@ -616,22 +604,10 @@ describe('ScriptReviewPage', () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(markdownTask.reportMarkdown),
     );
-    fireEvent.click(screen.getByRole('button', { name: '下载 .md' }));
-    await waitFor(() =>
-      expect(mocks.exportReviewReport).toHaveBeenCalledWith(
-        1,
-        2,
-        'MARKDOWN',
-        12,
-      ),
-    );
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-    expect(downloadedFile).toEqual({
-      download: 'report.md',
-      href: 'blob:markdown-report',
-    });
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:markdown-report');
-    downloadClick.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: '下载报告' }));
+    await waitFor(() => expect(mocks.createDownloadTask).toHaveBeenCalledWith(
+      '审核报告_12', [{ kind: 'PROJECT_REVIEW', id: 12 }],
+    ));
   });
 
   it('shows a completed task report as right-side findings when structured issues are empty', async () => {

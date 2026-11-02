@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const request = vi.hoisted(() => vi.fn());
 
@@ -14,7 +14,35 @@ import {
   downloadEpisodeVideoVersion,
   queryAssetImageBatch,
   queryAssetImageBatchPreflight,
+  queryAiImageTask,
+  queryStoryboardBatch,
+  queryAssetVisualWorkspace,
 } from './service';
+
+describe('cancellable storyboard reads', () => {
+  beforeEach(() => request.mockReset());
+
+  it('forwards cancellation to batch progress requests', async () => {
+    const signal = new AbortController().signal;
+    await queryStoryboardBatch(5, 71, signal);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/storyboard-batches/71',
+      expect.objectContaining({ signal, skipErrorHandler: true }));
+  });
+
+  it('forwards cancellation to image task requests', async () => {
+    const signal = new AbortController().signal;
+    await queryAiImageTask(5, 72, signal);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/ai-image-tasks/72',
+      expect.objectContaining({ signal, skipErrorHandler: true }));
+  });
+
+  it('forwards cancellation without losing visual workspace query parameters', async () => {
+    const signal = new AbortController().signal;
+    await queryAssetVisualWorkspace(5, 'CHARACTER', 11, { current: 2 }, signal);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/script-elements/CHARACTER/11/visual-workspace',
+      expect.objectContaining({ params: { current: 2 }, signal, skipErrorHandler: true }));
+  });
+});
 
 // Transport contract tests; confirmation behaviour is covered in point-estimate.test.tsx.
 vi.mock('@/services/point-estimate', async () => {
@@ -66,63 +94,16 @@ describe('asset image batch service', () => {
 });
 
 describe('downloadEpisodeVideoVersion', () => {
-  const originalCreateElement = document.createElement.bind(document);
-  const originalObjectUrl = URL.createObjectURL;
-  const originalRevoke = URL.revokeObjectURL;
+  beforeEach(() => request.mockReset());
 
-  beforeEach(() => {
-    localStorage.clear();
-    localStorage.setItem('accessToken', 'token-1');
-    localStorage.setItem('currentTenantId', '7');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        blob: async () => new Blob(['video-bytes']),
-        headers: {
-          get: (name: string) =>
-            name.toLowerCase() === 'content-disposition'
-              ? 'attachment; filename="episode_1_v1.mp4"'
-              : null,
-        },
-      }),
-    );
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:episode');
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    document.createElement = originalCreateElement;
-    URL.createObjectURL = originalObjectUrl;
-    URL.revokeObjectURL = originalRevoke;
-  });
-
-  it('downloads the episode video with auth headers', async () => {
-    const click = vi.fn();
-    const anchor = {
-      href: '',
-      download: '',
-      rel: '',
-      click,
-    } as unknown as HTMLAnchorElement;
-    vi.spyOn(document, 'createElement').mockReturnValue(anchor);
-
-    await downloadEpisodeVideoVersion(5, 11);
-
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/projects/5/episode-video-versions/11/download',
-      expect.objectContaining({
-        headers: {
-          Authorization: 'Bearer token-1',
-          'X-Tenant-Id': '7',
-        },
-      }),
-    );
-    expect(click).toHaveBeenCalled();
-    expect(URL.createObjectURL).toHaveBeenCalled();
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:episode');
+  it('creates a download-center task for the selected episode version', async () => {
+    const task = { id: 'episode-download', status: 'QUEUED' };
+    request.mockResolvedValue({ success: true, data: task });
+    await expect(downloadEpisodeVideoVersion(5, 11)).resolves.toEqual(task);
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/downloads',
+      expect.objectContaining({ method: 'POST', data: {
+        name: '成片_11', sources: [{ kind: 'EPISODE_VERSION', projectId: 5, id: 11 }],
+      } }));
   });
 });
 

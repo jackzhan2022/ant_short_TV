@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setExpectedSessionId } from '@/services/account-team/sessionIdentity';
 import {
   installSystemMonitoring,
   reportFrontendError,
@@ -22,6 +23,7 @@ describe('system monitoring', () => {
   });
 
   it('uses session and CSRF and removes secrets and query strings', async () => {
+    setExpectedSessionId('tab-session');
     localStorage.setItem('currentTenantId', '21');
     await reportFrontendError(
       'FRONTEND_RENDER',
@@ -34,6 +36,7 @@ describe('system monitoring', () => {
     expect(options.credentials).toBe('include');
     expect(options.headers['X-XSRF-TOKEN']).toBe('csrf token');
     expect(options.headers['X-Tenant-Id']).toBe('21');
+    expect(options.headers['X-Auth-Session-Id']).toBe('tab-session');
     expect(options.body).not.toMatch(
       /private|Bearer secret|13800138000|hidden/,
     );

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBootstrapSelection, toBootstrapState } from './bootstrap';
+import { getExpectedSessionId } from './sessionIdentity';
 
 const mocks = vi.hoisted(() => ({
   queryAuthBootstrap: vi.fn(),
@@ -25,6 +26,7 @@ describe('applyBootstrapSelection', () => {
     });
 
     expect(state.currentUser.access).toBe('admin');
+    expect(getExpectedSessionId()).toBe('s1');
   });
 
   it('applies validated state before persisting the selected tenant', async () => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorConfig } from './requestErrorConfig';
+import { getSessionChanged, setExpectedSessionId } from './services/account-team/sessionIdentity';
 
 const mocks = vi.hoisted(() => ({
   error: vi.fn(),
@@ -31,7 +32,22 @@ describe('requestErrorConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    setExpectedSessionId(undefined);
     document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
+  });
+
+  it('pins requests to the bootstrapped tab session despite shared storage changes', () => {
+    setExpectedSessionId('admin-session');
+    localStorage.setItem('sessionId', 'other-tab-session');
+    const interceptor = errorConfig.requestInterceptors?.[0] as (config: any) => any;
+    expect(interceptor({ method: 'POST', headers: {} }).headers['X-Auth-Session-Id']).toBe('admin-session');
+    expect(interceptor({ method: 'GET', headers: {} }).headers['X-Auth-Session-Id']).toBe('admin-session');
+  });
+
+  it('requires refresh on session conflict even when the caller handles errors', () => {
+    const error = { response: { status: 409, data: { errorCode: 'AUTH_SESSION_CHANGED' } } };
+    expect(() => errorConfig.errorConfig?.errorHandler?.(error as any, { skipErrorHandler: true })).toThrow();
+    expect(getSessionChanged()).toBe(true);
   });
 
   it('reports transport errors before a caller opts out of the default message handler', () => {

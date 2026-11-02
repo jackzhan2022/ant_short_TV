@@ -61,6 +61,11 @@ export type AuthSession = {
 export type BootstrapSession = {
   sessionId: string;
   expiresAt: string;
+  impersonation?: {
+    administratorId: number;
+    administratorName: string;
+    tenantId: number;
+  } | null;
 };
 
 export type PlatformAccess = {

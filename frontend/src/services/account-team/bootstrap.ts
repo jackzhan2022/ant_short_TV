@@ -1,5 +1,6 @@
 import type { AuthBootstrap, LayoutCurrentUser, UserProfile } from './types';
 import { queryAuthBootstrap, setCurrentTenantId } from './auth';
+import { getImpersonationDisplay, setExpectedSessionId, setImpersonationDisplay } from './sessionIdentity';
 
 const toLayoutCurrentUser = (
   user: UserProfile,
@@ -17,7 +18,14 @@ const toLayoutCurrentUser = (
     : 'user',
 });
 
-export const toBootstrapState = (bootstrap: AuthBootstrap) => ({
+export const toBootstrapState = (bootstrap: AuthBootstrap) => {
+  setExpectedSessionId(bootstrap.session.sessionId);
+  const impersonation = bootstrap.session.impersonation;
+  setImpersonationDisplay(impersonation ? {
+    tenantName: bootstrap.selectedTenant?.tenant.name ?? getImpersonationDisplay()?.tenantName ?? `租户 ${impersonation.tenantId}`,
+    userName: bootstrap.user.nickname,
+  } : undefined);
+  return {
   currentUser: toLayoutCurrentUser(
     bootstrap.user,
     bootstrap.platform.permissions,
@@ -28,7 +36,8 @@ export const toBootstrapState = (bootstrap: AuthBootstrap) => ({
   tenantPermissions: bootstrap.selectedTenant?.permissions ?? [],
   platformPermissions: bootstrap.platform.permissions,
   bootstrap,
-});
+  };
+};
 
 type InitialStateSetter<T> = (
   initialState: T | ((state: T) => T),

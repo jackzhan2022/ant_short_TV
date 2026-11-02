@@ -29,7 +29,7 @@ yarn.lock
 *.pid
 env
 functions/*
-.temp/**
+**/.temp/
 .release/
 
 # claude code local settings
@@ -47,8 +47,8 @@ screenshot
 .firebase
 
 # local design previews
-/.superpowers/brainstorm/order-detail-session/
-/.superpowers/brainstorm/sidebar-points-preview/
+/.superpowers/brainstorm/
+/docs/previews/
 /asset-review-drawer-preview.html
 /asset-review-queue-preview.html
 /asset-workbench-reference-preview.html
@@ -60,6 +60,10 @@ screenshot
 /review-workbench-prototype/
 /script-review-preview.html
 /script-workbench-layout-preview.html
+/script-analysis-details-mobile-preview.png
+/script-analysis-details-preview.png
+/script-analysis-progress-preview.html
+/script-analysis-progress-preview.png
 
 build
 **/target
@@ -74,8 +78,11 @@ docs/superpowers
 .wrangler
 requestRecord.mock.js
 
-# local generated WeChat credentials
-/outputs/wechat-component.private.env
+# local verification outputs, screenshots, and generated credentials
+/outputs/
+
+# local collected reference materials
+/采集资料/当众受辱后，我收回我的一切_2026-10-19/
 
 # runtime storage
 backend/storage/

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import com.antshorttv.security.CurrentPrincipal;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,10 +14,12 @@ public class OperationLogService {
 
     private final OperationLogMapper operationLogMapper;
     private final ObjectMapper objectMapper;
+    private final CurrentPrincipal principal;
 
-    public OperationLogService(OperationLogMapper operationLogMapper, ObjectMapper objectMapper) {
+    public OperationLogService(OperationLogMapper operationLogMapper, ObjectMapper objectMapper, CurrentPrincipal principal) {
         this.operationLogMapper = operationLogMapper;
         this.objectMapper = objectMapper;
+        this.principal = principal;
     }
 
     public void record(
@@ -46,7 +50,14 @@ public class OperationLogService {
         log.setResult(result.name());
         log.setIp(resolveIp(request));
         log.setUserAgent(request == null ? null : request.getHeader("User-Agent"));
-        log.setDetailJson(serializeDetail(detail));
+        Map<String, Object> attributedDetail = new LinkedHashMap<>();
+        if (detail != null) attributedDetail.putAll(detail);
+        principal.get().filter(user -> user.impersonation() != null).ifPresent(user -> {
+            attributedDetail.put("administratorId", user.impersonation().administratorId());
+            attributedDetail.put("targetUserId", user.userId());
+            attributedDetail.put("sessionId", user.sessionId());
+        });
+        log.setDetailJson(serializeDetail(attributedDetail));
         log.setCreatedAt(LocalDateTime.now());
         operationLogMapper.insert(log);
     }

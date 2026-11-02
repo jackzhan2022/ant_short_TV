@@ -3,6 +3,7 @@ import type { RequestConfig } from '@umijs/max';
 import { getIntl } from '@umijs/max';
 import { message, notification } from 'antd';
 import { reportRequestFailure } from '@/utils/systemMonitoring';
+import { getExpectedSessionId, markSessionChanged } from '@/services/account-team/sessionIdentity';
 
 // 错误处理方案： 错误类型
 enum ErrorShowType {
@@ -68,6 +69,10 @@ export const errorConfig: RequestConfig = {
     },
     // 错误接收及处理
     errorHandler: (error: any, opts: any) => {
+      if (error.response?.data?.errorCode === 'AUTH_SESSION_CHANGED' || error.info?.errorCode === 'AUTH_SESSION_CHANGED') {
+        markSessionChanged();
+        throw error;
+      }
       void reportRequestFailure(error);
       if (opts?.skipErrorHandler) throw error;
       // 我们的 errorThrower 抛出的错误。
@@ -137,6 +142,7 @@ export const errorConfig: RequestConfig = {
   requestInterceptors: [
     (config: RequestOptions) => {
       const currentTenantId = localStorage.getItem('currentTenantId');
+      const expectedSessionId = getExpectedSessionId();
       const csrfToken = isUnsafeMethod(config.method)
         ? readCookie('XSRF-TOKEN')
         : undefined;
@@ -144,6 +150,7 @@ export const errorConfig: RequestConfig = {
       config.headers = {
         ...(currentTenantId ? { 'X-Tenant-Id': currentTenantId } : {}),
         ...config.headers,
+        ...(expectedSessionId ? { 'X-Auth-Session-Id': expectedSessionId } : {}),
         ...(csrfToken ? { 'X-XSRF-TOKEN': csrfToken } : {}),
       };
       return config;

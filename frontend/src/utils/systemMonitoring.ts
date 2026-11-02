@@ -1,3 +1,5 @@
+import { getExpectedSessionId } from '@/services/account-team/sessionIdentity';
+
 type FrontendErrorSource =
   | 'FRONTEND_RENDER'
   | 'FRONTEND_RUNTIME'
@@ -86,6 +88,7 @@ export async function reportFrontendError(
       ? decodeURIComponent(entry.slice('XSRF-TOKEN='.length))
       : '';
     const tenantId = localStorage.getItem('currentTenantId');
+    const expectedSessionId = getExpectedSessionId();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     try {
@@ -98,6 +101,7 @@ export async function reportFrontendError(
           'Content-Type': 'application/json',
           ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
           ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
+          ...(expectedSessionId ? { 'X-Auth-Session-Id': expectedSessionId } : {}),
         },
         body: JSON.stringify({
           source,

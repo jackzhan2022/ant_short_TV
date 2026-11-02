@@ -20,7 +20,8 @@ public class AuthSessionCookieService {
     }
 
     public void write(HttpServletResponse response, IssuedSession session) {
-        ResponseCookie cookie = baseCookie(session.credential(), properties.getTtl()).build();
+        Duration remaining = Duration.between(java.time.LocalDateTime.now(), session.expiresAt());
+        ResponseCookie cookie = baseCookie(session.credential(), remaining.isNegative() ? Duration.ZERO : remaining).build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
