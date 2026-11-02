@@ -14,7 +14,7 @@
 
 ## 发布
 
-新增 Flyway 迁移 `backend/src/main/resources/db/migration/V172__administrator_impersonation.sql`，给 `auth_session` 增加目标用户、目标凭证版本、起始租户和查询索引。发布前确认 V172 未被其他改动占用，按项目现有流程执行迁移、发布后端，再发布前端。本次尚未部署线上。
+新增 Flyway 迁移 `backend/src/main/resources/db/migration/V172__administrator_impersonation.sql`，给 `auth_session` 增加目标用户、目标凭证版本、起始租户和查询索引。2026-11-02 已随分镜优化一起部署线上，V172 迁移、后端健康与公网资源核验通过。详见[上线记录](storyboard-impersonation-release-2026-11-02.md)。
 
 - 开始：`POST /api/platform/tenants/{tenantId}/members/{memberId}/impersonation`，请求 `{code, reason}`。
 - 返回：`POST /api/auth/impersonation/stop`，保留 CSRF 校验，服务端独立验证管理员会话，允许目标账号失效后的恢复。
