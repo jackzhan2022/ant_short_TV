@@ -344,8 +344,8 @@ const ProductionWorkbench = () => {
         <Outlet context={{ project, footerActionHost, setSettingsActionHost }} />
       </main>
 
-      <Modal title="项目 AI 模型" open={aiConfigOpen} footer={null} width={1100} onCancel={() => setAiConfigOpen(false)}>
-        <ProjectAiConfigPage />
+      <Modal title="项目 AI 模型" open={aiConfigOpen} footer={null} width={640} destroyOnHidden onCancel={() => setAiConfigOpen(false)}>
+        <ProjectAiConfigPage embedded onCancel={() => setAiConfigOpen(false)} />
       </Modal>
       <Modal title="剧本原文" open={sourceOpen} footer={null} width={860} onCancel={() => setSourceOpen(false)}>
         <Spin spinning={sourceLoading}>

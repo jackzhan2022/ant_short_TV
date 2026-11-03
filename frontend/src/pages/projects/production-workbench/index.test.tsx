@@ -1,14 +1,18 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductionWorkbench from './index';
 
 const mocks = vi.hoisted(() => ({
+  app: { message: { error: vi.fn(), success: vi.fn() } },
   historyPush: vi.fn(),
   queryProjectMetadata: vi.fn(),
   queryProject: vi.fn(),
   updateProject: vi.fn(),
   queryTeamPointAccount: vi.fn(),
   queryScriptContent: vi.fn(),
+  queryProjectAiConfig: vi.fn(),
+  queryProjectAiModels: vi.fn(),
+  saveProjectAiConfig: vi.fn(),
 }));
 
 vi.mock('@umijs/max', () => ({
@@ -27,12 +31,13 @@ vi.mock('@/services/account-team/project', () => ({
   queryProjectMetadata: mocks.queryProjectMetadata,
   queryProject: mocks.queryProject,
   updateProject: mocks.updateProject,
+  canUseProjectFeatures: () => true,
 }));
 
 vi.mock('./ai-config/service', () => ({
-  queryProjectAiConfig: vi.fn().mockResolvedValue({ data: { projectId: 1 } }),
-  queryProjectAiModels: vi.fn().mockResolvedValue({ data: { textModels: [], imageModels: [], videoModels: [], audioModels: [] } }),
-  saveProjectAiConfig: vi.fn(),
+  queryProjectAiConfig: mocks.queryProjectAiConfig,
+  queryProjectAiModels: mocks.queryProjectAiModels,
+  saveProjectAiConfig: mocks.saveProjectAiConfig,
 }));
 
 vi.mock('./service', () => ({
@@ -49,7 +54,7 @@ vi.mock('@/services/account-team/points', () => ({
 
 vi.mock('antd', () => ({
   App: {
-    useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
+    useApp: () => mocks.app,
   },
   Button: ({ children, icon, onClick, ...props }: any) => (
     <button type="button" onClick={onClick} {...props}>
@@ -61,16 +66,22 @@ vi.mock('antd', () => ({
   Input: ({ value, onChange, onPressEnter: _onPressEnter, ...props }: any) => (
     <input value={value} onChange={onChange} {...props} />
   ),
-  Modal: ({ title, open, children, onOk, onCancel, okText = '确定' }: any) =>
+  Modal: ({ title, open, children, onOk, onCancel, footer, okText = '确定' }: any) =>
     open ? (
       <section role="dialog" aria-label={title}>
         {children}
         {onOk ? <button type="button" onClick={onOk}>{okText}</button> : null}
-        {onCancel ? <button type="button" onClick={onCancel}>取消</button> : null}
+        {onCancel && footer !== null ? <button type="button" onClick={onCancel}>取消</button> : null}
       </section>
     ) : null,
   Empty: ({ description }: any) => <div>{description}</div>,
   Spin: ({ children }: any) => <div>{children}</div>,
+  Select: ({ id, options, value, onChange, disabled, placeholder, 'aria-label': label }: any) => (
+    <select id={id} aria-label={label} value={value ?? ''} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))}>
+      <option value="">{placeholder}</option>
+      {options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  ),
   Tag: ({ children }: any) => <span>{children}</span>,
   Result: ({ status, title }: any) => <div>{status} {title}</div>,
   Typography: {
@@ -105,6 +116,12 @@ describe('ProductionWorkbench shell', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.queryProject.mockResolvedValue({ data: {} });
+    mocks.queryProjectAiConfig.mockResolvedValue({ data: { projectId: 1, textModelId: 12 } });
+    mocks.queryProjectAiModels.mockResolvedValue({ data: {
+      textModels: [{ id: 12, name: 'GPT-6 Astra' }, { id: 18, name: 'GPT-6.1 Sol' }],
+      imageModels: [], videoModels: [], audioModels: [],
+    } });
     mocks.queryProjectMetadata.mockResolvedValue({
       data: {
         id: 1,
@@ -174,6 +191,21 @@ describe('ProductionWorkbench shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'AI 模型' }));
 
     expect(screen.getByRole('dialog', { name: '项目 AI 模型' })).toBeInTheDocument();
+  });
+
+  it('discards unsaved model choices when cancelling and reopening the dialog', async () => {
+    render(<ProductionWorkbench />);
+    await screen.findByText('最危险的捉迷藏');
+    fireEvent.click(screen.getByRole('button', { name: 'AI 模型' }));
+    const dialog = screen.getByRole('dialog', { name: '项目 AI 模型' });
+    const textModel = within(dialog).getByRole('combobox', { name: '文本模型' });
+    await waitFor(() => expect(textModel).toHaveValue('12'));
+    fireEvent.change(textModel, { target: { value: '18' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('dialog', { name: '项目 AI 模型' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'AI 模型' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: '文本模型' })).toHaveValue('12'));
+    expect(mocks.saveProjectAiConfig).not.toHaveBeenCalled();
   });
 
   it('shows the full original script in a dialog', async () => {

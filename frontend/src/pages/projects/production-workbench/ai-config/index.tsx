@@ -1,19 +1,18 @@
 import {
-  AudioOutlined,
-  CheckCircleFilled,
   PictureOutlined,
   RobotOutlined,
   SoundOutlined,
   VideoCameraOutlined,
 } from '@ant-design/icons';
 import { useParams } from '@umijs/max';
-import { App, Button, Empty, Flex, Spin, Tag, Typography } from 'antd';
+import { App, Button, Select, Spin } from 'antd';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   canUseProjectFeatures,
   queryProject,
 } from '@/services/account-team/project';
+import styles from './index.module.css';
 import type {
   ProjectAiConfig,
   ProjectAiModels,
@@ -25,8 +24,11 @@ import {
   saveProjectAiConfig,
 } from './service';
 
-type ModelField = 'textModelId' | 'imageModelId' | 'videoModelId' | 'audioModelId';
-
+type ModelField =
+  | 'textModelId'
+  | 'imageModelId'
+  | 'videoModelId'
+  | 'audioModelId';
 type ModelSection = {
   field: ModelField;
   title: string;
@@ -39,28 +41,28 @@ const modelSections: ModelSection[] = [
   {
     field: 'textModelId',
     title: '文本模型',
-    description: '用于剧本生成、改写、元素提取和提示词生成',
+    description: '剧本解析、分镜与提示词',
     icon: <RobotOutlined />,
     options: (models) => models.textModels,
   },
   {
     field: 'imageModelId',
     title: '图片模型',
-    description: '用于角色、场景、道具和分镜图片生成',
+    description: '角色、场景与分镜图片',
     icon: <PictureOutlined />,
     options: (models) => models.imageModels,
   },
   {
     field: 'videoModelId',
     title: '视频模型',
-    description: '用于分镜视频与镜头合成任务',
+    description: '分镜视频生成',
     icon: <VideoCameraOutlined />,
     options: (models) => models.videoModels,
   },
   {
     field: 'audioModelId',
     title: '音频模型',
-    description: '用于配音、音频和字幕相关任务',
+    description: '角色配音与音频生成',
     icon: <SoundOutlined />,
     options: (models) => models.audioModels,
   },
@@ -73,121 +75,75 @@ const emptyModels: ProjectAiModels = {
   audioModels: [],
 };
 
-const ModelOptionCard = ({
-  option,
-  selected,
-  onSelect,
-}: {
-  option: ProjectModelOption;
-  selected: boolean;
-  onSelect: () => void;
-}) => (
-  <button
-    type="button"
-    onClick={onSelect}
-    style={{
-      position: 'relative',
-      minHeight: 108,
-      padding: '16px 18px',
-      textAlign: 'left',
-      border: selected ? '1px solid var(--app-color-primary)' : '1px solid var(--app-color-border-secondary)',
-      borderRadius: 8,
-      background: selected ? 'var(--app-color-primary-bg)' : 'var(--app-color-bg-container)',
-      cursor: 'pointer',
-      transition: 'all 160ms ease',
-    }}
-  >
-    {selected && (
-      <CheckCircleFilled
-        style={{
-          position: 'absolute',
-          top: 12,
-          right: 12,
-          color: 'var(--app-color-primary)',
-          fontSize: 17,
-        }}
-      />
-    )}
-    <Typography.Text strong>{option.name}</Typography.Text>
-    <Typography.Paragraph
-      type="secondary"
-      ellipsis={{ rows: 2 }}
-      style={{ margin: '8px 24px 0 0', fontSize: 13, lineHeight: '20px' }}
-    >
-      {option.description || '平台暂未填写模型描述'}
-    </Typography.Paragraph>
-  </button>
-);
+type ProjectAiConfigPageProps = { embedded?: boolean; onCancel?: () => void };
 
-const ProjectAiConfigPage = () => {
+const ProjectAiConfigPage = ({
+  embedded = false,
+  onCancel,
+}: ProjectAiConfigPageProps) => {
   const params = useParams<{ id: string }>();
   const projectId = Number(params.id);
   const { message } = App.useApp();
   const [models, setModels] = useState<ProjectAiModels>(emptyModels);
-  const [config, setConfig] = useState<ProjectAiConfig>({
-    projectId,
-    textModelId: null,
-    imageModelId: null,
-    videoModelId: null,
-    audioModelId: null,
-  });
+  const [config, setConfig] = useState<ProjectAiConfig>({ projectId });
+  const [savedConfig, setSavedConfig] = useState<ProjectAiConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
-    if (!projectId) {
-      return;
-    }
+    if (!projectId) return;
     let active = true;
     setLoading(true);
+    setCanEdit(false);
+    setSavedConfig(null);
+    setModels(emptyModels);
+    setConfig({ projectId });
     Promise.all([
       queryProject(projectId),
       queryProjectAiModels(projectId),
       queryProjectAiConfig(projectId),
     ])
       .then(([projectResponse, modelsResponse, configResponse]) => {
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setModels(modelsResponse.data || emptyModels);
         setConfig(configResponse.data);
-        setCanEdit(
-          canUseProjectFeatures(projectResponse.data),
-        );
+        setSavedConfig(configResponse.data);
+        setCanEdit(canUseProjectFeatures(projectResponse.data));
       })
       .catch(() => {
-        if (active) {
-          message.error('项目 AI 模型配置加载失败');
-        }
+        if (active) message.error('项目 AI 模型配置加载失败');
       })
       .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
   }, [message, projectId]);
 
-  const selectedCount = useMemo(
-    () =>
-      modelSections.filter((section) => config[section.field] != null).length,
-    [config],
+  const hasUnavailableSelection = modelSections.some(
+    (section) =>
+      config[section.field] != null &&
+      !section
+        .options(models)
+        .some((option) => option.id === config[section.field]),
   );
+  const disabled = loading || saving || !canEdit || !savedConfig;
 
   const updateField = (field: ModelField, value: number) => {
-    if (!canEdit) {
-      return;
-    }
+    if (disabled) return;
     setConfig((current) => ({ ...current, [field]: value }));
   };
 
+  const cancel = () => {
+    if (saving) return;
+    if (savedConfig) setConfig(savedConfig);
+    onCancel?.();
+  };
+
   const save = async () => {
-    if (!canEdit) {
-      return;
-    }
+    if (disabled || hasUnavailableSelection) return;
     setSaving(true);
     try {
       const response = await saveProjectAiConfig(projectId, {
@@ -197,122 +153,96 @@ const ProjectAiConfigPage = () => {
         audioModelId: config.audioModelId,
       });
       setConfig(response.data);
+      setSavedConfig(response.data);
       message.success('项目 AI 模型配置已保存');
+    } catch {
+      message.error('项目 AI 模型配置保存失败，请重试');
     } finally {
       setSaving(false);
     }
   };
 
-  if (!projectId) {
-    return null;
-  }
+  if (!projectId) return null;
 
   return (
-    <div
-      style={{
-        minHeight: 'calc(100vh - 100px)',
-        padding: '18px 28px 70px',
-        background: 'var(--app-color-bg-layout)',
-        boxSizing: 'border-box',
-      }}
-    >
-      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
-        <Flex justify="space-between" align="center" style={{ marginBottom: 18 }}>
-          <div>
-            <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
-              项目 AI 模型
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              仅可选择平台开放的模型，API Key、Base URL 和真实 Model Code 由平台统一管理
-            </Typography.Text>
-          </div>
-          <Flex align="center" gap={12}>
-            <Tag icon={<AudioOutlined />}>已选择 {selectedCount} 类</Tag>
-            <Button
-              type="primary"
-              loading={saving}
-              disabled={!canEdit}
-              onClick={save}
-            >
-              保存配置
-            </Button>
-          </Flex>
-        </Flex>
-
-        <Spin spinning={loading}>
-          <div style={{ display: 'grid', gap: 16 }}>
-            {modelSections.map((section) => {
-              const options = section.options(models);
-              const selected = config[section.field];
-              return (
-                <section
-                  key={section.field}
-                  style={{
-                    padding: 18,
-                    border: '1px solid var(--app-color-border-secondary)',
-                    borderRadius: 8,
-                    background: 'var(--app-color-bg-container)',
-                  }}
+    <div className={embedded ? styles.embedded : styles.page}>
+      {!embedded && <h2 className={styles.heading}>项目 AI 模型</h2>}
+      <p className={styles.subtitle}>为当前项目选择各环节使用的模型</p>
+      <Spin spinning={loading}>
+        <div className={styles.fields}>
+          {modelSections.map((section) => {
+            const available = section.options(models);
+            const selected = config[section.field];
+            const unavailable =
+              selected != null &&
+              !available.some((option) => option.id === selected);
+            const options = available.map((option) => ({
+              value: option.id,
+              label: option.name,
+              title: option.description,
+            }));
+            if (unavailable)
+              options.unshift({
+                value: selected,
+                label: '原选模型已不可用，请重新选择',
+                title: undefined,
+              });
+            return (
+              <div className={styles.row} key={section.field}>
+                <label
+                  className={styles.label}
+                  htmlFor={`project-ai-${section.field}`}
                 >
-                  <Flex justify="space-between" align="center">
-                    <Flex align="center" gap={10}>
-                      <span
-                        style={{
-                          display: 'grid',
-                          placeItems: 'center',
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
-                          color: 'var(--app-color-primary)',
-                          background: 'var(--app-color-primary-bg)',
-                          fontSize: 17,
-                        }}
-                      >
-                        {section.icon}
-                      </span>
-                      <div>
-                        <Typography.Text strong>{section.title}</Typography.Text>
-                        <div style={{ marginTop: 3 }}>
-                          <Typography.Text type="secondary">
-                            {section.description}
-                          </Typography.Text>
-                        </div>
-                      </div>
-                    </Flex>
-                    {selected != null && <Tag color="blue">已选择</Tag>}
-                  </Flex>
-
-                  {options.length ? (
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns:
-                          'repeat(auto-fill, minmax(260px, 1fr))',
-                        gap: 12,
-                        marginTop: 16,
-                      }}
-                    >
-                      {options.map((option) => (
-                        <ModelOptionCard
-                          key={option.id}
-                          option={option}
-                          selected={selected === option.id}
-                          onSelect={() => updateField(section.field, option.id)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="暂无平台开放模型"
-                      style={{ margin: '26px 0 10px' }}
-                    />
-                  )}
-                </section>
-              );
-            })}
-          </div>
-        </Spin>
+                  <span className={styles.icon} aria-hidden="true">
+                    {section.icon}
+                  </span>
+                  <span className={styles.labelText}>
+                    <span className={styles.title}>{section.title}</span>
+                    <span className={styles.description}>
+                      {section.description}
+                    </span>
+                  </span>
+                </label>
+                <Select<number>
+                  id={`project-ai-${section.field}`}
+                  aria-label={section.title}
+                  className={styles.select}
+                  value={selected ?? undefined}
+                  options={options}
+                  showSearch={{ optionFilterProp: 'label' }}
+                  loading={loading}
+                  disabled={
+                    !!disabled || (!available.length && selected == null)
+                  }
+                  placeholder={
+                    !loading && !available.length
+                      ? '暂无可用模型'
+                      : `请选择${section.title}`
+                  }
+                  notFoundContent="暂无匹配模型"
+                  status={unavailable ? 'warning' : undefined}
+                  onChange={(value) => updateField(section.field, value)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </Spin>
+      <div className={styles.footer}>
+        <span className={styles.scope}>配置仅对当前项目生效</span>
+        <div className={styles.actions}>
+          <Button disabled={saving} onClick={cancel}>
+            取消
+          </Button>
+          <Button
+            type="primary"
+            loading={saving}
+            disabled={!!disabled || hasUnavailableSelection}
+            onClick={save}
+          >
+            保存配置
+          </Button>
+        </div>
       </div>
     </div>
   );

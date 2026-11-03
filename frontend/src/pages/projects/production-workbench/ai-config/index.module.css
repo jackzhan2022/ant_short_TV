@@ -1,0 +1,112 @@
+.page {
+  width: 100%;
+  max-width: 688px;
+  margin: 24px auto;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--app-color-bg-container);
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 12px;
+}
+
+.embedded {
+  min-width: 0;
+}
+.heading {
+  margin: 0 0 4px;
+  color: var(--app-color-text);
+  font-size: 17px;
+  font-weight: 500;
+}
+.subtitle {
+  margin: 0 0 12px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+.fields {
+  min-width: 0;
+}
+.row {
+  display: grid;
+  grid-template-columns: 202px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-height: 73px;
+  padding: 10px 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.label {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  min-width: 0;
+}
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--app-color-primary-bg);
+  color: var(--app-color-primary);
+  font-size: 17px;
+}
+.labelText {
+  min-width: 0;
+}
+.title {
+  display: block;
+  color: var(--app-color-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+.description {
+  display: block;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+.select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+}
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-color-border-secondary);
+}
+.scope {
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+.actions {
+  display: flex;
+  flex: none;
+  gap: 10px;
+  margin-left: auto;
+}
+@media (max-width: 540px) {
+  .page {
+    margin: 12px auto;
+    padding: 18px;
+  }
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    padding: 13px 0;
+  }
+}
