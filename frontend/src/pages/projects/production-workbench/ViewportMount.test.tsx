@@ -5,6 +5,11 @@ import ViewportMount from './ViewportMount';
 
 afterEach(() => vi.unstubAllGlobals());
 
+const Editor = () => {
+  const [draft, setDraft] = useState('original');
+  return <input aria-label="draft" value={draft} onChange={(event) => setDraft(event.target.value)} />;
+};
+
 describe('ViewportMount', () => {
   it('keeps a jump target and mounts the editor once when near the viewport', () => {
     let intersect!: IntersectionObserverCallback;
@@ -16,10 +21,6 @@ describe('ViewportMount', () => {
       disconnect = disconnect;
     };
     vi.stubGlobal('IntersectionObserver', observer);
-    const Editor = () => {
-      const [draft, setDraft] = useState('original');
-      return <input aria-label="draft" value={draft} onChange={(event) => setDraft(event.target.value)} />;
-    };
     const { rerender, unmount } = render(<ViewportMount id="storyboard-9"><Editor /></ViewportMount>);
     const placeholder = document.getElementById('storyboard-9');
     expect(placeholder).toBeInTheDocument();

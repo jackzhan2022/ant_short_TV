@@ -35,25 +35,34 @@ const item = (id: number, overrides: Partial<CommercialCatalogItem> = {}): Comme
   ...overrides,
 });
 
-const renderPanel = (catalog: CommercialCatalogItem[], options: {
+type PanelOptions = {
   canManageBilling?: boolean;
   loading?: boolean;
   submitting?: boolean;
   error?: string;
   selection?: PurchaseSelection;
   onPurchase?: (offer: CommercialCatalogItem) => void;
-} = {}) => {
+};
+
+const Fixture = ({ offers, options, onPurchase, onReload }: {
+  offers: CommercialCatalogItem[];
+  options: PanelOptions;
+  onPurchase: (offer: CommercialCatalogItem) => void;
+  onReload: () => void;
+}) => {
+  const [selection, setSelection] = useState(options.selection ?? initialPurchaseSelection);
+  return <PurchasePanel catalog={offers} selection={selection} onSelectionChange={setSelection}
+    canManageBilling={options.canManageBilling ?? true} teamName="新禾文创"
+    loading={options.loading ?? false} error={options.error}
+    submitting={options.submitting ?? false} onReload={onReload} onPurchase={onPurchase} />;
+};
+
+const renderPanel = (catalog: CommercialCatalogItem[], options: PanelOptions = {}) => {
   const onPurchase = options.onPurchase ?? vi.fn();
   const onReload = vi.fn();
-  const Fixture = ({ offers }: { offers: CommercialCatalogItem[] }) => {
-    const [selection, setSelection] = useState(options.selection ?? initialPurchaseSelection);
-    return <PurchasePanel catalog={offers} selection={selection} onSelectionChange={setSelection}
-      canManageBilling={options.canManageBilling ?? true} teamName="新禾文创"
-      loading={options.loading ?? false} error={options.error}
-      submitting={options.submitting ?? false} onReload={onReload} onPurchase={onPurchase} />;
-  };
-  const view = render(<Fixture offers={catalog} />);
-  return { ...view, rerenderCatalog: (offers: CommercialCatalogItem[]) => view.rerender(<Fixture offers={offers} />), onPurchase, onReload };
+  const props = { options, onPurchase, onReload };
+  const view = render(<Fixture offers={catalog} {...props} />);
+  return { ...view, rerenderCatalog: (offers: CommercialCatalogItem[]) => view.rerender(<Fixture offers={offers} {...props} />), onPurchase, onReload };
 };
 
 describe('PurchasePanel', () => {
