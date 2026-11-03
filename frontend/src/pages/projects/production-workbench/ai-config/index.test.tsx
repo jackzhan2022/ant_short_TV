@@ -119,7 +119,12 @@ describe('compact project model configuration', () => {
         screen.getByRole('combobox', { name: '文本模型' }),
       ).not.toBeDisabled(),
     );
-    fireEvent.click(screen.getByRole('button', { name: /保存配置/ }));
+    const retry = screen.getByRole('button', { name: /保存配置/ });
+    await waitFor(() => {
+      expect(retry).not.toBeDisabled();
+      expect(retry).not.toHaveClass('ant-btn-loading');
+    });
+    fireEvent.click(retry);
     await waitFor(() => expect(mocks.saveConfig).toHaveBeenCalledTimes(2));
   });
 
