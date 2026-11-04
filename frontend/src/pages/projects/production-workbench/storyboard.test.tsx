@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   queryScriptPageWorkspace: vi.fn(),
   queryAssetSettingsSummary: vi.fn(),
   queryAssetVisualWorkspace: vi.fn(),
+  queryAssetVisualStatuses: vi.fn(),
   queryStoryboardWorkspace: vi.fn(),
   queryStoryboardMedia: vi.fn(),
   queryAiImageTasks: vi.fn(),
@@ -144,6 +145,7 @@ vi.mock('./service', () => ({
   queryScriptPageWorkspace: mocks.queryScriptPageWorkspace,
   queryAssetSettingsSummary: mocks.queryAssetSettingsSummary,
   queryAssetVisualWorkspace: mocks.queryAssetVisualWorkspace,
+  queryAssetVisualStatuses: mocks.queryAssetVisualStatuses,
   queryStoryboardWorkspace: mocks.queryStoryboardWorkspace,
   queryStoryboardEditorPage: mocks.queryStoryboardEditorPage,
   queryStoryboardEpisodeDetails: mocks.queryStoryboardEpisodeDetails,
@@ -923,6 +925,9 @@ describe('ProductionWorkbench script page', () => {
     mocks.createAssetImageBatch.mockResolvedValue({ data: { id: 8800 } });
     setupWorkspaceResponse();
     mocks.queryAssetVisualWorkspace.mockResolvedValue({ data: { variants: [], episodeBindings: [] } });
+    mocks.queryAssetVisualStatuses.mockImplementation(async (_project, ids: number[]) => ({ data: ids.map(variantId => ({
+      variantId, available: true, generationStatus: 'GENERATING', displayReady: false,
+    })) }));
   });
 
   it('uses parent project metadata without a duplicate project request, including while parent is pending', async () => {
@@ -1765,13 +1770,8 @@ describe('ProductionWorkbench script page', () => {
       variants: character.visual.variants.map((variant) =>
         variant.id === 12 ? { ...variant, generationStatus: 'GENERATING' } : variant),
     } });
-    let resolvePoll!: (value: API.AiExecutionResponse) => void;
-    let resolveLegacy!: (value: unknown) => void;
-    if (ending === 'legacy-unmount') {
-      mocks.queryAiImageTask.mockReturnValueOnce(new Promise((resolve) => { resolveLegacy = resolve; }));
-    } else {
-      mocks.pollExecution.mockReturnValueOnce(new Promise((resolve) => { resolvePoll = resolve; }));
-    }
+    let resolveStatus!: (value: unknown) => void;
+    mocks.queryAssetVisualStatuses.mockReturnValueOnce(new Promise(resolve => { resolveStatus = resolve; }));
     const view = render(<ProductionWorkbench />);
 
     fireEvent.click(await screen.findByRole('button', { name: '生成分镜1角色1资产图' }));
@@ -1794,13 +1794,11 @@ describe('ProductionWorkbench script page', () => {
       expect(screen.getByRole('status', { name: '分镜1角色1资产图生成中' })).toBeInTheDocument();
       expect(screen.queryByRole('status', { name: '分镜2角色1资产图生成中' })).not.toBeInTheDocument();
     });
+    await waitFor(() => expect(mocks.queryAssetVisualStatuses).toHaveBeenCalledWith(1, [12], expect.any(AbortSignal)));
+    expect(mocks.pollExecution).not.toHaveBeenCalled();
+    expect(mocks.queryAiImageTask).not.toHaveBeenCalled();
     if (ending !== 'complete') {
-      if (ending === 'legacy-unmount') {
-        await waitFor(() => expect(mocks.queryAiImageTask).toHaveBeenCalled(), { timeout: 2500 });
-      }
-      const signal = (ending === 'legacy-unmount'
-        ? mocks.queryAiImageTask.mock.calls.at(-1)?.[2]
-        : mocks.pollExecution.mock.calls.at(-1)?.[4]) as AbortSignal;
+      const signal = mocks.queryAssetVisualStatuses.mock.calls.at(-1)?.[2] as AbortSignal;
       if (ending === 'unmount' || ending === 'legacy-unmount') view.unmount();
       else {
         mocks.projectId = '2';
@@ -1812,8 +1810,7 @@ describe('ProductionWorkbench script page', () => {
       }
       const calls = mocks.queryAssetVisualWorkspace.mock.calls.length;
       await act(async () => {
-        if (ending === 'legacy-unmount') resolveLegacy({ data: { id: 1201, status: 'SUCCESS' } });
-        else resolvePoll({ id: 7201, status: 'SUCCEEDED' });
+        resolveStatus({ data: [{ variantId: 12, available: true, generationStatus: 'COMPLETED', displayReady: true }] });
       });
       expect(signal?.aborted).toBe(true);
       expect(mocks.queryAssetVisualWorkspace).toHaveBeenCalledTimes(calls);
@@ -1821,18 +1818,15 @@ describe('ProductionWorkbench script page', () => {
       expect(mocks.cancelExecution).not.toHaveBeenCalled();
       return;
     }
-    await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
-      .toHaveBeenCalledWith(1, 'CHARACTER', 1, {}, expect.any(AbortSignal)), { timeout: 2500 });
-
     mocks.queryAssetVisualWorkspace.mockResolvedValueOnce({ data: {
       ...character.visual,
       variants: character.visual.variants.map((variant) =>
         variant.id === 12
-          ? { ...variant, currentImageUrl: '/new-dress.png', currentImageThumbnailUrl: '/new-dress-display.png', usable: true }
+          ? { ...variant, generationStatus: 'COMPLETED', currentImageUrl: '/new-dress.png', currentImageThumbnailUrl: '/new-dress-display.png', usable: true }
           : variant),
     } });
     await act(async () => {
-      resolvePoll({ id: 7201, status: 'SUCCEEDED' });
+      resolveStatus({ data: [{ variantId: 12, available: true, generationStatus: 'COMPLETED', displayReady: true }] });
     });
     await waitFor(() => {
       expect(screen.queryByRole('status', { name: '分镜1角色1资产图生成中' })).not.toBeInTheDocument();
@@ -1875,6 +1869,8 @@ describe('ProductionWorkbench script page', () => {
   });
 
   it('keeps refreshing a generating visual variant after page reload', async () => {
+    let resolveStatus!: (value: unknown) => void;
+    mocks.queryAssetVisualStatuses.mockReturnValueOnce(new Promise(resolve => { resolveStatus = resolve; }));
     const generatingVariant = {
       id: 11, assetType: 'CHARACTER' as const, assetId: 1, name: '默认形态',
       prompt: '人物主体提示词', sourceType: 'USER', generationStatus: 'GENERATING',
@@ -1909,8 +1905,12 @@ describe('ProductionWorkbench script page', () => {
     expect(await screen.findByRole('status', {
       name: '分镜1角色1资产图生成中',
     })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.queryAssetVisualStatuses).toHaveBeenCalled());
+    await act(async () => resolveStatus({ data: [
+      { variantId: 11, available: true, generationStatus: 'COMPLETED', displayReady: true },
+    ] }));
     await waitFor(() => expect(mocks.queryAssetVisualWorkspace)
-      .toHaveBeenCalledWith(1, 'CHARACTER', 1, {}, expect.any(AbortSignal)), { timeout: 2500 });
+      .toHaveBeenCalledWith(1, 'CHARACTER', 1, { selectedVariantId: 11 }, expect.any(AbortSignal)), { timeout: 2500 });
     await waitFor(() => {
       expect(screen.queryByRole('status', {
         name: '分镜1角色1资产图生成中',

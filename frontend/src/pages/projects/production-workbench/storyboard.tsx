@@ -2,6 +2,8 @@ import StoryboardCard from './StoryboardCard';
 import { StoryboardCardProvider } from './storyboard-card-context';
 import useStoryboardEditorController from './useStoryboardEditorController';
 import useStoryboardMediaController from './useStoryboardMediaController';
+import useAssetVisualPolling from './useAssetVisualPolling';
+import { mergeAssetVisualWorkspace, type VisualPollTarget } from './asset-visual-polling';
 import { getStoryboardSavePayload, getStoryboardScriptText, getStoryboardPrompt,
   parseStoryboardScriptText } from './storyboard-model';
 export { preserveReferenceClientKeys } from './storyboard-model';
@@ -62,7 +64,6 @@ import BatchVideoGenerationModal from './BatchVideoGenerationModal';
 import StoryboardPositionRail from './StoryboardPositionRail';
 import StoryboardVideoEmptyState from './StoryboardVideoEmptyState';
 import type {
-  AiImageTask,
   AiVideoResult,
   AiVideoTask,
   AssetVisualWorkspace,
@@ -87,7 +88,6 @@ import {
   createStoryboard,
   createStoryboardBatch,
   deleteStoryboard,
-  queryAiImageTask,
   queryAssetSettingsSummary,
   queryAssetVisualWorkspace,
   queryLatestStoryboardBatch,
@@ -122,7 +122,6 @@ type ReferenceGenerationTarget = {
   generationKey: string;
 };
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
-const terminalImageTaskStatuses = new Set(['SUCCESS', 'FAILED', 'CANCELED']);
 const terminalStoryboardBatchStatuses = new Set([
   'SUCCEEDED',
   'SUCCEEDED_WITH_WARNING',
@@ -196,7 +195,7 @@ const ProductionWorkbenchStoryboard = () => {
   const [generatingReferenceKeys, setGeneratingReferenceKeys] =
     useState<Set<string>>(() => new Set());
   const [referenceVisualPollTargets, setReferenceVisualPollTargets] = useState<
-    Record<string, Pick<ReferenceGenerationTarget, 'assetType' | 'assetId'>>
+    Record<string, VisualPollTarget>
   >({});
   const requestedVisuals = useRef(new Set<string>());
   const visualProjectId = useRef(projectId);
@@ -499,68 +498,51 @@ const ProductionWorkbenchStoryboard = () => {
   const props = useMemo(() => workspace.props.map((asset) => ({
     ...asset, visual: visualFor(`PROP:${asset.id}`, asset.visual),
   })), [workspace.props, assetVisuals]);
-  const generatingVisualTargets = useMemo(() => [
+  const visualPollTargets = useMemo(() => [
     ...characters.map((asset) => ({ assetType: 'CHARACTER' as const, asset })),
     ...scenes.map((asset) => ({ assetType: 'SCENE' as const, asset })),
     ...props.map((asset) => ({ assetType: 'PROP' as const, asset })),
-  ].filter(({ asset }) => asset.visual?.variants.some(
-    (variant) => variant.generationStatus === 'GENERATING',
-  )), [characters, scenes, props]);
-  const visualPollTargets = useMemo(() => {
-    const targets = new Map<string, Pick<ReferenceGenerationTarget, 'assetType' | 'assetId'>>();
-    for (const { assetType, asset } of generatingVisualTargets) {
-      targets.set(`${assetType}:${asset.id}`, { assetType, assetId: asset.id });
-    }
-    for (const [key, target] of Object.entries(referenceVisualPollTargets)) {
-      targets.set(key, target);
-    }
-    return [...targets.entries()].map(([key, target]) => ({ key, ...target }));
-  }, [generatingVisualTargets, referenceVisualPollTargets]);
+  ].flatMap(({ assetType, asset }) => {
+    const variants = new Map([
+      ...(asset.visual?.variants || []), asset.visual?.primaryVariant, asset.visual?.selectedVariant,
+    ].filter((variant): variant is VisualVariant => Boolean(variant))
+      .map(variant => [variant.id, variant]));
+    return [...variants.values()].filter(variant => variant.generationStatus === 'GENERATING')
+      .map<VisualPollTarget>(variant => ({ assetType, assetId: asset.id, variantId: variant.id,
+        generationTaskId: variant.generationTaskId }));
+  }).concat(Object.values(referenceVisualPollTargets)), [characters, scenes, props, referenceVisualPollTargets]);
 
-  useEffect(() => {
-    if (!projectId || !visualPollTargets.length) return;
-    const controller = new AbortController();
-    let active = true;
-    let timer: number | undefined;
-    const refreshGeneratingVisuals = async () => {
-      const results = await Promise.allSettled(visualPollTargets.map(async (target) => {
-        const response = await queryAssetVisualWorkspace(
-          projectId,
-          target.assetType,
-          target.assetId,
-          {}, controller.signal,
-        );
-        return { key: target.key, visual: response.data };
-      }));
-      if (!active || visualProjectId.current !== projectId) return;
-      const refreshed = results.flatMap((result) =>
-        result.status === 'fulfilled' && result.value.visual ? [result.value] : []);
-      if (refreshed.length) {
-        setAssetVisuals((previous) => ({
-          ...previous,
-          ...Object.fromEntries(refreshed.map(({ key, visual }) => [key, visual])),
-        }));
-        setReferenceVisualPollTargets((previous) => {
-          const next = { ...previous };
-          let changed = false;
-          for (const { key, visual } of refreshed) {
-            if (!visual.variants.some((variant) => variant.generationStatus === 'GENERATING')) {
-              delete next[key];
-              changed = changed || key in previous;
-            }
-          }
-          return changed ? next : previous;
-        });
-      }
-      if (active) timer = window.setTimeout(refreshGeneratingVisuals, 1500);
-    };
-    timer = window.setTimeout(refreshGeneratingVisuals, 1500);
-    return () => {
-      active = false;
-      controller.abort();
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [projectId, visualPollTargets]);
+  useAssetVisualPolling(projectId, workspace.projectId === projectId ? visualPollTargets : [], (target, visual) => {
+    setAssetVisuals(previous => {
+      const key = `${target.assetType}:${target.assetId}`;
+      const assets = target.assetType === 'CHARACTER' ? characters : target.assetType === 'SCENE' ? scenes : props;
+      const existing = previous[key] || assets.find(asset => asset.id === target.assetId)?.visual;
+      return { ...previous, [key]: mergeAssetVisualWorkspace(existing, visual) };
+    });
+  }, (target, status) => {
+    if (!status.available) {
+      setAssetVisuals(previous => {
+        const key = `${target.assetType}:${target.assetId}`;
+        const assets = target.assetType === 'CHARACTER' ? characters : target.assetType === 'SCENE' ? scenes : props;
+        const visual = previous[key] || assets.find(asset => asset.id === target.assetId)?.visual;
+        if (!visual) return previous;
+        const markUnavailable = (variant: VisualVariant) => variant.id === target.variantId
+          ? { ...variant, generationStatus: 'FAILED', errorMessage: '视觉形态已失效，请刷新后重新选择。' } : variant;
+        return { ...previous, [key]: { ...visual, variants: visual.variants.map(markUnavailable),
+          primaryVariant: visual.primaryVariant && markUnavailable(visual.primaryVariant),
+          selectedVariant: visual.selectedVariant && markUnavailable(visual.selectedVariant) } };
+      });
+    }
+    const key = `${target.assetType}:${target.assetId}:${target.variantId}`;
+    setReferenceVisualPollTargets(previous => {
+      if (!previous[key] || previous[key].generationTaskId !== target.generationTaskId) return previous;
+      const next = { ...previous }; delete next[key]; return next;
+    });
+    const generationKey = target.generationKey;
+    if (generationKey) setGeneratingReferenceKeys(previous => {
+      const next = new Set(previous); next.delete(generationKey); return next;
+    });
+  });
 
   const selectedFirstFrame = (storyboardId: number) => imageTasks
     .filter((task) => task.targetType === 'STORYBOARD' && task.targetId === storyboardId
@@ -1430,53 +1412,6 @@ const ProductionWorkbenchStoryboard = () => {
     }
   };
 
-  const followReferenceVariantGeneration = async (
-    target: ReferenceGenerationTarget,
-    task: AiImageTask,
-    signal: AbortSignal,
-  ) => {
-    try {
-      signal.throwIfAborted();
-      const tenantId = currentTenantId();
-      if (task.executionId && tenantId) {
-        await aiExecutionTaskService.poll(tenantId, task.executionId, undefined, 1500, signal);
-      } else {
-        let currentTask = task;
-        while (!terminalImageTaskStatuses.has(currentTask.status)) {
-          await pollingDelay(1500, signal);
-          const response = await queryAiImageTask(projectId, currentTask.id, signal);
-          signal.throwIfAborted();
-          if (!response.data) throw new Error('missing image task');
-          currentTask = response.data;
-        }
-      }
-      signal.throwIfAborted();
-      const response = await queryAssetVisualWorkspace(
-        projectId,
-        target.assetType,
-        target.assetId,
-        {}, signal,
-      );
-      signal.throwIfAborted();
-      setAssetVisuals((previous) => ({
-        ...previous,
-        [`${target.assetType}:${target.assetId}`]: response.data,
-      }));
-    } catch {
-      if (!signal.aborted) {
-        message.error('资产图状态刷新失败');
-      }
-    } finally {
-      if (!signal.aborted) {
-        setGeneratingReferenceKeys((previous) => {
-          const next = new Set(previous);
-          next.delete(target.generationKey);
-          return next;
-        });
-      }
-    }
-  };
-
   const submitReferenceVariantGeneration = async () => {
     const signal = storyboardGenerationScope.current.controller.signal;
     const target = referenceGenerationTarget;
@@ -1518,17 +1453,23 @@ const ProductionWorkbenchStoryboard = () => {
       });
       if (!response.data) throw new Error('missing image task');
       if (signal.aborted || visualProjectId.current !== requestedProjectId) return;
-      const visualKey = `${target.assetType}:${target.assetId}`;
+      const visualKey = `${target.assetType}:${target.assetId}:${target.variant.id}`;
       setReferenceVisualPollTargets((previous) => ({
         ...previous,
-        [visualKey]: { assetType: target.assetType, assetId: target.assetId },
+        [visualKey]: { assetType: target.assetType, assetId: target.assetId,
+          variantId: target.variant.id, generationTaskId: response.data.id, generationKey: target.generationKey },
       }));
-      setGeneratingReferenceKeys((previous) => new Set(previous).add(target.generationKey));
+      setGeneratingReferenceKeys((previous) => {
+        const next = new Set(previous);
+        const superseded = referenceVisualPollTargets[visualKey]?.generationKey;
+        if (superseded) next.delete(superseded);
+        next.add(target.generationKey);
+        return next;
+      });
       if (referenceGenerationRequestId.current === requestId) {
         setReferenceGenerationTarget(undefined);
       }
       message.success('已提交生成');
-      void followReferenceVariantGeneration(target, response.data, signal);
     } catch (error) {
       if (!signal.aborted && visualProjectId.current === requestedProjectId) {
         if (!isPointEstimateCancelled(error))

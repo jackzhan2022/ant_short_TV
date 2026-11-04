@@ -17,10 +17,19 @@ import {
   queryAiImageTask,
   queryStoryboardBatch,
   queryAssetVisualWorkspace,
+  queryAssetVisualStatuses,
 } from './service';
 
 describe('cancellable storyboard reads', () => {
   beforeEach(() => request.mockReset());
+
+  it('requests only a batch of visual generation states and forwards cancellation', async () => {
+    const signal = new AbortController().signal;
+    await queryAssetVisualStatuses(5, [11, 12], signal);
+    expect(request).toHaveBeenCalledWith('/api/projects/5/visual-variants/generation-status', {
+      params: { variantIds: '11,12' }, signal, skipErrorHandler: true,
+    });
+  });
 
   it('forwards cancellation to batch progress requests', async () => {
     const signal = new AbortController().signal;

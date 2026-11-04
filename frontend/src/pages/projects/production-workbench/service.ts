@@ -644,6 +644,24 @@ export const queryAssetVisualWorkspace = async (
     { params, skipErrorHandler: true, signal },
   );
 
+export type AssetVisualStatus = {
+  variantId: number;
+  available: boolean;
+  generationStatus: string;
+  generationTaskId?: number | null;
+  currentImageResultId?: number | null;
+  displayReady: boolean;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+};
+
+export const queryAssetVisualStatuses = async (
+  projectId: number, variantIds: number[], signal?: AbortSignal,
+) => request<ApiResponse<AssetVisualStatus[]>>(
+  `/api/projects/${projectId}/visual-variants/generation-status`,
+  { params: { variantIds: variantIds.join(',') }, signal, skipErrorHandler: true },
+);
+
 export const queryStoryboardWorkspace = async (
   projectId: number,
   params: { episodeNo?: number; current?: number; pageSize?: number } = {},

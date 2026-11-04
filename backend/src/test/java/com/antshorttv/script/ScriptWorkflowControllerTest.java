@@ -674,6 +674,7 @@ class ScriptWorkflowControllerTest extends com.antshorttv.support.OfflineMediaTe
             "/storyboard-workspace",
             "/storyboard-editor-page",
             "/metadata",
+            "/visual-variants/generation-status?variantIds=1",
             "/storyboard-episodes/999999999/details",
             "/script-versions/" + versionId,
             "/script-episodes/999999999"
