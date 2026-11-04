@@ -18,17 +18,17 @@ public class AssetNormalizationToolConfiguration {
             """,json,service::episodes,false);
     }
     @Bean WorkflowToolDefinition saveNormalization(AssetNormalizationService service,ObjectMapper json) {
-        return tool("save_asset_normalization","自动应用资产归一","完整分组覆盖每条资产一次，splits按绑定ID拆分。证据不足保持单例。校验后原子应用，保留图片和引用。",
+        return tool("save_asset_normalization","自动应用资产归一","完整分组覆盖每条资产一次，splits按绑定ID拆分。证据优先使用对应剧集sourceSegments的quoteRef，避免手抄错字。证据不足保持单例。校验后原子应用，保留图片和引用。",
             """
             {"type":"object","required":["groups","splits"],"additionalProperties":false,"properties":{
               "groups":{"type":"array","items":{"type":"object","required":["assetType","retainId","memberIds","evidence"],"additionalProperties":false,"properties":{
                 "assetType":{"type":"string","enum":["CHARACTER","SCENE","PROP"]},"retainId":{"type":"integer","minimum":1},
                 "memberIds":{"type":"array","minItems":1,"items":{"type":"integer","minimum":1}},
-                "evidence":{"type":"array","items":{"type":"object","required":["episodeId","quote"],"additionalProperties":false,"properties":{"episodeId":{"type":"integer","minimum":1},"quote":{"type":"string","minLength":4}}}}}}},
+                "evidence":{"type":"array","items":{"type":"object","required":["episodeId"],"additionalProperties":false,"properties":{"episodeId":{"type":"integer","minimum":1,"description":"对应剧集的id，不是集号"},"quote":{"type":"string","minLength":4,"description":"旧格式逐字引文；优先用quoteRef代替手抄"},"quoteRef":{"type":"object","required":["segmentId"],"additionalProperties":false,"description":"与quote至少提供一个；服务端从对应episodeId的冻结原文取证。start/end可选，须成对，为片段内UTF-16偏移，左闭右开，最多1000字符。","properties":{"segmentId":{"type":"string","pattern":"^S[0-9]{4,}$","maxLength":16},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}}}}}}}}},
               "splits":{"type":"array","items":{"type":"object","required":["assetType","sourceId","targetId","newName","bindingIds","evidence"],"additionalProperties":false,"properties":{
                 "assetType":{"type":"string","enum":["CHARACTER","SCENE","PROP"]},"sourceId":{"type":"integer","minimum":1},"targetId":{"type":["integer","null"]},"newName":{"type":"string","maxLength":100},
                 "bindingIds":{"type":"array","minItems":1,"items":{"type":"integer","minimum":1}},
-                "evidence":{"type":"array","items":{"type":"object","required":["episodeId","quote"],"additionalProperties":false,"properties":{"episodeId":{"type":"integer","minimum":1},"quote":{"type":"string","minLength":4}}}}}}}
+                "evidence":{"type":"array","items":{"type":"object","required":["episodeId"],"additionalProperties":false,"properties":{"episodeId":{"type":"integer","minimum":1,"description":"对应剧集的id，不是集号"},"quote":{"type":"string","minLength":4,"description":"旧格式逐字引文；优先用quoteRef代替手抄"},"quoteRef":{"type":"object","required":["segmentId"],"additionalProperties":false,"description":"与quote至少提供一个；服务端从对应episodeId的冻结原文取证。start/end可选，须成对，为片段内UTF-16偏移，左闭右开，最多1000字符。","properties":{"segmentId":{"type":"string","pattern":"^S[0-9]{4,}$","maxLength":16},"start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1}}}}}}}}}
             }}
             """,json,service::publish,true);
     }

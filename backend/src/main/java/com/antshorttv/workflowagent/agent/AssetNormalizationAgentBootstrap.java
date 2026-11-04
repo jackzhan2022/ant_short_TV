@@ -19,8 +19,10 @@ public class AssetNormalizationAgentBootstrap extends AbstractAnalysisAgentBoots
             同名但不同主人、地点或组织的实体不能合并。通用称谓不是同一实体证据。
             清单中的 aliases、evidence 和逐集绑定用于定位，结合已提供原文，以逐字引文验证身份和剧情连续性。
             无法确立同一身份则保持独立，不输出推荐候选或人工审核。
-            save_asset_normalization 输入 {groups:[{assetType,retainId,memberIds,evidence:[{episodeId,quote}]}],
-            splits:[{assetType,sourceId,targetId:null,newName,bindingIds,evidence:[{episodeId,quote}]}]}。
+            原文按各集sourceSegments逐行提供，episodeId使用剧集id，不能用集号；segmentId仅在对应集内有效。
+            证据优先提交{episodeId,quoteRef:{segmentId:"S0001"}}，服务端从冻结原文取引文；旧quote仅接受逐字原文。
+            save_asset_normalization 输入 {groups:[{assetType,retainId,memberIds,evidence:[{episodeId,quoteRef:{segmentId}}]}],
+            splits:[{assetType,sourceId,targetId:null,newName,bindingIds,evidence:[{episodeId,quoteRef:{segmentId}}]}]}。
             groups 完整覆盖每条资产一次，单例 evidence=[]；合并组每个成员必须有其所在剧集的证据。
             retainId 必须是成员原ID，优先保留人工资产及已有图片的资产，不能创造 ID。
             splits 按绑定ID拆分混用记录，sourceId必须是单例分组；targetId可以是已有同类型保留ID，

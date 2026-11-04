@@ -673,8 +673,7 @@ class ScreenplayToolDataServiceTest {
             Integer.class, scriptId)).isEqualTo(1);
     }
 
-    @Test
-    void multipleExactAliasesAreRejectedWithSafeOpaqueCandidates() throws Exception {
+    private void seedAmbiguousCharacterAliases() {
         jdbc.update("update script_episode set content = '小满出现。', content_fingerprint = 'ambiguous-fp' where id = ?",
             episodeId);
         for (String name : List.of("林小满", "陈小满")) {
@@ -686,6 +685,11 @@ class ScreenplayToolDataServiceTest {
                         '{"aliases":[{"name":"小满","evidence":"小满"}]}', ?, now(), now())
                 """, tenantId, projectId, scriptId, name, name, context.userId());
         }
+    }
+
+    @Test
+    void multipleExactAliasesAreRejectedWithSafeOpaqueCandidates() throws Exception {
+        seedAmbiguousCharacterAliases();
         ToolExecutionContext ambiguousContext = summaryContext();
         service.readCurrentEpisode(ambiguousContext);
         JsonNode payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
@@ -699,6 +703,138 @@ class ScreenplayToolDataServiceTest {
             .satisfies(error -> assertThat(((com.antshorttv.common.BusinessException) error).getErrorCode())
                 .isEqualTo(com.antshorttv.common.ErrorCode.ENTITY_MATCH_AMBIGUOUS))
             .hasMessageContaining("c_");
+    }
+
+    @Test
+    void ambiguityFeedbackContainsScopedSourceEvidenceAndCanonicalDescription() throws Exception {
+        seedAmbiguousCharacterAliases();
+        long candidate = jdbc.queryForObject("select id from character_asset where script_id=? and name='林小满'", Long.class, scriptId);
+        jdbc.update("update character_asset set identity='仓库经理' where id=?", candidate);
+        jdbc.update("insert into character_asset (tenant_id,project_id,name,identity,role_type,status,source,content_json,created_by,created_at,updated_at) values (?,?,'范围外','PRIVATE_OTHER_SCRIPT','MAIN','CONFIRMED','USER','{\"aliases\":[\"小满\"]}',?,now(),now())",tenantId,projectId,context.userId());
+        jdbc.update("update script_episode set content='林小满是仓库经理，小满正在查账。' where id=?", episodeId);
+        jdbc.update("insert into asset_visual_variant (tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,is_primary,created_by,created_at,updated_at) values (?,?,'CHARACTER',?,'默认','AI','PENDING',true,?,now(),now())", tenantId, projectId, candidate, context.userId());
+        long variant = jdbc.queryForObject("select id from asset_visual_variant where project_id=? and asset_id=?", Long.class, projectId, candidate);
+        jdbc.update("insert into asset_visual_variant_episode (tenant_id,project_id,script_id,episode_id,asset_type,asset_id,variant_id,is_preferred,binding_status,created_by,created_at,updated_at) values (?,?,?,?,'CHARACTER',?,?,true,'ACTIVE',?,now(),now())", tenantId, projectId, scriptId, episodeId, candidate, variant, context.userId());
+        ToolExecutionContext c=summaryContext(); service.readCurrentEpisode(c);
+        JsonNode payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","aliases":[],"evidence":"小满"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+        assertThatThrownBy(()->service.saveEpisodeAssets(c,payload))
+            .isInstanceOf(com.antshorttv.script.AssetIdentityAmbiguityException.class)
+            .satisfies(error -> {
+                JsonNode conflicts=((com.antshorttv.script.AssetIdentityAmbiguityException)error).conflicts();
+                assertThat(conflicts).hasSize(1);
+                assertThat(conflicts.path(0).path("candidates")).hasSize(2);
+                JsonNode detail=java.util.stream.StreamSupport.stream(conflicts.path(0).path("candidates").spliterator(),false)
+                    .filter(row -> row.path("assetKey").asText().equals("c_"+candidate)).findFirst().orElseThrow();
+                assertThat(detail.path("identity").asText()).isEqualTo("仓库经理");
+                assertThat(detail.path("aliases").findValuesAsText("name")).contains("小满");
+                assertThat(detail.path("sourceEpisodes").path(0).path("excerpt").asText()).contains("仓库经理");
+                assertThat(detail.path("sourceEpisodes").path(0).path("episodeId").asLong()).isEqualTo(episodeId);
+                assertThat(conflicts.toString()).doesNotContain("prompt\":", "PRIVATE_OTHER_SCRIPT");
+            });
+    }
+
+    @Test
+    void ambiguityFeedbackIncludesAllConflictingCategoriesBeforeAnyWrite() throws Exception {
+        seedAmbiguousCharacterAliases();
+        jdbc.update("update script_episode set content='小满走进仓库拿起木箱。' where id=?",episodeId);
+        for(String name:List.of("东仓库","西仓库")) jdbc.update("insert into scene_asset (tenant_id,project_id,script_id,name,normalized_name,scene_type,status,source,content_json,created_by,created_at,updated_at) values (?,?,?,?,?,'LOCATION','CONFIRMED','USER','{\"aliases\":[\"仓库\"]}',?,now(),now())",tenantId,projectId,scriptId,name,name,context.userId());
+        ToolExecutionContext c=summaryContext(); service.readCurrentEpisode(c);
+        JsonNode payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","aliases":[],"evidence":"小满"}],"characterLooks":[],"scenes":[{"localKey":"s1","name":"仓库","aliases":[],"evidence":"仓库"}],"props":[{"localKey":"p1","name":"木箱","aliases":[],"evidence":"木箱","prompt":"木箱"}],"propVariants":[]}
+            """);
+        assertThatThrownBy(()->service.saveEpisodeAssets(c,payload))
+            .isInstanceOf(com.antshorttv.script.AssetIdentityAmbiguityException.class)
+            .satisfies(error -> assertThat(((com.antshorttv.script.AssetIdentityAmbiguityException)error).conflicts()).hasSize(2));
+        assertThat(jdbc.queryForObject("select count(*) from prop_asset where script_id=?",Integer.class,scriptId)).isZero();
+    }
+
+    @Test
+    void ambiguousIdentityCanBePreservedIndependentlyAndRetriedWithoutDuplicates() throws Exception {
+        seedAmbiguousCharacterAliases();
+        ToolExecutionContext c = summaryContext();
+        service.readCurrentEpisode(c);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode payload = mapper.readTree("""
+            {"schemaVersion":1,"characters":[
+              {"localKey":"c1","name":"小满","aliases":[],"evidence":"小满",
+               "deferIdentity":true,"prompt":"独立角色提示词"}],
+             "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+        assertThat(service.saveEpisodeAssets(c, payload).path("saved").asBoolean()).isTrue();
+        long pending = jdbc.queryForObject("select id from character_asset where script_id=? and name='小满'", Long.class, scriptId);
+        JsonNode metadata = mapper.readTree(jdbc.queryForObject("select content_json from character_asset where id=?", String.class, pending));
+        assertThat(metadata.path("identityResolution").path("status").asText()).isEqualTo("PENDING_NORMALIZATION");
+        assertThat(metadata.path("identityResolution").path("candidateKeys")).hasSize(2);
+        assertThat(metadata.path("identityResolution").path("episodeId").asLong()).isEqualTo(episodeId);
+        assertThat(new com.antshorttv.script.AssetNormalizationGuard(jdbc, mapper).status(tenantId, projectId))
+            .containsEntry("blocked", true);
+        ToolExecutionContext retry = summaryContext();
+        service.readCurrentEpisode(retry);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)payload.path("characters").get(0)).remove("deferIdentity");
+        assertThat(service.saveEpisodeAssets(retry, payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id=?", Integer.class, scriptId)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant_episode where episode_id=? and asset_id=? and binding_status='ACTIVE'", Integer.class, episodeId, pending)).isEqualTo(1);
+    }
+
+    @Test
+    void explicitDeferDoesNotSilentlyReuseTheOnlyRemainingCandidate() throws Exception {
+        seedAmbiguousCharacterAliases();
+        jdbc.update("update character_asset set deleted_at=now() where script_id=? and name='陈小满'",scriptId);
+        ToolExecutionContext c=summaryContext(); service.readCurrentEpisode(c);
+        JsonNode payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","deferIdentity":true,"prompt":"独立角色","aliases":[],"evidence":"小满"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+        assertThat(service.saveEpisodeAssets(c,payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id=? and deleted_at is null",Integer.class,scriptId)).isEqualTo(2);
+    }
+
+    @Test
+    void deferredItemsWithSameNameAndEvidenceRemainSeparateAndRetryIdempotently() throws Exception {
+        seedAmbiguousCharacterAliases();
+        ToolExecutionContext c=summaryContext(); service.readCurrentEpisode(c);
+        JsonNode payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[
+              {"localKey":"c1","name":"小满","deferIdentity":true,"prompt":"独立角色甲","aliases":[],"evidence":"小满"},
+              {"localKey":"c2","name":"小满","deferIdentity":true,"prompt":"独立角色乙","aliases":[],"evidence":"小满"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+        assertThat(service.saveEpisodeAssets(c,payload).path("saved").asBoolean()).isTrue();
+        assertThat(service.saveEpisodeAssets(c,payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id=? and name='小满'",Integer.class,scriptId)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant_episode where episode_id=? and binding_status='ACTIVE'",Integer.class,episodeId)).isEqualTo(2);
+    }
+
+    @Test
+    void pendingIdentityCannotBeExplicitlySpreadToAnotherEpisode() throws Exception {
+        ambiguousIdentityCanBePreservedIndependentlyAndRetriedWithoutDuplicates();
+        long pending=jdbc.queryForObject("select id from character_asset where script_id=? and name='小满'",Long.class,scriptId);
+        long other=jdbc.queryForObject("select id from script_episode where script_id=? and episode_no=1",Long.class,scriptId);
+        jdbc.update("update script_episode set content='小满出现。' where id=?",other);
+        ToolExecutionContext c=new ToolExecutionContext(tenantId,context.userId(),projectId,other,scriptId,null,null,null,Set.of("MENU:PROJECTS"),null,new WorkflowToolRunState());
+        service.readCurrentEpisode(c);
+        JsonNode payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"小满","assetKey":"c_%s","aliases":[],"evidence":"小满"}],"characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """.formatted(pending));
+        assertThatThrownBy(()->service.saveEpisodeAssets(c,payload)).hasMessageContaining("归一");
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant_episode where episode_id=?",Integer.class,other)).isZero();
+    }
+
+    @Test
+    void explicitCandidateReusePreservesOtherAssetsAndDoesNotMergeCandidates() throws Exception {
+        seedAmbiguousCharacterAliases();
+        long retained = jdbc.queryForObject("select id from character_asset where script_id=? and name='林小满'", Long.class, scriptId);
+        jdbc.update("update script_episode set content='小满出现，走进仓库。' where id=?", episodeId);
+        ToolExecutionContext c = summaryContext(); service.readCurrentEpisode(c);
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[
+              {"localKey":"c1","name":"小满","assetKey":"c_%s","aliases":[],"evidence":"小满","prompt":"角色"}],
+             "characterLooks":[],"scenes":[{"localKey":"s1","name":"仓库","aliases":[],"evidence":"仓库","prompt":"仓库"}],"props":[],"propVariants":[]}
+            """.formatted(retained));
+        assertThat(service.saveEpisodeAssets(c, payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id=? and deleted_at is null", Integer.class, scriptId)).isEqualTo(2);
+        assertThat(jdbc.queryForList("select asset_id from asset_visual_variant_episode where episode_id=? and asset_type='CHARACTER' and binding_status='ACTIVE'", Long.class, episodeId)).containsExactly(retained);
+        assertThat(jdbc.queryForObject("select count(*) from scene_asset where script_id=?", Integer.class, scriptId)).isEqualTo(1);
     }
 
     @Test

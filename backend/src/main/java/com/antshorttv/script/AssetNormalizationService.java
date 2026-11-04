@@ -54,9 +54,15 @@ public class AssetNormalizationService {
         try {
             JsonNode frozen=parse(snapshot(c.task().tenantId,c.task().projectId,scriptId,c.task().id).get("input_json"));
             ObjectNode context=compactInventory(frozen);
-            context.set("episodes",frozen.path("episodes"));
+            context.set("episodes",AssetNormalizationEvidence.episodesForModel(frozen.path("episodes")));
             var result=runner.runFormal(new WorkflowAgentRunInput(AGENT,
                 "以下已包含完整资产清单、全部剧集原文及绑定。一次分析全部输入，直接调用 save_asset_normalization 提交完整结果。\n"
+                    + "identityResolution.status=PENDING_NORMALIZATION 的资产是单集无法确认身份的独立记录。"
+                    + "核对候选、绑定及原文后再决定是否合并；只有同名或证据不足时必须保留单成员组，不得强行合并。\n"
+                    + "全剧原文按每集sourceSegments逐行完整提供，episodeId必须用该集id，不能用episode_no集号。"
+                    + "证据优先提交{episodeId,quoteRef:{segmentId:\"S0001\"}}，服务端从冻结原文取引文，避免复制错字。"
+                    + "segmentId仅在对应episodeId内有效；整段超过1000字符时用quoteRef.start/end选择片段内的原文范围。"
+                    + "旧quote仅允许逐字原文，不得改写、纠错或拼接。\n"
                     + write(context),
                 c.task().tenantId, c.task().projectId, null, scriptId, c.task().businessId, null,
                 c.task().userId, c.task().id, c.claim().attemptId(), c.task().executionVersion,
@@ -118,7 +124,7 @@ public class AssetNormalizationService {
             compact.put("hasImage",a.hasNonNull("main_image_url"));
             compact.set("source",a.path("source"));
             JsonNode content=parse(a.path("content_json").asText("{}"));
-            for(String field:List.of("aliases","evidence","lastEvidence","ownerCharacterLocalKey"))
+            for(String field:List.of("aliases","evidence","lastEvidence","ownerCharacterLocalKey","identityResolution"))
                 if(content.has(field)) compact.set(field,content.get(field));
         }
         Set<String> activeAssets=new HashSet<>();
@@ -149,7 +155,7 @@ public class AssetNormalizationService {
         Set<Long> requested=new HashSet<>();
         arguments.path("episodeIds").forEach(id -> requested.add(id.asLong()));
         ArrayNode result=json.createArrayNode();
-        input.path("episodes").forEach(e -> { if(requested.remove(e.path("id").asLong())) result.add(e); });
+        input.path("episodes").forEach(e -> { if(requested.remove(e.path("id").asLong())) result.add(AssetNormalizationEvidence.episodeForModel(e)); });
         if(!requested.isEmpty()) throw new BusinessException(ErrorCode.WORKFLOW_AGENT_TOOL_INVALID,"请求的剧集不属于归一快照。");
         return json.createObjectNode().set("episodes",result);
     }
@@ -163,22 +169,37 @@ public class AssetNormalizationService {
             JsonNode input=parse(row.get("input_json"));
             if(!hash(capture(c.tenantId(),c.projectId(),c.scriptId())).equals(row.get("input_fingerprint")))
                 throw new BusinessException(ErrorCode.ANALYSIS_EPISODE_SNAPSHOT_CHANGED,"归一期间资产或剧集已变化，请重新发起归一任务。");
-            var validated=AssetNormalizationDecision.validate(input,decision);
+            JsonNode resolvedDecision=AssetNormalizationEvidence.resolve(input,decision);
+            var validated=AssetNormalizationDecision.validate(input,resolvedDecision);
             int merged=0;
             for(var group:validated.groups()) for(long member:group.members()) if(member!=group.retainId()) {
                 merge(c,group.type(),member,group.retainId()); merged++;
             }
             for(var split:validated.splits()) split(c,split);
             for(var entry:TABLES.entrySet()) {
+                resolvePendingIdentities(c, entry.getValue());
                 AssetVisualPrimaryRepair.repair(jdbc,c.tenantId(),c.projectId(),c.scriptId(),entry.getKey(),entry.getValue());
                 repairImagePointers(c,entry.getKey(),entry.getValue());
             }
             ObjectNode result=json.createObjectNode().put("saved",true).put("mergedAssets",merged)
                 .put("splitGroups",validated.splits().size()).put("snapshotId",((Number)row.get("id")).longValue());
             jdbc.update("update script_asset_normalization_snapshot set decision_json=?,result_json=?,status='SUCCEEDED',agent_run_id=?,error_message=null,updated_at=now() where id=?",
-                write(decision),write(result),c.agentRunId(),row.get("id"));
+                write(resolvedDecision),write(result),c.agentRunId(),row.get("id"));
             return result;
         });
+    }
+
+    private void resolvePendingIdentities(ToolExecutionContext c, String table) {
+        for (var row : jdbc.queryForList("select id,content_json from " + table
+            + " where tenant_id=? and project_id=? and script_id=? and deleted_at is null for update",
+            c.tenantId(), c.projectId(), c.scriptId())) {
+            JsonNode parsed = parse(row.get("content_json"));
+            if (!(parsed instanceof ObjectNode content)) continue;
+            if ("PENDING_NORMALIZATION".equals(content.path("identityResolution").path("status").asText())) {
+                ((ObjectNode) content.path("identityResolution")).put("status", "RESOLVED");
+                jdbc.update("update " + table + " set content_json=?,updated_at=now() where id=?", write(content), row.get("id"));
+            }
+        }
     }
 
     private void merge(ToolExecutionContext c,String type,long source,long target) {
@@ -187,8 +208,9 @@ public class AssetNormalizationService {
         ObjectNode content=(ObjectNode)parse(to.get("content_json"));
         Set<String> names=new LinkedHashSet<>();
         names.add(String.valueOf(from.get("name")));
-        parse(from.get("content_json")).path("aliases").forEach(a -> names.add(a.asText()));
-        content.path("aliases").forEach(a -> names.add(a.asText()));
+        parse(from.get("content_json")).path("aliases").forEach(a -> names.add(a.isTextual()?a.asText():a.path("name").asText()));
+        content.path("aliases").forEach(a -> names.add(a.isTextual()?a.asText():a.path("name").asText()));
+        names.remove("");
         ArrayNode aliases=content.putArray("aliases"); names.forEach(aliases::add);
         jdbc.update("update "+table+" set content_json=?,updated_at=now() where id=? and tenant_id=? and project_id=?",
             write(content),target,c.tenantId(),c.projectId());

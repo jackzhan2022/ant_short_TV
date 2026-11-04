@@ -473,9 +473,14 @@ const ProductionWorkbenchScript = () => {
     };
   }, [projectId]);
 
-  const hasActiveAnalysis = (workspace?.analysis?.stages || []).some((stage) =>
-    ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
-  );
+  const analysisExecutionActive =
+    activeExecution?.businessType === 'SCRIPT_ANALYSIS_TASK' &&
+    ['PENDING', 'RUNNING'].includes(activeExecution.status ?? '');
+  const hasActiveAnalysis =
+    analysisExecutionActive ||
+    (workspace?.analysis?.stages || []).some((stage) =>
+      ['PENDING', 'RUNNING', 'RETRYING'].includes(stage.status),
+    );
 
   useEffect(() => {
     if (!hasActiveAnalysis) {
@@ -544,6 +549,17 @@ const ProductionWorkbenchScript = () => {
     episodeBlocks[0];
   const script = workspace?.script;
   const analysis = workspace?.analysis;
+  const displayedExecution =
+    analysisExecutionActive && analysis && activeExecution
+      ? {
+          ...activeExecution,
+          progress: analysis.overallProgress ?? activeExecution.progress,
+          phase:
+            analysis.status === 'FAILED'
+              ? '正在结算本次任务'
+              : analysis.currentAction || '正在同步分析进度',
+        }
+      : activeExecution;
   const reviewReady = workspace?.projectId === projectId && (!analysis || analysis.status === 'COMPLETED');
   const assetsSection = useSectionSeen(projectId, reviewReady);
   const assetStatsSection = useSectionSeen(projectId, reviewReady);
@@ -639,8 +655,12 @@ const ProductionWorkbenchScript = () => {
   const retryAnalysis = async (stageCode: string) => {
     try {
       const response = await retryScriptAnalysis(projectId, stageCode);
-      await followExecution(response.data);
-      message.success('已重新加入分析队列');
+      const terminal = await followExecution(response.data);
+      if (terminal.status !== 'SUCCEEDED') {
+        message.error(terminal.errorMessage || '本次分析未完成，请查看分集处理详情');
+        return;
+      }
+      message.success('分析重试已完成');
     } catch (error) {
       if (isPointEstimateCancelled(error)) return;
       message.error(error instanceof Error ? error.message : '分析重试失败');
@@ -841,7 +861,7 @@ const ProductionWorkbenchScript = () => {
             }}
           >
             <AiExecutionStatus
-              task={activeExecution}
+              task={displayedExecution || activeExecution}
               busy={executionBusy}
               onCancel={() => {
                 if (!activeExecution.id || !tenantId) return;

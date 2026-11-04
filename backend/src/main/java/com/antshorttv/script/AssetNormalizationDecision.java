@@ -27,7 +27,7 @@ record AssetNormalizationDecision(List<Group> groups, List<Split> splits) {
             List<Long> ids = ids(g.path("memberIds"));
             long retain = g.path("retainId").asLong();
             require(ids.contains(retain), "保留资产必须属于本组。");
-            Set<Long> evidence = evidence(g.path("evidence"), episodes);
+            Set<Long> evidence = evidence(g.path("evidence"), episodes, "groups[" + groups.size() + "].evidence");
             for (long id : ids) {
                 String k = key(type, id);
                 require(assets.containsKey(k), "资产不存在、越界或类型不符：" + k);
@@ -52,7 +52,7 @@ record AssetNormalizationDecision(List<Group> groups, List<Split> splits) {
                 "拆分目标资产必须是同类型保留资产。");
             else require(!name.isBlank() && name.length() <= 100, "新资产名称不能为空且不能超过100字。");
             List<Long> selected = ids(s.path("bindingIds"));
-            Set<Long> evidence = evidence(s.path("evidence"), episodes);
+            Set<Long> evidence = evidence(s.path("evidence"), episodes, "splits[" + splits.size() + "].evidence");
             for (long id : selected) {
                 JsonNode b = bindings.get(id);
                 require(b != null && type.equals(b.path("asset_type").asText()) && source == b.path("asset_id").asLong(),
@@ -74,14 +74,17 @@ record AssetNormalizationDecision(List<Group> groups, List<Split> splits) {
         }
         return List.copyOf(ids);
     }
-    private static Set<Long> evidence(JsonNode node, Map<Long, String> episodes) {
+    private static Set<Long> evidence(JsonNode node, Map<Long, String> episodes, String path) {
         require(node.isArray(), "缺少原文证据数组。");
         Set<Long> ids = new HashSet<>();
+        int index = 0;
         for (JsonNode e : node) {
             long id = e.path("episodeId").asLong();
             String quote = e.path("quote").asText("");
-            require(quote.trim().length() >= 4 && episodes.containsKey(id) && episodes.get(id).contains(quote), "归一证据不是有效剧集逐字原文。");
+            require(quote.trim().length() >= 4 && episodes.containsKey(id) && episodes.get(id).contains(quote),
+                "归一证据不是有效剧集逐字原文（" + path + "[" + index + "]，episodeId=" + id + "）；请使用该集的quoteRef原文片段引用。");
             ids.add(id);
+            index++;
         }
         return ids;
     }

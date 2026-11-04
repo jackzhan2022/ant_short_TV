@@ -54,4 +54,10 @@ class AssetNormalizationDecisionTest {
             tree(decision().replace("\"bindingIds\":[4]", "\"bindingIds\":[2]"))))
             .hasMessageContaining("绑定");
     }
+    @Test void rejectsOneCharacterCopyErrorAndIdentifiesTheEvidenceLocation() throws Exception {
+        assertThatThrownBy(()->AssetNormalizationDecision.validate(inventory(),
+            tree(decision().replace("林嘉欣母亲每月要七千元","林嘉欣母亲每月要八千元"))))
+            .hasMessageContaining("逐字原文").hasMessageContaining("groups[0].evidence[0]")
+            .hasMessageContaining("episodeId=7");
+    }
 }

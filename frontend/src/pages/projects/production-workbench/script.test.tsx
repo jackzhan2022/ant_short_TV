@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   regenerateEpisodeAssets: vi.fn(),
   updateEpisodeSummary: vi.fn(),
   pollExecution: vi.fn(),
+  messageError: vi.fn(),
+  messageSuccess: vi.fn(),
   confirm: vi.fn(),
 }));
 
@@ -39,14 +41,14 @@ vi.mock('antd', () => ({
     </div>
   ),
   App: {
-    useApp: () => ({ message: { error: vi.fn(), success: vi.fn() } }),
+    useApp: () => ({ message: { error: mocks.messageError, success: mocks.messageSuccess } }),
   },
   Modal: Object.assign(
     ({ open, title, children, onOk, okText }: any) =>
       open ? <div role="dialog" aria-label={title}>{children}{onOk ? <button type="button" onClick={onOk}>{okText}</button> : null}</div> : null,
     { confirm: mocks.confirm },
   ),
-  Button: ({ children, ...props }: any) => (
+  Button: ({ children, loading: _loading, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
   Collapse: ({ items }: any) => (
@@ -110,7 +112,9 @@ vi.mock('@/services/ai-execution/task', () => ({
 vi.mock('@/components/AiExecutionStatus', () => ({
   default: ({ task }: any) => (
     <div>
-      execution-{task.id}-{task.status}
+      <span>execution-{task.id}-{task.status}</span>
+      <span>execution-progress-{task.progress}</span>
+      <span>{task.phase}</span>
     </div>
   ),
 }));
@@ -124,6 +128,54 @@ vi.mock('@/services/account-team/auth', () => ({
 }));
 
 describe('ProductionWorkbenchScript', () => {
+  it('refreshes failed analysis while a retry execution is still running', async () => {
+    vi.useFakeTimers();
+    try {
+      const failed = {
+        projectId: 1, script: null, versions: [], episodes: [],
+        analysis: {
+          status: 'FAILED', overallProgress: 98,
+          stages: [{ id: 4, stageCode: 'CHARACTER_SCENE_RECOGNITION', stageOrder: 4,
+            status: 'FAILED', retryable: true, progressPercent: 100, completedUnits: 69, totalUnits: 70 }],
+        },
+      };
+      mocks.queryScriptWorkspace.mockResolvedValue({ data: failed });
+      mocks.retryScriptAnalysis.mockResolvedValue({ data: {
+        id: 501, businessId: 99, businessType: 'SCRIPT_ANALYSIS_TASK', status: 'RUNNING', progress: 0,
+      } });
+      mocks.pollExecution.mockImplementation(() => new Promise(() => {}));
+      mocks.queryCurrentScriptAnalysis.mockResolvedValue({ data: {
+        ...failed.analysis, status: 'RUNNING', currentAction: '正在处理第68集',
+        stages: [{ ...failed.analysis.stages[0], status: 'RUNNING', retryable: false }],
+      } });
+      render(<ProductionWorkbenchScript />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      fireEvent.click(screen.getByRole('button', { name: '重试此步骤' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(mocks.queryCurrentScriptAnalysis).toHaveBeenCalledWith(1);
+      expect(screen.queryByText('剧本解析失败')).not.toBeInTheDocument();
+      expect(screen.getByText('execution-progress-98')).toBeInTheDocument();
+      expect(screen.queryByText('execution-progress-0')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a failed retry instead of announcing that analysis was queued successfully', async () => {
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: {
+      projectId: 1, script: null, versions: [], episodes: [],
+      analysis: { status: 'FAILED', stages: [{ id: 4, stageCode: 'CHARACTER_SCENE_RECOGNITION',
+        stageOrder: 4, status: 'FAILED', retryable: true, progressPercent: 100 }] },
+    } });
+    mocks.retryScriptAnalysis.mockResolvedValue({ data: { id: 501, status: 'PENDING' } });
+    mocks.pollExecution.mockResolvedValue({ id: 501, status: 'FAILED', errorMessage: '水管匹配冲突' });
+    render(<ProductionWorkbenchScript />);
+    fireEvent.click(await screen.findByRole('button', { name: '重试此步骤' }));
+    await waitFor(() => expect(mocks.messageError).toHaveBeenCalledWith('水管匹配冲突'));
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
+  });
+
   it.each([
     'COMPLETED',
     'FAILED',

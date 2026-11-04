@@ -14,6 +14,8 @@ import com.antshorttv.rbac.ProjectPermissionGuard;
 import com.antshorttv.review.ReviewWorkbenchService;
 import com.antshorttv.review.ReviewContentService;
 import com.antshorttv.review.ReviewUnitPlanner;
+import com.antshorttv.script.EpisodeFanoutCoordinator;
+import com.antshorttv.script.ScriptAnalysisTaskService;
 import com.antshorttv.security.TenantContextResolver;
 import com.antshorttv.video.AiVideoTaskService;
 import com.antshorttv.video.VideoDecompositionService;
@@ -225,11 +227,22 @@ public class AiPointEstimateService {
         Long model = frozenModel == null ? resolveModel(tenant, project, "TEXT") : frozenModel;
         String content = scriptContent(tenant, project);
         if (path.startsWith("script-analysis/current/retry/")) {
-            var tasks = jdbc.queryForList("select execution_id from script_analysis_task where tenant_id=? and project_id=? order by id desc limit 1", tenant, project);
-            Long executionId = tasks.isEmpty() ? null : number(tasks.get(0),"execution_id");
-            if (executionId != null && !"CANCELED".equals(executions.requireTask(executionId).status))
-                return execution(tenant, executionId, true);
-            return analysis(tenant, project, content);
+            var task = row("""
+                select id, script_id, script_version_id, execution_id from script_analysis_task
+                 where tenant_id=? and project_id=?
+                   and workflow_code in ('SCRIPT_INITIAL_ANALYSIS','SCRIPT_MANUAL_ANALYSIS')
+                 order by created_at desc limit 1
+                """, tenant, project);
+            Long executionId = number(task,"execution_id");
+            AiPointReservationEntity retryReservation = null;
+            if (executionId != null) {
+                executionAccess.requireControl(tenant, executionId);
+                String status = executions.requireTask(executionId).status;
+                if (Set.of("FAILED","TIMED_OUT").contains(status))
+                    retryReservation = reservations.selectByExecutionId(executionId);
+            }
+            return analysisRetry(tenant, project, task,
+                path.substring("script-analysis/current/retry/".length()), retryReservation);
         }
         if ("script-analysis/current/reanalyze".equals(path)) return analysis(tenant, project, content);
         if (path.matches("script-analysis/versions/\\d+/reanalyze")) {
@@ -290,6 +303,87 @@ public class AiPointEstimateService {
         }
         plans.add(assetNormalization(tenant,project,model,content,reservation));
         return plans.stream().map(plan -> plan.inProject(project)).toList();
+    }
+
+    private List<AiPointEstimatePlan> analysisRetry(Long tenant, Long project, Map<String,Object> task,
+                                                   String stageCode, AiPointReservationEntity reservation) {
+        Integer retryOrder = stageCode == null ? null : ScriptAnalysisTaskService.STAGES.stream()
+            .filter(stage -> stage.code().equals(stageCode.trim().toUpperCase(Locale.ROOT)))
+            .map(ScriptAnalysisTaskService.StageDefinition::order).findFirst()
+            .orElseThrow(() -> invalid("未知分析阶段：" + stageCode));
+        var stages = jdbc.queryForList(
+            "select id, stage_code, stage_order, status from script_analysis_stage where task_id=? order by stage_order",
+            number(task,"id"));
+        var pending = stages.stream().filter(stage -> !"SUCCEEDED".equals(text(stage,"status"))
+            || (retryOrder != null && number(stage,"stage_order") >= retryOrder)).toList();
+        var snapshot = row("select snapshot_json from script_analysis_config_snapshot where task_id=?", number(task,"id"));
+        Long model;
+        try {
+            JsonNode value = json.readTree(text(snapshot,"snapshot_json")).path("modelId");
+            if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() <= 0)
+                throw invalid("剧本分析快照缺少有效模型。");
+            model = value.longValue();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw invalid("剧本分析配置快照损坏。");
+        }
+        String content = text(row("select content from script_version where id=?", number(task,"script_version_id")),"content");
+        var episodes = jdbc.queryForList("""
+            select id, stable_key, content_fingerprint, content, status from script_episode
+             where tenant_id=? and project_id=? and script_id=?
+               and status='ACTIVE' and retired_at is null order by episode_no, id
+            """, tenant, project, number(task,"script_id"));
+        boolean splitting = pending.stream().anyMatch(stage -> "EPISODE_SPLITTING".equals(text(stage,"stage_code")));
+        if (episodes.isEmpty()) {
+            episodes = com.antshorttv.script.ScriptEpisodeParser.parse(content).stream()
+                .map(episode -> Map.<String,Object>of("content",episode.content())).toList();
+        }
+        List<AiPointEstimatePlan> plans = new ArrayList<>();
+        for (var stage : pending) {
+            String code = text(stage,"stage_code");
+            if ("GLOBAL_UNDERSTANDING".equals(code))
+                plans.add(textPlan(tenant,"剧本全局理解",model,content,"short-drama-global-understanding",2,reservation));
+            else if ("EPISODE_SPLITTING".equals(code))
+                plans.add(textPlan(tenant,"剧集智能拆分",model,content,"short-drama-episode-splitting",2,reservation));
+            else {
+                boolean summary = "EPISODE_SUMMARY".equals(code);
+                String agentCode = summary ? "short-drama-episode-summary" : "short-drama-asset-recognition";
+                var runnable = splitting ? episodes : retryEpisodes(tenant,project,task,stage,model,agentCode,episodes);
+                for (var episode : runnable)
+                    plans.add(textPlan(tenant,summary ? "分集概要" : "分集资产识别",model,
+                        text(episode,"content"),agentCode,summary ? 2 : 3,reservation));
+                if (!summary) plans.add(assetNormalization(tenant,project,model,content,reservation));
+            }
+        }
+        // Successful asset units may still have automatic storyboards waiting for this analysis to finish.
+        Long storyboardModel = resolveModel(tenant,project,"TEXT");
+        for (var episode : episodes) {
+            Long episodeId = number(episode,"id");
+            if (episodeId == null || !hasStoryboard(tenant,project,episodeId))
+                plans.add(storyboard(tenant,storyboardModel,text(episode,"content")));
+        }
+        return plans.stream().map(plan -> plan.inProject(project)).toList();
+    }
+
+    private List<Map<String,Object>> retryEpisodes(Long tenant, Long project, Map<String,Object> task,
+        Map<String,Object> stage, Long model, String agentCode, List<Map<String,Object>> episodes) {
+        if (episodes.stream().anyMatch(episode -> number(episode,"id") == null)) return episodes;
+        var units = episodes.stream().map(episode -> new EpisodeFanoutCoordinator.EpisodeUnit(
+            number(episode,"id"),text(episode,"stable_key"),text(episode,"content_fingerprint"),text(episode,"status"))).toList();
+        var plan = agentPlans.computeIfAbsent(tenant+":"+agentCode, ignored -> agents.freezeFormal(agentCode,tenant));
+        // Use the same compatibility checks as JdbcEpisodeFanoutStore.openSnapshot before reusing success.
+        var snapshots = jdbc.queryForList("""
+            select id from script_analysis_fanout_snapshot
+             where tenant_id=? and project_id=? and task_id=? and stage_id=?
+               and agent_code=? and episode_set_hash=? and agent_revision=? and model_id=?
+               and status in ('PENDING','RUNNING','FINALIZING','SUCCEEDED','PARTIAL_FAILED','FAILED')
+             order by id desc limit 1
+            """, Long.class,tenant,project,number(task,"id"),number(stage,"id"),agentCode,
+            EpisodeFanoutCoordinator.episodeSetHash(units),plan.agent().revision(),model);
+        if (snapshots.isEmpty()) return episodes;
+        Set<Long> succeeded = new HashSet<>(jdbc.queryForList("""
+            select episode_id from script_analysis_fanout_unit where snapshot_id=? and status='SUCCEEDED'
+            """,Long.class,snapshots.get(0)));
+        return episodes.stream().filter(episode -> !succeeded.contains(number(episode,"id"))).toList();
     }
 
     private List<AiPointEstimatePlan> assetExtraction(Long tenant, Long project, Long model) {
@@ -459,7 +553,12 @@ public class AiPointEstimateService {
         if ("AI_IMAGE_TASK".equals(task.businessType)) plans = List.of(images.pointEstimateExisting(tenant, task.projectId, task.businessId));
         else if ("AI_VIDEO_TASK".equals(task.businessType)) plans = List.of(videos.pointEstimateExisting(tenant, task.projectId, task.businessId));
         else if ("REVIEW_TASK".equals(task.businessType)) plans = retryReview(tenant, task.businessId);
-        else if ("SCRIPT_ANALYSIS_TASK".equals(task.businessType)) plans = analysis(tenant, task.projectId, scriptContent(tenant, task.projectId), task.requestedModelId, reservation);
+        else if ("SCRIPT_ANALYSIS_TASK".equals(task.businessType)) plans = frozen
+            ? analysisRetry(tenant, task.projectId, row("""
+                select id, script_id, script_version_id, execution_id from script_analysis_task
+                 where tenant_id=? and project_id=? and id=?
+                """,tenant,task.projectId,task.businessId), null, reservation)
+            : analysis(tenant, task.projectId, scriptContent(tenant, task.projectId), task.requestedModelId, reservation);
         else if ("SCRIPT_AI_OPERATION".equals(task.businessType)) {
             var op = row("select operation_type,redacted_input_json from script_ai_operation where tenant_id=? and id=?", tenant, task.businessId);
             JsonNode input;

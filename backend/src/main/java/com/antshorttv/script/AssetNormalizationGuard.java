@@ -38,6 +38,20 @@ public class AssetNormalizationGuard {
                     ? "NORMALIZING" : "EXTRACTING"
                 : "FAILED");
         }
+        for (String table : List.of("character_asset", "scene_asset", "prop_asset")) {
+            for (String raw : jdbc.queryForList("select a.content_json from " + table
+                + " a join script s on s.id=a.script_id and s.tenant_id=a.tenant_id and s.project_id=a.project_id"
+                + " where a.tenant_id=? and a.project_id=? and a.deleted_at is null and s.deleted_at is null"
+                + " and a.content_json like '%PENDING_NORMALIZATION%'", String.class, tenant, project)) {
+                try {
+                    if ("PENDING_NORMALIZATION".equals(json.readTree(raw).path("identityResolution").path("status").asText())) {
+                        result.put("blocked", true);
+                        if ("IDLE".equals(result.get("status")) || "SUCCEEDED".equals(result.get("status")))
+                            result.put("status", "NORMALIZING");
+                    }
+                } catch (Exception error) { throw new IllegalStateException("资产身份状态损坏。", error); }
+            }
+        }
         return result;
     }
     public void requireReady(long tenant,long project) {

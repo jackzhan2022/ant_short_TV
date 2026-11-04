@@ -86,7 +86,7 @@ public final class EpisodeAssetsPayloadNormalizer {
         if (node != null && node.isContainerNode()) node.forEach(EpisodeAssetsPayloadNormalizer::removeSchemaFields);
     }
 
-    static void resolveEvidence(ObjectNode item, String field, Map<String, String> segments,
+    public static void resolveEvidence(ObjectNode item, String field, Map<String, String> segments,
                                         String path, List<String> errors) {
         String refField = field + "Ref";
         if (!item.has(refField)) return;

@@ -69,6 +69,7 @@ public class EpisodeAssetPersistenceService {
         AssetPromptPolicy promptPolicy = promptPolicy(context);
         validateScopePayload(payload, scope);
         validateAiCharacterPrompts(context, payload.path("characters"));
+        inspectIdentityConflicts(context, payload);
         Map<String, ResolvedAsset> characters = resolveIdentities(
             context, read.content(), "CHARACTER", payload.path("characters"), promptPolicy);
         Map<String, ResolvedAsset> scenes = resolveIdentities(
@@ -249,10 +250,17 @@ public class EpisodeAssetPersistenceService {
         String normalized = AssetIdentityNormalizer.normalize(name);
         if (normalized.isBlank()) invalid("资产规范名不能为空。");
         String trustedKey = item.path("assetKey").isTextual() ? item.path("assetKey").asText() : null;
+        if (item.path("deferIdentity").asBoolean() && trustedKey != null && !trustedKey.isBlank())
+            invalid("deferIdentity 与 assetKey 不能同时指定。");
         if (trustedKey != null && !trustedKey.isBlank()) {
             long id = parseOpaqueKey(trustedKey, PREFIXES.get(type));
             List<Map<String, Object>> rows = findById(context, type, id);
             if (rows.size() != 1) invalid("资产 key 不属于当前剧本或类型不匹配。");
+            JsonNode resolution = metadata(rows.get(0).get("content_json")).path("identityResolution");
+            if ("PENDING_NORMALIZATION".equals(resolution.path("status").asText())
+                && (resolution.path("episodeId").asLong() != context.episodeId()
+                    || !resolution.path("contentFingerprint").asText().equals(context.runState().require("currentEpisodeFingerprint", String.class))))
+                invalid("候选资产身份尚待全剧归一，不能跨集复用；请清空assetKey并使用deferIdentity独立保存。");
             requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
             updateMetadata(context, type, id, item, normalized, false);
             writeAssetPrompt(type, id, item, promptPolicy);
@@ -260,11 +268,33 @@ public class EpisodeAssetPersistenceService {
         }
 
         lockIdentity(context, type, normalized);
+        String pendingName = pendingName(context, type, item);
+        List<Map<String, Object>> pending = findPending(context, type, item);
+        if (!pending.isEmpty()) {
+            long pendingId = ((Number) pending.get(0).get("id")).longValue();
+            requirePromptIfMissing(item, promptIsEmpty(pending.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
+            updateMetadata(context, type, pendingId, item, pendingName, false);
+            writeAssetPrompt(type, pendingId, item, promptPolicy);
+            return new ResolvedAsset(pendingId, item.path("localKey").asText(), type);
+        }
         List<Map<String, Object>> matches = findExactMatches(context, type, normalized);
-        if (matches.size() > 1) {
-            String candidates = matches.stream().map(row -> PREFIXES.get(type) + row.get("id")).toList().toString();
-            throw new BusinessException(ErrorCode.ENTITY_MATCH_AMBIGUOUS,
-                "资产匹配不唯一，可选安全 key：" + candidates);
+        if (matches.size() > 1 || item.path("deferIdentity").asBoolean()) {
+            if (!item.path("deferIdentity").asBoolean())
+                throw new AssetIdentityAmbiguityException(json.createArrayNode().add(identityConflict(context, type, item, matches)));
+            requirePromptIfMissing(item, true);
+            long pendingId = insertIdentity(context, type, item, pendingName);
+            updateMetadata(context, type, pendingId, item, pendingName, true);
+            ObjectNode metadata = metadata(jdbc.queryForObject("select content_json from " + TABLES.get(type) + " where id=?", String.class, pendingId));
+            ObjectNode resolution = metadata.putObject("identityResolution");
+            resolution.put("status", "PENDING_NORMALIZATION");
+            resolution.put("episodeId", context.episodeId());
+            resolution.put("localKey", item.path("localKey").asText());
+            resolution.put("contentFingerprint", context.runState().require("currentEpisodeFingerprint", String.class));
+            ArrayNode candidates = resolution.putArray("candidateKeys");
+            matches.forEach(row -> candidates.add(PREFIXES.get(type) + row.get("id")));
+            jdbc.update("update " + TABLES.get(type) + " set content_json=? where id=?", metadata.toString(), pendingId);
+            writeAssetPrompt(type, pendingId, item, promptPolicy);
+            return new ResolvedAsset(pendingId, item.path("localKey").asText(), type);
         }
         long id;
         boolean created;
@@ -282,8 +312,105 @@ public class EpisodeAssetPersistenceService {
         return new ResolvedAsset(id, item.path("localKey").asText(), type);
     }
 
+    private String pendingName(ToolExecutionContext c, String type, JsonNode item) {
+        return "pending:" + sha256(type + ":" + c.episodeId() + ":"
+            + c.runState().require("currentEpisodeFingerprint", String.class) + ":"
+            + item.path("localKey").asText() + ":" + AssetIdentityNormalizer.normalize(item.path("name").asText())
+            + ":" + item.path("evidence").asText());
+    }
+
+    private List<Map<String, Object>> findPending(ToolExecutionContext c, String type, JsonNode item) {
+        return jdbc.queryForList("select id,prompt from " + TABLES.get(type)
+            + " where tenant_id=? and project_id=? and script_id=? and normalized_name=? and deleted_at is null for update",
+            c.tenantId(), c.projectId(), c.scriptId(), pendingName(c, type, item));
+    }
+
+    private ObjectNode metadata(Object raw) {
+        if (raw == null) return json.createObjectNode();
+        try {
+            JsonNode value = json.readTree(String.valueOf(raw));
+            return value instanceof ObjectNode object ? object : json.createObjectNode();
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("资产元数据损坏。", error);
+        }
+    }
+
+    /** Check all identities before writing, so one correction can address every conflict. */
+    private void inspectIdentityConflicts(ToolExecutionContext c, JsonNode payload) {
+        ArrayNode conflicts = json.createArrayNode();
+        for (String type : List.of("CHARACTER", "SCENE", "PROP")) {
+            String field = switch (type) { case "CHARACTER" -> "characters"; case "SCENE" -> "scenes"; default -> "props"; };
+            List<Map<String, Object>> inventory = null;
+            for (JsonNode item : payload.path(field)) {
+                if (item.path("deferIdentity").asBoolean() || !item.path("assetKey").asText("").isBlank()) continue;
+                String normalized = AssetIdentityNormalizer.normalize(item.path("name").asText());
+                lockIdentity(c, type, normalized);
+                if (inventory == null) inventory = findActiveIdentities(c, type);
+                String pendingName = pendingName(c, type, item);
+                if (inventory.stream().anyMatch(row -> pendingName.equals(row.get("normalized_name")))) continue;
+                List<Map<String, Object>> matches = exactMatches(inventory, normalized);
+                if (matches.size() > 1) conflicts.add(identityConflict(c, type, item, matches));
+            }
+        }
+        if (!conflicts.isEmpty()) throw new AssetIdentityAmbiguityException(conflicts);
+    }
+
+    private ObjectNode identityConflict(ToolExecutionContext c, String type, JsonNode item, List<Map<String, Object>> matches) {
+        ObjectNode conflict = json.createObjectNode().put("assetType", type)
+            .put("localKey", item.path("localKey").asText()).put("name", item.path("name").asText())
+            .put("evidence", item.path("evidence").asText()).put("candidateCount", matches.size());
+        ArrayNode candidates = conflict.putArray("candidates");
+        // Details are bounded; omitted candidates must never be guessed from their names.
+        conflict.put("truncated", matches.size() > 8);
+        for (Map<String, Object> row : matches.stream().limit(8).toList()) {
+            ObjectNode candidate = candidates.addObject().put("assetKey", PREFIXES.get(type) + row.get("id"))
+                .put("name", String.valueOf(row.get("name"))).put("hasPrompt", !promptIsEmpty(row.get("prompt")));
+            ObjectNode content = metadata(row.get("content_json"));
+            ArrayNode aliasNames = candidate.putArray("aliases");
+            for (JsonNode alias : content.path("aliases")) {
+                if (aliasNames.size() == 12) break;
+                aliasNames.addObject().put("name", alias.isTextual() ? alias.asText() : alias.path("name").asText());
+            }
+            for (String field : List.of("identity", "appearance", "description", "plot_function", "related_character")) {
+                if (row.get(field) != null) {
+                    String value = String.valueOf(row.get(field));
+                    candidate.put(field, value.substring(0, Math.min(1000, value.length())));
+                    if (value.length() > 1000) candidate.put("metadataTruncated", true);
+                }
+            }
+            if (content.path("aliases").size() > 12) candidate.put("metadataTruncated", true);
+            for (String field : List.of("description", "evidence", "lastEvidence")) {
+                if (content.hasNonNull(field)) {
+                    String value = content.path(field).asText();
+                    candidate.put(field, value.substring(0, Math.min(1000, value.length())));
+                    if (value.length() > 1000) candidate.put("metadataTruncated", true);
+                }
+            }
+            ArrayNode sources = candidate.putArray("sourceEpisodes");
+            var episodes = jdbc.queryForList("""
+                select distinct e.id, e.episode_no, e.content from asset_visual_variant_episode b
+                join script_episode e on e.id=b.episode_id and e.tenant_id=b.tenant_id and e.project_id=b.project_id and e.script_id=b.script_id
+                where b.tenant_id=? and b.project_id=? and b.script_id=? and b.asset_type=? and b.asset_id=?
+                  and b.binding_status='ACTIVE' and b.retired_at is null and e.status='ACTIVE' and e.retired_at is null
+                order by e.id desc limit 3
+                """, c.tenantId(), c.projectId(), c.scriptId(), type, row.get("id"));
+            for (var episode : episodes) {
+                String text = String.valueOf(episode.get("content"));
+                String evidence = content.path("evidence").asText();
+                int offset = evidence.isBlank() ? -1 : text.indexOf(evidence);
+                if (offset < 0) offset = text.indexOf(String.valueOf(row.get("name")));
+                int from = Math.max(0, offset - 200);
+                sources.addObject().put("episodeId", ((Number) episode.get("id")).longValue())
+                    .put("episodeNo", ((Number) episode.get("episode_no")).intValue())
+                    .put("excerpt", text.substring(from, Math.min(text.length(), from + 1200)))
+                    .put("contentTruncated", text.length() > 1200);
+            }
+        }
+        return conflict;
+    }
+
     private List<Map<String, Object>> findById(ToolExecutionContext context, String type, long id) {
-        return jdbc.queryForList("select id, name, normalized_name, content_json, prompt from " + TABLES.get(type)
+        return jdbc.queryForList("select * from " + TABLES.get(type)
                 + " where id = ? and tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null for update",
             id, context.tenantId(), context.projectId(), context.scriptId());
     }
@@ -291,12 +418,22 @@ public class EpisodeAssetPersistenceService {
     private List<Map<String, Object>> findExactMatches(
         ToolExecutionContext context, String type, String normalized
     ) {
-        List<Map<String, Object>> rows = jdbc.queryForList(
-            "select id, name, normalized_name, content_json, prompt from " + TABLES.get(type)
+        return exactMatches(findActiveIdentities(context, type), normalized);
+    }
+
+    private List<Map<String, Object>> findActiveIdentities(ToolExecutionContext context, String type) {
+        return jdbc.queryForList(
+            "select * from " + TABLES.get(type)
                 + " where tenant_id = ? and project_id = ? and script_id = ? and deleted_at is null for update",
             context.tenantId(), context.projectId(), context.scriptId());
-        return rows.stream().filter(row -> normalized.equals(String.valueOf(row.get("normalized_name")))
-            || aliases(row.get("content_json")).contains(normalized)).toList();
+    }
+
+    private List<Map<String, Object>> exactMatches(List<Map<String, Object>> rows, String normalized) {
+        return rows.stream().filter(row -> !"PENDING_NORMALIZATION".equals(metadata(row.get("content_json"))
+                .path("identityResolution").path("status").asText()))
+            .filter(row -> normalized.equals(String.valueOf(row.get("normalized_name")))
+                || normalized.equals(AssetIdentityNormalizer.normalize(String.valueOf(row.get("name"))))
+                || aliases(row.get("content_json")).contains(normalized)).toList();
     }
 
     private Set<String> aliases(Object raw) {

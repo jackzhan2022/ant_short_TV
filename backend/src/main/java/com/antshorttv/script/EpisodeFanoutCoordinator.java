@@ -160,7 +160,7 @@ public class EpisodeFanoutCoordinator {
         }
     }
 
-    static String episodeSetHash(List<EpisodeUnit> episodes) {
+    public static String episodeSetHash(List<EpisodeUnit> episodes) {
         String source = episodes.stream()
             .map(unit -> unit.episodeId() + ":" + unit.episodeKey() + ":" + unit.contentFingerprint())
             .reduce("", (left, right) -> left + "|" + right);

@@ -6,6 +6,7 @@ import com.antshorttv.execution.*;
 import com.antshorttv.workflowagent.run.WorkflowAgentRunner;
 import com.antshorttv.workflowagent.tool.*;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Set;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,11 +58,12 @@ class AssetNormalizationServiceTest {
         when(runner.runFormal(any())).thenAnswer(call -> {
             com.antshorttv.workflowagent.run.WorkflowAgentRunInput input=call.getArgument(0);
             assertThat(input.trustedToolState()).containsEntry("assetNormalizationContextComplete",true);
-            JsonNode payload=json.readTree(input.input().substring(input.input().indexOf('{')));
+            JsonNode payload=json.readTree(input.input().substring(input.input().lastIndexOf("\n{")+1));
             assertThat(payload.path("assets").size()).isEqualTo(3);
             assertThat(payload.path("episodes").size()).isEqualTo(4);
-            assertThat(payload.path("episodes").findValuesAsText("content"))
+            assertThat(payload.path("episodes").findValuesAsText("text"))
                 .contains("陈志国背着自己的挎包。","林嘉欣拿起自己的挎包。");
+            assertThat(payload.path("episodes").findValuesAsText("content")).isEmpty();
             assertThat(payload.toString()).doesNotContain("image-","current_image_url");
             return new com.antshorttv.workflowagent.run.WorkflowAgentRunResult(1L,service.publish(tools,decision()).toString());
         });
@@ -78,6 +80,50 @@ class AssetNormalizationServiceTest {
             mock(com.antshorttv.workflowagent.run.WorkflowAgentRunRepository.class));
         assertThatThrownBy(()->service.normalize(9803,9804,execution)).hasMessageContaining("原文证据无效")
             .satisfies(error -> assertThat(handler.retryPolicy(error)).isEqualTo(AiExecutionRetryPolicy.none()));
+        assertThat(jdbc.queryForObject("select merge_target_id from character_asset where id=757",Long.class)).isNull();
+    }
+    @Test void providesFrozenSourceSegmentsForTheSingleNormalizationModelCall() throws Exception {
+        when(runner.runFormal(any())).thenAnswer(call -> {
+            com.antshorttv.workflowagent.run.WorkflowAgentRunInput input=call.getArgument(0);
+            JsonNode payload=json.readTree(input.input().substring(input.input().lastIndexOf("\n{")+1));
+            for (JsonNode episode : payload.path("episodes")) {
+                assertThat(episode.path("sourceSegments")).isNotEmpty();
+                assertThat(episode.path("sourceSegments").get(0).path("id").asText()).isEqualTo("S0001");
+            }
+            assertThat(input.input()).contains("quoteRef", "episodeId");
+            return new com.antshorttv.workflowagent.run.WorkflowAgentRunResult(1L,service.publish(tools,decision()).toString());
+        });
+        service.normalize(9803,9804,execution);
+        verify(runner,times(1)).runFormal(any());
+    }
+    @Test void sourceReferencePreventsOneCharacterCopyErrorAndPersistsTheActualQuote() throws Exception {
+        String original="▲水龙头哗哗流水，王大山在水槽边洗净双手，拿毛巾擦干手。";
+        jdbc.update("update script_episode set content=? where id=9811",original);
+        service.prepare(9803,9804,execution);
+        ObjectNode request=(ObjectNode)decision();
+        ObjectNode evidence=(ObjectNode)request.path("splits").get(0).path("evidence").get(0);
+        evidence.put("quote",original.replace("哗哗","哗哇"));
+        evidence.putObject("quoteRef").put("segmentId","S0001");
+        assertThat(service.publish(tools,request).path("saved").asBoolean()).isTrue();
+        JsonNode saved=json.readTree(jdbc.queryForObject("select decision_json from script_asset_normalization_snapshot where execution_id=9890",String.class));
+        assertThat(saved.path("splits").get(0).path("evidence").get(0).path("quote").asText()).isEqualTo(original);
+        assertThat(evidence.path("quote").asText()).contains("哗哇"); // Never mutate the model's audited input.
+    }
+    @Test void acceptsReferencesWithoutHandCopiedQuotesForBothMergesAndSplits() throws Exception {
+        service.prepare(9803,9804,execution);
+        JsonNode request=decision();
+        for (String field:java.util.List.of("groups","splits")) for(JsonNode item:request.path(field))
+            for(JsonNode evidence:item.path("evidence")) {
+                ((ObjectNode)evidence).remove("quote");
+                ((ObjectNode)evidence).putObject("quoteRef").put("segmentId","S0001");
+            }
+        assertThat(service.publish(tools,request).path("saved").asBoolean()).isTrue();
+    }
+    @Test void rejectsInvalidReferenceEvenWhenTheSuppliedQuoteIsValid() throws Exception {
+        service.prepare(9803,9804,execution);
+        JsonNode request=decision();
+        ((ObjectNode)request.path("splits").get(0).path("evidence").get(0)).putObject("quoteRef").put("segmentId","S9999");
+        assertThatThrownBy(()->service.publish(tools,request)).hasMessageContaining("quoteRef");
         assertThat(jdbc.queryForObject("select merge_target_id from character_asset where id=757",Long.class)).isNull();
     }
     @Test void mergesAndSplitsAtomicallyPreservingImagesBindingsAndRedirects() throws Exception {
@@ -115,6 +161,35 @@ class AssetNormalizationServiceTest {
         assertThat(inventory.path("assets").size()).isEqualTo(3);
         assertThat(inventory.path("variants").size()).isEqualTo(3);
         assertThat(inventory.toString()).doesNotContain("image-", "current_image_url");
+    }
+
+    @Test void normalizationIncludesPendingIdentityAndResolvesSingletonWithoutForcedMerge() throws Exception {
+        jdbc.update("update prop_asset set content_json=? where id=1511",
+            "{\"identityResolution\":{\"status\":\"PENDING_NORMALIZATION\",\"candidateKeys\":[\"p_99\"]}}");
+        service.prepare(9803,9804,execution);
+        assertThat(service.inventory(tools).path("assets").findValuesAsText("status"))
+            .contains("PENDING_NORMALIZATION");
+        service.publish(tools,decision());
+        JsonNode metadata=json.readTree(jdbc.queryForObject("select content_json from prop_asset where id=1511",String.class));
+        assertThat(metadata.path("identityResolution").path("status").asText()).isEqualTo("RESOLVED");
+        assertThat(jdbc.queryForObject("select deleted_at from prop_asset where id=1511",String.class)).isNull();
+    }
+
+    @Test void normalizationCanMergePendingIdentityWithoutLosingObjectAliases() throws Exception {
+        jdbc.update("update character_asset set content_json=? where id=757",
+            "{\"aliases\":[{\"name\":\"母亲\",\"evidence\":\"林嘉欣母亲\"}],\"identityResolution\":{\"status\":\"PENDING_NORMALIZATION\",\"candidateKeys\":[\"c_747\"]}}");
+        service.prepare(9803,9804,execution);
+        service.publish(tools,decision());
+        assertThat(jdbc.queryForObject("select merge_target_id from character_asset where id=757",Long.class)).isEqualTo(747);
+        JsonNode content=json.readTree(jdbc.queryForObject("select content_json from character_asset where id=747",String.class));
+        assertThat(content.path("aliases")).contains(json.getNodeFactory().textNode("母亲"));
+        assertThat(new AssetNormalizationGuard(jdbc,json).status(9801,9802)).containsEntry("blocked",false);
+    }
+
+    @Test void normalizationAcceptsLegacyJsonNullMetadata() throws Exception {
+        jdbc.update("update prop_asset set content_json='null' where id=1511");
+        service.prepare(9803,9804,execution);
+        assertThat(service.publish(tools,decision()).path("saved").asBoolean()).isTrue();
     }
 
     @Test void deletedGeneratingVariantDoesNotBlockNormalization() {

@@ -1115,9 +1115,9 @@ class WorkflowAgentRunnerTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"8, 3, evidence invalid", "5, 3, evidence invalid"})
+    @CsvSource({"8, 3, evidence invalid, VALIDATION_ERROR", "5, 3, evidence invalid, VALIDATION_ERROR", "7, 3, evidence invalid, ENTITY_MATCH_AMBIGUOUS"})
     void assetRecognitionBoundsCorrectiveSavesByAttemptsAndSteps(
-        int maxSteps, int expectedSaves, String errorMessage
+        int maxSteps, int expectedSaves, String errorMessage, String errorCode
     ) throws Exception {
         AtomicInteger saves = new AtomicInteger();
         WorkflowToolDefinition save = new WorkflowToolDefinition(
@@ -1131,7 +1131,7 @@ class WorkflowAgentRunnerTest {
                     com.fasterxml.jackson.databind.JsonNode arguments
                 ) {
                     saves.incrementAndGet();
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "evidence invalid");
+                    throw new BusinessException(ErrorCode.valueOf(errorCode), "evidence invalid");
                 }
             });
         runner = runnerWith(List.of(tool("read_current_episode"), save), 30);
@@ -1200,6 +1200,44 @@ class WorkflowAgentRunnerTest {
         var start = org.mockito.ArgumentCaptor.forClass(WorkflowAgentRunStart.class);
         verify(runs).start(start.capture());
         assertThat(start.getValue().maxSteps()).isEqualTo(7);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void assetAmbiguityNearStepLimitGetsBoundedCorrectionWithoutUserMatching(boolean invalidSecondSave) throws Exception {
+        AtomicInteger saves = new AtomicInteger();
+        WorkflowToolDefinition save = new WorkflowToolDefinition(
+            "save_episode_assets", "保存资产", "保存资产",
+            json.readTree("{\"type\":\"object\"}"), json.readTree("{\"type\":\"object\"}"),
+            ToolRiskLevel.WRITE, ToolFailurePolicy.RETURN_TO_MODEL, new WorkflowToolExecutor() {
+                @Override public JsonNode execute(com.antshorttv.workflowagent.tool.ToolExecutionContext c, JsonNode a) {
+                    int attempt=saves.incrementAndGet();
+                    if (attempt == 1) throw new BusinessException(ErrorCode.ENTITY_MATCH_AMBIGUOUS, "候选 c_1 c_2");
+                    if (attempt == 2 && invalidSecondSave) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "prompt required");
+                    return json.createObjectNode().put("saved", true);
+                }
+            });
+        runner = runnerWith(List.of(tool("read_current_episode"), tool("search_script_assets"), save), 30);
+        when(agents.loadForRun("short-drama-asset-recognition")).thenReturn(new WorkflowAgentRecord(
+            6L, "short-drama-asset-recognition", "资产识别", "", "执行", 8L,
+            new BigDecimal("0.2"), 4096, 7, "ENABLED", 0L, 9L, 9L,
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of("read_current_episode", "search_script_assets", "save_episode_assets")));
+        when(invocation.invokeText(any()))
+            .thenReturn(result(null,List.of(new AiToolCall("s1","search_script_assets","{}")),960L))
+            .thenReturn(result(null,List.of(new AiToolCall("s2","search_script_assets","{}")),961L))
+            .thenReturn(result(null,List.of(new AiToolCall("bad","save_episode_assets","{}")),962L))
+            .thenReturn(result(null,List.of(new AiToolCall("fixed","save_episode_assets","{}")),963L))
+            .thenReturn(result(null,List.of(new AiToolCall("final","save_episode_assets","{}")),964L));
+        assertThat(runner.runFormal(new WorkflowAgentRunInput(
+            "short-drama-asset-recognition", "执行", 7L, 25L, 91L, 77L,
+            null, null, 9L)).runId()).isEqualTo(101L);
+        assertThat(saves).hasValue(invalidSecondSave?3:2);
+        var requests=org.mockito.ArgumentCaptor.forClass(com.antshorttv.ai.AiInvocationRequest.class);
+        verify(invocation,org.mockito.Mockito.times(invalidSecondSave?5:4)).invokeText(requests.capture());
+        assertThat(requests.getAllValues().get(3).textRequest().tools()).extracting(com.antshorttv.ai.AiToolDefinition::code).containsExactly("save_episode_assets");
+        assertThat(requests.getAllValues().get(3).textRequest().messages()).extracting(AiChatMessage::content)
+            .anySatisfy(content -> assertThat(content).contains("deferIdentity", "证据", "assetKey"));
     }
 
     @Test

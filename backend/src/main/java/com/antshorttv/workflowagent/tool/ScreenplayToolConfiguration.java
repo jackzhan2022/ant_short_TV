@@ -480,6 +480,8 @@ public class ScreenplayToolConfiguration {
         ObjectNode fields = (ObjectNode) item.path("properties");
         fields.putObject("localKey").put("type", "string").put("minLength", 1).put("maxLength", 64);
         fields.set("assetKey", nullableType(json, "string").put("maxLength", 64));
+        fields.putObject("deferIdentity").put("type", "boolean").put("description",
+            "多个候选且身份依据不足时设为true，assetKey留空，保留独立资产交给全剧归一；必须提供新资产prompt。不得仅凭同名猜选候选。");
         fields.putObject("name").put("type", "string").put("minLength", 1).put("maxLength", 100);
         fields.set("aliases", aliasArray(json));
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
