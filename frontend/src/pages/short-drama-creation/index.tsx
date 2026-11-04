@@ -34,6 +34,7 @@ import ClickToPlayVideo, {
   stopActiveVideo,
 } from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import ProjectArtStylePicker from '@/components/ProjectArtStylePicker';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
@@ -153,6 +154,7 @@ const ShortDramaCreationPage = () => {
     scriptType: 'PREMIUM_DRAMA',
     breakdownStrength: 'MEDIUM',
     storyboardSkillVersion: 'V1',
+    visualStyleVersion: 'V1',
   });
 
   const loadInspirationPage = useCallback(
@@ -231,7 +233,7 @@ const ShortDramaCreationPage = () => {
 
   useEffect(() => {
     const first = styleGallery[0];
-    if (!first) return;
+    if (!first || projectForm.visualStyleVersion === 'V2') return;
     setSelectedStyle((current) => current || first);
     setCoverPreviewUrl((current) => current || first.imageUrl);
     setProjectForm((current) => ({
@@ -239,7 +241,7 @@ const ShortDramaCreationPage = () => {
       visualStyle: current.visualStyle || first.name,
       coverUrl: current.coverUrl || first.imageUrl,
     }));
-  }, [styleGallery]);
+  }, [styleGallery, projectForm.visualStyleVersion]);
 
   useEffect(
     () => () => {
@@ -318,6 +320,8 @@ const ShortDramaCreationPage = () => {
     setSelectedStyle(style);
     updateForm({
       visualStyle: style.name,
+      visualStyleVersion: 'V1',
+      visualStyleCode: '',
       coverUrl: style.imageUrl,
       coverSource:
         projectForm.coverSource === 'UPLOAD' ? 'UPLOAD' : 'FIRST_FRAME',
@@ -361,6 +365,10 @@ const ShortDramaCreationPage = () => {
   };
 
   const submitProject = async () => {
+    if (projectForm.visualStyleVersion === 'V2' && !projectForm.visualStyleCode) {
+      message.warning('请选择画风 2.0 风格');
+      return;
+    }
     const ownerId = projectForm.ownerId || members[0]?.userId;
     if (!ownerId) {
       message.warning('请先选择当前创作团队的负责人');
@@ -381,7 +389,7 @@ const ShortDramaCreationPage = () => {
         description: projectForm.description?.trim(),
         coverUrl: projectForm.coverSource === 'UPLOAD'
           ? undefined
-          : projectForm.coverUrl || selectedStyle?.imageUrl,
+          : projectForm.coverUrl || (projectForm.visualStyleVersion !== 'V2' ? selectedStyle?.imageUrl : undefined),
         coverSource: projectForm.coverSource || 'FIRST_FRAME',
         ownerId,
         startDate: projectForm.startDate,
@@ -394,7 +402,9 @@ const ShortDramaCreationPage = () => {
         scriptType: projectForm.scriptType,
         breakdownStrength: projectForm.breakdownStrength,
         storyboardSkillVersion: projectForm.storyboardSkillVersion,
-        visualStyle: projectForm.visualStyle || selectedStyle?.name,
+        visualStyleVersion: projectForm.visualStyleVersion || 'V1',
+        visualStyleCode: projectForm.visualStyleCode,
+        visualStyle: projectForm.visualStyle || (projectForm.visualStyleVersion !== 'V2' ? selectedStyle?.name : undefined),
         scriptName: projectForm.scriptName?.trim() || undefined,
         initialScriptContent: scriptDraft.trim() || undefined,
       };
@@ -792,6 +802,15 @@ const ShortDramaCreationPage = () => {
           <Typography.Text className={styles.settingTitle}>
             画面风格
           </Typography.Text>
+          <ProjectArtStylePicker
+            value={projectForm}
+            onChange={(selection) => {
+              setProjectForm((current) => ({ ...current, ...selection,
+                ...(current.coverSource !== 'UPLOAD' ? { coverUrl: selection.visualStyleVersion === 'V2' ? undefined : selectedStyle?.imageUrl } : {}),
+              }));
+              if (projectForm.coverSource !== 'UPLOAD') setCoverPreviewUrl(selection.visualStyleVersion === 'V2' ? undefined : selectedStyle?.imageUrl);
+            }}
+            legacyPicker={<>
           <Typography.Text
             className={styles.selectedStyleText}
             type="secondary"
@@ -831,6 +850,8 @@ const ShortDramaCreationPage = () => {
               label: category,
               children: category === styleCategory ? platformStyleGallery : undefined,
             }))}
+          />
+            </>}
           />
         </section>
       </main>

@@ -23,6 +23,7 @@ class ScriptAiOperationService {
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationGuard normalizationGuard;
     @org.springframework.beans.factory.annotation.Autowired
     private AssetExtractionCoordination assetCoordination;
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.style.AssetArtStyleService artStyles;
     private final ScriptAiOperationMapper operationMapper;
     private final AiExecutionService executionService;
     private final AiExecutionResponseMapper responseMapper;
@@ -81,12 +82,18 @@ class ScriptAiOperationService {
             return responseMapper.toResponse(executionService.requireTask(existing.executionId));
         }
 
+        String frozenArtStyle = artStyles != null && ("SCOPED_ASSET_REEXTRACTION".equals(operationType)
+            || "PROMPT_GENERATE".equals(operationType)) ? artStyles.snapshot(context.tenantId(), projectId) : null;
         Long frozenModel = projectAiConfigService.resolveModelId(context.tenantId(), projectId, "TEXT");
         String assetFingerprint = null;
         if (java.util.Set.of("SCOPED_ASSET_REEXTRACTION","ASSET_NORMALIZATION").contains(operationType)) {
             if (frozenModel == null) throw new IllegalStateException("资产重提取缺少冻结文本模型。");
+            String fingerprintInput = writeJson(resumableInput);
+            if ("SCOPED_ASSET_REEXTRACTION".equals(operationType) && frozenArtStyle != null
+                && !artStyles.rules(frozenArtStyle, "ALL").isBlank())
+                fingerprintInput += "\nartStyleSnapshot:" + frozenArtStyle;
             assetFingerprint = assetCoordination.fingerprint(context.tenantId(),projectId,scriptId,
-                context.userId(),scriptVersionId,frozenModel,writeJson(resumableInput));
+                context.userId(),scriptVersionId,frozenModel,fingerprintInput);
             Long admitted = assetCoordination.admit(context.tenantId(),projectId,scriptId,assetFingerprint);
             if(admitted!=null) return responseMapper.toResponse(executionService.requireTaskForUpdate(admitted));
         }
@@ -122,6 +129,7 @@ class ScriptAiOperationService {
         operation.createdBy = context.userId();
         operation.createdAt = now;
         operation.updatedAt = now;
+        operation.artStyleSnapshot = frozenArtStyle;
         operationMapper.insert(operation);
 
         Long modelId = frozenModel;

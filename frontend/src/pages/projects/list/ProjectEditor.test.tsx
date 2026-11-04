@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   warning: vi.fn(),
 }));
+vi.mock('@/pages/style-library/service', () => ({ queryStyleLibrary: vi.fn().mockResolvedValue({ data: { data: [] } }) }));
+vi.mock('@/components/ProjectArtStylePicker/service', () => ({ queryArtStyles: vi.fn().mockResolvedValue({ data: [{ code: '3D_clay_stopmotion', name: '黏土定格', category: '三维风格', description: '手工质感' }] }) }));
 vi.mock('./service', () => ({
   updateProject: mocks.update,
   startProjectCoverUpload: mocks.start,
@@ -149,6 +151,25 @@ beforeEach(() => {
 });
 
 describe('project cover editor', () => {
+  it('requires a legacy style when an existing V2 project switches to V1', async () => {
+    render(<ProjectEditor project={{ ...project, visualStyleVersion: 'V2', visualStyleCode: '3D_clay_stopmotion', visualStyle: '黏土定格' }} members={[]} onDone={done} onOpen={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByRole('radio', { name: '画风 1.0' }));
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
+    await waitFor(() => expect(mocks.warning).toHaveBeenCalledWith('请选择画风 1.0 风格'));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('saves the selected art version and style without changing storyboard settings', async () => {
+    view();
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getByRole('radio', { name: '画风 2.0' }));
+    fireEvent.click(await screen.findByRole('button', { name: '选择黏土定格' }));
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(45, expect.objectContaining({ visualStyleVersion: 'V2', visualStyleCode: '3D_clay_stopmotion', visualStyle: '黏土定格' })));
+    expect(mocks.update.mock.calls[0][1].storyboardSkillVersion).toBeUndefined();
+  });
+
   it('shows the existing image, not a cover URL text field', () => {
     view();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));

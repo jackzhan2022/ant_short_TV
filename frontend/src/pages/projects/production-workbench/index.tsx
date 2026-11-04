@@ -232,6 +232,9 @@ const ProductionWorkbench = () => {
               {project?.videoResolution || '720p'}
             </span>
             <span style={{ marginRight: 12 }}>
+              {project?.visualStyleVersion === 'V2' ? '画风 2.0' : '画风 1.0'}
+            </span>
+            <span style={{ marginRight: 12 }}>
               {project?.visualStyle || '-'}
             </span>
               <Button

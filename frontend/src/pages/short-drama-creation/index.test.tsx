@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ShortDramaCreationPage from './index';
 
 const mocks = vi.hoisted(() => ({
+  queryArtStyles: vi.fn(),
   createProject: vi.fn(),
   startProjectCoverUpload: vi.fn(),
   bindProjectCover: vi.fn(),
@@ -75,6 +76,8 @@ vi.mock('@/services/account-team/auth', () => ({
 vi.mock('../style-library/service', () => ({
   queryStyleCategories: mocks.queryStyleCategories,
 }));
+
+vi.mock('@/components/ProjectArtStylePicker/service', () => ({ queryArtStyles: mocks.queryArtStyles }));
 
 vi.mock('./service', () => ({
   createProject: mocks.createProject,
@@ -673,6 +676,7 @@ describe('ShortDramaCreationPage', () => {
           videoGenerateAudio: true,
           videoWatermark: false,
           storyboardSkillVersion: 'V1',
+          visualStyleVersion: 'V1',
         }),
       );
       expect(mocks.historyPush).toHaveBeenCalledWith(
@@ -712,6 +716,25 @@ describe('ShortDramaCreationPage', () => {
     const payload = mocks.createProject.mock.calls[0][0];
     expect(payload).not.toHaveProperty('reviewProjectId');
     expect(payload).not.toHaveProperty('reviewVersionId');
+  });
+
+  it('creates a V2 art project independently of the storyboard version', async () => {
+    mocks.queryArtStyles.mockResolvedValue({ data: [{ code: 'realpeople_modern_city', name: '真人都市电影', category: '真人写实', description: '自然光与真实皮肤' }] });
+    mocks.createProject.mockResolvedValue({ data: { id: 9 } });
+    render(<App><ShortDramaCreationPage /></App>);
+    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    expect(screen.getByRole('radio', { name: '画风 1.0' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: '画风 2.0' }));
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    expect(mocks.createProject).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.queryArtStyles).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: '选择真人都市电影' }));
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledWith(expect.objectContaining({
+      visualStyleVersion: 'V2', visualStyleCode: 'realpeople_modern_city', visualStyle: '真人都市电影', storyboardSkillVersion: 'V1',
+    })));
+    expect(mocks.createProject.mock.calls[0][0].coverUrl).toBeUndefined();
   });
 
   it('submits the chosen V2 storyboard skill when creating a project', async () => {

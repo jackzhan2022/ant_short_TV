@@ -1,3 +1,4 @@
+import ProjectArtStylePicker, { type ArtStyleSelection } from '@/components/ProjectArtStylePicker';
 import { EditOutlined } from '@ant-design/icons';
 import {
   ModalForm,
@@ -35,6 +36,7 @@ export default function ProjectEditor({
   const { message } = App.useApp();
   const [draft, setDraft] = useState<ProjectCoverDraft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [artStyle, setArtStyle] = useState<ArtStyleSelection>({ visualStyleVersion: project.visualStyleVersion || 'V1', visualStyleCode: project.visualStyleCode, visualStyle: project.visualStyle || '' });
   const submitting = useRef(false);
   const mounted = useRef(true);
   const upload = useRef<
@@ -94,6 +96,7 @@ export default function ProjectEditor({
         },
       }}
       onOpenChange={(open) => {
+        if (open) setArtStyle({ visualStyleVersion: project.visualStyleVersion || 'V1', visualStyleCode: project.visualStyleCode, visualStyle: project.visualStyle || '' });
         if (!open) {
           clearUpload();
           setDraft(emptyDraft);
@@ -109,6 +112,14 @@ export default function ProjectEditor({
       }}
       onFinish={async (values) => {
         if (submitting.current || (draft.file && !draft.ready)) return false;
+        if (artStyle.visualStyleVersion === 'V2' && !artStyle.visualStyleCode) {
+          message.warning('请选择画风 2.0 风格');
+          return false;
+        }
+        if (artStyle.visualStyleVersion === 'V1' && project.visualStyleVersion === 'V2' && !artStyle.visualStyle?.trim()) {
+          message.warning('请选择画风 1.0 风格');
+          return false;
+        }
         submitting.current = true;
         setSaving(true);
         let fieldsSaved = false;
@@ -164,6 +175,7 @@ export default function ProjectEditor({
             visualStyle: project.visualStyle || undefined,
             initialScriptContent: project.initialScriptContent || undefined,
             ...fields,
+            ...artStyle,
             code: fields.code?.trim().toUpperCase(),
             ...(draft.removed ? { clearCover: true } : {}),
           });
@@ -214,6 +226,7 @@ export default function ProjectEditor({
         rules={[{ required: true, message: '请选择负责人' }]}
       />
       <ProFormTextArea name="description" label="项目描述" />
+      <ProjectArtStylePicker value={artStyle} onChange={setArtStyle} />
       <ProjectCoverPicker
         project={project}
         value={draft}

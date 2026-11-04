@@ -48,6 +48,7 @@ class AssetExtractionCoordinationTest {
         when(normalization.normalize(anyLong(),anyLong(),any())).thenReturn(new AssetNormalizationService.Outcome(1,java.util.List.of()));
         tenant = Math.abs(UUID.randomUUID().getMostSignificantBits() % 1_000_000_000) + 10_000_000;
         project=tenant+1; script=tenant+2; model=tenant+3;
+        jdbc.update("insert into project(id,tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,?,'test',?,?,'ACTIVE',?,now(),now())",project,tenant,"ASSET_"+tenant,tenant,tenant);
         jdbc.update("insert into ai_model(id,provider_id,code,name,model_code,service_type,status,is_default,sort,created_at,updated_at) select ?,provider_id,?,'test','test','TEXT','DISABLED',false,0,now(),now() from ai_model order by id limit 1",model,"concurrency-"+tenant);
         when(models.resolveModelId(anyLong(),anyLong(),eq("TEXT"))).thenReturn(model);
         when(runner.freezeFormal(anyString())).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(
@@ -84,6 +85,19 @@ class AssetExtractionCoordinationTest {
             assertThat(count("ai_point_reservation")).isEqualTo(1);
             assertThat(jdbc.queryForObject("select count(*) from point_ledger where tenant_id=? and entry_type='RESERVE'",Integer.class,tenant)).isEqualTo(1);
         } finally { pool.shutdownNow(); }
+    }
+
+    @Test void changingArtStyleConflictsInsteadOfReusingTheOldActiveTask() {
+        String key = "old-style-" + tenant;
+        long id = submit(tenant, "ALL", "FILL_EMPTY", key).id();
+        String frozen = jdbc.queryForObject("select art_style_snapshot from script_ai_operation where execution_id=?", String.class, id);
+        assertThat(frozen).contains("V1");
+        jdbc.update("update project set visual_style_version='V2',visual_style_code='realpeople_modern_city' where id=?", project);
+        assertThatThrownBy(() -> submit(tenant, "ALL", "FILL_EMPTY", "new-style-" + tenant))
+            .isInstanceOf(AssetExtractionConflictException.class);
+        assertThat(submit(tenant, "ALL", "FILL_EMPTY", key).id()).isEqualTo(id);
+        assertThat(count("ai_point_reservation")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select art_style_snapshot from script_ai_operation where execution_id=?", String.class, id)).isEqualTo(frozen);
     }
 
     @Test void normalizationIsQueuedDurablyAndDuplicateSubmissionsShareOneReservation() {
@@ -297,7 +311,6 @@ class AssetExtractionCoordinationTest {
     }
 
     private void seedScript() {
-        jdbc.update("insert into project(id,tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,?,'test',?,?,'ACTIVE',?,now(),now())",project,tenant,"ASSET_"+tenant,tenant,tenant);
         jdbc.update("insert into script(id,tenant_id,project_id,title,source_type,content,status,created_by,created_at,updated_at) values (?,?,?,'test','MANUAL_EDIT','徽章','DRAFT',?,now(),now())",script,tenant,project,tenant);
         jdbc.update("insert into script_version(tenant_id,project_id,script_id,version_no,source_type,content,status,created_by,created_at) values (?,?,?,1,'MANUAL_EDIT','徽章','DRAFT',?,now())",tenant,project,script,tenant);
         version=jdbc.queryForObject("select id from script_version where script_id=?",Long.class,script);

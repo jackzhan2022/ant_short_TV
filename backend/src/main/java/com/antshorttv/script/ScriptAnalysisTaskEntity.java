@@ -16,6 +16,10 @@ public class ScriptAnalysisTaskEntity {
     private Long scriptId;
     private Long scriptVersionId;
     private String workflowCode;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String artStyleSnapshot;
+    public String getArtStyleSnapshot() { return artStyleSnapshot; }
+    public void setArtStyleSnapshot(String value) { artStyleSnapshot = value; }
     private String status;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String currentStage;

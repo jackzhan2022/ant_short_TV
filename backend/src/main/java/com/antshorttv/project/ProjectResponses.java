@@ -28,6 +28,8 @@ record ProjectResponse(
     String breakdownStrength,
     String storyboardSkillVersion,
     String visualStyle,
+    String visualStyleVersion,
+    String visualStyleCode,
     String initialScriptContent,
     Long memberCount,
     ProjectAccessSource accessSource,

@@ -54,6 +54,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+    @Autowired private com.antshorttv.style.AssetArtStyleService artStyles;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     @org.springframework.beans.factory.annotation.Autowired private AssetNormalizationService assetNormalization;
@@ -344,26 +345,23 @@ public class ScriptWorkflowService {
             return new ScriptAiOperationExecutionResult(operation.resultType, operation.resultId, List.of());
         }
         String targetType = normalizePromptTarget(request.targetType());
-        PromptBackfillTarget target = promptBackfillTarget(operation.tenantId, operation.projectId, targetType);
-        if (target.empty()) {
-            transactionTemplate.executeWithoutResult(status -> {
-                requireActiveExecutionClaim(executionContext);
-                markOperationResult(operation, "SCRIPT_PROMPTS", operation.projectId);
-            });
-            return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.of());
+        String artRules = artStyles.rules(operation.artStyleSnapshot, targetType);
+        List<String> scopes = com.antshorttv.style.AssetArtStyleService.backfillScopes(targetType, artRules);
+        Map<String, AiInvocationResult<AiTextResponse>> generated = new LinkedHashMap<>();
+        for (String scope : scopes) {
+            PromptBackfillTarget target = promptBackfillTarget(operation.tenantId, operation.projectId, scope);
+            if (target.empty()) continue;
+            String rules = artStyles.rules(operation.artStyleSnapshot, scope);
+            generated.put(scope, invokeTextForExecution(executionContext, AiBusinessScene.PROMPT_GENERATE,
+                scope, target.request() + rules, scopes.size() > 1 ? scope : null));
         }
-        AiInvocationResult<AiTextResponse> invocation = invokeTextForExecution(
-            executionContext,
-            AiBusinessScene.PROMPT_GENERATE,
-            targetType,
-            target.request()
-        );
         transactionTemplate.executeWithoutResult(status -> {
             requireActiveExecutionClaim(executionContext);
-            applyGeneratedPrompts(operation.tenantId, operation.projectId, targetType, invocation.content());
+            generated.forEach((scope, invocation) -> applyGeneratedPrompts(
+                operation.tenantId, operation.projectId, scope, invocation.content()));
             markOperationResult(operation, "SCRIPT_PROMPTS", operation.projectId);
         });
-        return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.of(invocation));
+        return new ScriptAiOperationExecutionResult("SCRIPT_PROMPTS", operation.projectId, List.copyOf(generated.values()));
     }
 
     private AiInvocationResult<AiTextResponse> invokeAgentTextForExecution(
@@ -406,6 +404,13 @@ public class ScriptWorkflowService {
         String requestSummary,
         String prompt
     ) {
+        return invokeTextForExecution(context, scene, requestSummary, prompt, null);
+    }
+
+    private AiInvocationResult<AiTextResponse> invokeTextForExecution(
+        AiExecutionContext context, AiBusinessScene scene, String requestSummary,
+        String prompt, String invocationKeySuffix
+    ) {
         AiExecutionTaskEntity execution = context.task();
         AiExecutionAttemptEntity attempt = executionAttemptMapper.selectById(context.claim().attemptId());
         return aiInvocationService.invokeText(AiInvocationRequest.text()
@@ -420,7 +425,8 @@ public class ScriptWorkflowService {
             .attemptId(context.claim().attemptId())
             .executionVersion(execution.executionVersion)
             .phase(context.claim().phase())
-            .idempotencyKey(attempt.idempotencyKey)
+            .idempotencyKey(invocationKeySuffix == null ? attempt.idempotencyKey
+                : attempt.idempotencyKey + ":" + invocationKeySuffix)
             .requestSummary(requestSummary)
             .userPrompt(prompt)
             .build());
@@ -1628,7 +1634,8 @@ public class ScriptWorkflowService {
     }
 
     private boolean includes(String targetType, String type) {
-        return "ALL".equals(targetType) || type.equals(targetType);
+        return "ALL".equals(targetType) || type.equals(targetType)
+            || ("ASSETS".equals(targetType) && !"STORYBOARD".equals(type));
     }
 
     private record PromptBackfillTarget(boolean empty, String request) {}

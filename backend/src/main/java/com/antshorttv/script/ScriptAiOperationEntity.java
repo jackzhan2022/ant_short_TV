@@ -12,6 +12,8 @@ public class ScriptAiOperationEntity {
     public Long tenantId;
     public Long projectId;
     public String operationType;
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.NEVER)
+    public String artStyleSnapshot;
     public Long scriptId;
     public Long scriptVersionId;
     public String redactedInputJson;

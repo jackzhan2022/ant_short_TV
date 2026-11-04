@@ -1,0 +1,57 @@
+[
+  {
+    "code": "2D_90s_japanese_anime",
+    "assetId": 1,
+    "sha256": "28f3af185be125160aa69ef2e0cf543a96dcd1c31f07570377d33e2744a6ccf6"
+  },
+  {
+    "code": "2D_chinese_guofeng",
+    "assetId": 2,
+    "sha256": "602455e105769ef4e6bfc4d1e3224d86987c505f4d79ae169dcce7c42f0da3c6"
+  },
+  {
+    "code": "2D_flat_design",
+    "assetId": 3,
+    "sha256": "276ddd928d3807506ef84e51daa81d0cfe01e1e6ef866d03aefbe2a90f5bbca3"
+  },
+  {
+    "code": "2D_mature_urban_romance",
+    "assetId": 4,
+    "sha256": "1e1a11b8ea42f764ad74f94ee005cccc9810edb4c67416f9fe86bbb85e69eb68"
+  },
+  {
+    "code": "3D_anime_render",
+    "assetId": 5,
+    "sha256": "36f8d9365015993da24536f2454cbd79bd86f0bd0904f7f8034b300ea7961d37"
+  },
+  {
+    "code": "3D_chinese_traditional",
+    "assetId": 6,
+    "sha256": "55309a9cc8c409010bd9ef1fb15253c291109e435331013a1194f60a0e503aa1"
+  },
+  {
+    "code": "3D_clay_stopmotion",
+    "assetId": 7,
+    "sha256": "576aee4c7fec861d7023ee7cec916aac04510dba723636b11af1674f39cd5f38"
+  },
+  {
+    "code": "3D_guofeng_cyber",
+    "assetId": 8,
+    "sha256": "34be1ca015caed16d74e665ccaa4fd9405535364ac6138d245979a5c2ad18dc7"
+  },
+  {
+    "code": "realpeople_ancient_chinese",
+    "assetId": 9,
+    "sha256": "5c59e6899edf99e14d1a2e21196e64a0c93c17e9cc20b6be58d9c1e5f32439a0"
+  },
+  {
+    "code": "realpeople_modern_city",
+    "assetId": 10,
+    "sha256": "f991ac211d9a2436486a894d038c9fbd039b607bc954307a5877caf048ff2a95"
+  },
+  {
+    "code": "realpeople_urban_modern",
+    "assetId": 11,
+    "sha256": "2065ce74ca57cb57fb1cb1a6d6cd103733a1c1f004d0c5e5f1b5f061833e2154"
+  }
+]

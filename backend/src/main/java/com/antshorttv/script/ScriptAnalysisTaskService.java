@@ -26,6 +26,7 @@ public class ScriptAnalysisTaskService {
     private final ScriptAnalysisTaskMapper taskMapper;
     private final ScriptAnalysisStageMapper stageMapper;
     private final AiExecutionService executionService;
+    @Autowired private com.antshorttv.style.AssetArtStyleService artStyles;
     @Autowired private ScriptAnalysisConfigSnapshotService configSnapshotService;
     @Autowired private ProjectAiConfigService projectAiConfigService;
 
@@ -101,6 +102,7 @@ public class ScriptAnalysisTaskService {
         task.setCreatedBy(createdBy);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
+        if (artStyles != null) task.setArtStyleSnapshot(artStyles.snapshot(tenantId, projectId));
         taskMapper.insert(task);
 
         for (StageDefinition definition : STAGES) {

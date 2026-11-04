@@ -20,6 +20,10 @@ vi.mock('@/services/account-team/auth', () => ({
   getCurrentTenantId: () => 9,
 }));
 
+vi.mock('@/components/ProjectArtStylePicker', () => ({
+  default: () => <div data-testid="project-art-style-picker" />,
+}));
+
 vi.mock('./service', () => ({
   createProject: vi.fn(),
   queryProjects: async (...args: unknown[]) => {

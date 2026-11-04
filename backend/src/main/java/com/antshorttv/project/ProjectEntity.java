@@ -41,6 +41,8 @@ public class ProjectEntity {
     @TableField(updateStrategy = FieldStrategy.NEVER)
     public String storyboardSkillVersion;
     public String visualStyle;
+    public String visualStyleVersion;
+    public String visualStyleCode;
     public String initialScriptContent;
     public Long createdBy;
     public LocalDateTime createdAt;

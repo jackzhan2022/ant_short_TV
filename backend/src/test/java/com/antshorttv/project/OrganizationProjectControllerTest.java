@@ -50,6 +50,45 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void artV2SelectionIsIndependentAndAnalysisFreezesItsRules() throws Exception {
+        String token = registerUser("13800011987", "Art Style Owner");
+        Long tenant = createTenant(token, "画风版本测试团队");
+        Long owner = userIdByMobile("13800011987");
+        MvcResult result = mockMvc.perform(post("/api/projects")
+            .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+            .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name":"画风测试","code":"ART_STYLE_V2","ownerId":%d,
+                 "visualStyleVersion":"V2","visualStyleCode":"realpeople_modern_city",
+                 "storyboardSkillVersion":"V1","initialScriptContent":"第一集，厨师走进厨房。"}
+                """.formatted(owner)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.visualStyleVersion", is("V2")))
+            .andExpect(jsonPath("$.data.visualStyle", is("真人都市电影")))
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V1"))).andReturn();
+        long project = ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.data.id")).longValue();
+        String frozen = jdbcTemplate.queryForObject("select art_style_snapshot from script_analysis_task where project_id=?", String.class, project);
+        org.assertj.core.api.Assertions.assertThat(frozen).contains("realpeople_modern_city", "自然皮肤");
+        mockMvc.perform(get("/api/projects").with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+            .header("X-Tenant-Id", tenant)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.data[0].visualStyleCode", is("realpeople_modern_city")));
+        mockMvc.perform(put("/api/projects/" + project)
+            .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+            .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name":"切回画风1.0","visualStyleVersion":"V1","visualStyle":"旧画风"}
+                """))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.visualStyleVersion", is("V1")))
+            .andExpect(jsonPath("$.data.visualStyle", is("旧画风")))
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V1")));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select art_style_snapshot from script_analysis_task where project_id=?", String.class, project)).isEqualTo(frozen);
+        org.assertj.core.api.Assertions.assertThat(storyboardRunner.freezeFormal("short-drama-storyboard", tenant, project).skillSnapshots())
+            .extracting(com.antshorttv.workflowagent.run.WorkflowAgentSkillSnapshot::code)
+            .containsExactly("short-drama-storyboard-production");
+    }
+
+    @Test
     void filtersStatusesBeforePaginationAndCountsOnlyMatchingProjects() throws Exception {
         String token = registerUser("13800011981", "Status Filter Owner");
         Long tenantId = createTenant(token, "Status Filter Team");

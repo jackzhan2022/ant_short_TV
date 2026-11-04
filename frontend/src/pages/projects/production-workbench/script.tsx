@@ -1078,6 +1078,10 @@ const ProductionWorkbenchScript = () => {
                   ).map((character) => {
                     const variants = character.visual?.variants || [];
                     const bindings = character.visual?.episodeBindings || [];
+                    const variantCount = character.visualSummary?.variantCount
+                      ?? character.visual?.variantCount ?? 0;
+                    const hasBiography = character.identity?.trim()
+                      || character.personality?.length || character.appearance?.trim();
                     return (
                       <article
                         key={character.id}
@@ -1102,9 +1106,13 @@ const ProductionWorkbenchScript = () => {
                             lineHeight: '19px',
                           }}
                         >
-                          身份：{character.identity || '-'}；性格：
-                          {character.personality?.join('、') || '-'}；简介：
-                          {character.appearance || '-'}
+                          {hasBiography ? <>
+                            身份：{character.identity || '-'}；性格：
+                            {character.personality?.join('、') || '-'}；简介：
+                            {character.appearance || '-'}
+                          </> : character.prompt?.trim()
+                            ? '暂未提取人物小传，可在「设定」页查看已有角色外观设定。'
+                            : '暂未提取人物小传。'}
                         </div>
                         <div
                           style={{
@@ -1186,8 +1194,9 @@ const ProductionWorkbenchScript = () => {
                             type="secondary"
                             style={{ fontSize: 12 }}
                           >
-                            暂无变装资产，已生成{' '}
-                            {character.visual?.variantCount || 0} 个角色形态。
+                            {variantCount > 0
+                              ? `已识别 ${variantCount} 个角色形态${character.visualSummary ? `，覆盖 ${character.visualSummary.episodeCount} 集` : ''}。可在「设定」页查看变装详情。`
+                              : '暂未识别角色形态。'}
                           </Typography.Text>
                         )}
                       </article>
@@ -1279,12 +1288,12 @@ const ProductionWorkbenchScript = () => {
                 >
                   {assetsReadyProject === projectId ? <>角色形态{' '}
                   {workspace.characters.reduce(
-                    (sum, item) => sum + (item.visual?.variantCount || 0),
+                    (sum, item) => sum + (item.visualSummary?.variantCount ?? item.visual?.variantCount ?? 0),
                     0,
                   )}{' '}
                   · 道具形态{' '}
                   {workspace.props.reduce(
-                    (sum, item) => sum + (item.visual?.variantCount || 0),
+                    (sum, item) => sum + (item.visualSummary?.variantCount ?? item.visual?.variantCount ?? 0),
                     0,
                   )}</> : null}
                 </div>

@@ -45,6 +45,8 @@ public class ProjectService {
         new DefaultProjectRole("MEMBER", "项目成员", List.of("MENU:PROJECTS"))
     );
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.style.AssetArtStyleService artStyles;
     private final ProjectMapper projectMapper;
     private final ProjectMemberMapper projectMemberMapper;
     private final ProjectRoleMapper projectRoleMapper;
@@ -154,7 +156,7 @@ public class ProjectService {
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
         project.storyboardSkillVersion = StoryboardSkillVersion.resolve(request.storyboardSkillVersion()).name();
-        project.visualStyle = request.visualStyle();
+        artStyles.configure(project, request.visualStyleVersion(), request.visualStyleCode(), request.visualStyle());
         project.initialScriptContent = request.initialScriptContent();
         project.createdBy = context.userId();
         project.createdAt = now;
@@ -243,7 +245,7 @@ public class ProjectService {
         project.fileFormat = request.fileFormat();
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
-        project.visualStyle = request.visualStyle();
+        artStyles.configure(project, request.visualStyleVersion(), request.visualStyleCode(), request.visualStyle());
         project.initialScriptContent = request.initialScriptContent();
         project.updatedAt = LocalDateTime.now();
         projectMapper.updateById(project);
@@ -673,6 +675,8 @@ public class ProjectService {
             project.breakdownStrength,
             StoryboardSkillVersion.resolve(project.storyboardSkillVersion).name(),
             project.visualStyle,
+            project.visualStyleVersion == null ? "V1" : project.visualStyleVersion,
+            project.visualStyleCode,
             project.initialScriptContent,
             memberCount,
             access.source(),

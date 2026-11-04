@@ -23,6 +23,8 @@ record CreateProjectRequest(
     String scriptType,
     String breakdownStrength,
     String visualStyle,
+    String visualStyleVersion,
+    String visualStyleCode,
     @Size(max = 200) String scriptName,
     String initialScriptContent,
     String storyboardSkillVersion
@@ -44,6 +46,8 @@ record UpdateProjectRequest(
     String scriptType,
     String breakdownStrength,
     String visualStyle,
+    String visualStyleVersion,
+    String visualStyleCode,
     String initialScriptContent,
     Boolean clearCover
 ) {

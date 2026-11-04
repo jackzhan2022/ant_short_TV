@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class AssetRecognitionAgentAdapter {
+    @Autowired private com.antshorttv.style.AssetArtStyleService artStyles;
+    @Autowired private ScriptAiOperationMapper operations;
     private final WorkflowAgentRunner runner;
     private final EpisodeAssetPersistenceService assets;
     private final EpisodePromptContextService contexts;
@@ -80,6 +82,16 @@ public class AssetRecognitionAgentAdapter {
         EpisodePromptContextService.Prepared prepared = contexts == null ? null
             : reextraction ? contexts.prepareReextraction(task, episodeId, modelId)
             : contexts.prepare(task, episodeId, modelId);
+        String artSnapshot = task.getArtStyleSnapshot();
+        if (reextraction && operations != null) {
+            ScriptAiOperationEntity operation = operations.selectById(executionContext.task().businessId);
+            if (operation == null || !java.util.Objects.equals(operation.tenantId, task.getTenantId())
+                || !java.util.Objects.equals(operation.projectId, task.getProjectId()))
+                throw new IllegalStateException("资产画风任务快照不存在。");
+            artSnapshot = operation.artStyleSnapshot;
+        }
+        String artRules = artStyles == null ? "" : artStyles.rules(artSnapshot,
+            (scope == null ? AssetRecognitionScope.ALL : scope).name());
         Map<String, Object> toolState = new HashMap<>(trustedToolState);
         toolState.put("assetScope", (scope == null ? AssetRecognitionScope.ALL : scope).name());
         toolState.put("assetPromptPolicy", (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name());
@@ -89,7 +101,7 @@ public class AssetRecognitionAgentAdapter {
                 + " 本次仅处理范围：" + (scope == null ? AssetRecognitionScope.ALL : scope).name()
                 + "；提示词策略：" + (promptPolicy == null ? AssetPromptPolicy.FILL_EMPTY : promptPolicy).name()
                 + "。范围外数组必须为空。FILL_EMPTY仅补齐空提示词；REGENERATE_ALL可覆盖所选范围内提示词，"
-                + "但不得删除人工资产或覆盖其名称、外观等人工编辑字段。",
+                + "但不得删除人工资产或覆盖其名称、外观等人工编辑字段。" + artRules,
             task.getTenantId(), task.getProjectId(), episodeId, task.getScriptId(), task.getId(),
             stage.getId(), task.getCreatedBy(),
             executionContext == null ? null : executionContext.task().id,

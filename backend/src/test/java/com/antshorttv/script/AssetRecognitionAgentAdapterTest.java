@@ -23,6 +23,56 @@ class AssetRecognitionAgentAdapterTest {
     private final EpisodeAssetPersistenceService assets = mock(EpisodeAssetPersistenceService.class);
 
     @Test
+    void reextractionUsesItsOwnFrozenStyleInsteadOfOriginalAnalysisStyle() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var styles = new com.antshorttv.style.AssetArtStyleService(mock(com.antshorttv.project.ProjectMapper.class), json);
+        var operations = mock(ScriptAiOperationMapper.class);
+        var operation = new ScriptAiOperationEntity();
+        operation.tenantId = 7L; operation.projectId = 8L;
+        operation.artStyleSnapshot = json.writeValueAsString(new com.antshorttv.style.AssetArtStyleService.Snapshot(
+            "V2", "frozen-operation", styles.catalog().stream().filter(s -> s.code().equals("3D_clay_stopmotion")).findFirst().orElseThrow()));
+        when(operations.selectById(500L)).thenReturn(operation);
+        var adapter = new AssetRecognitionAgentAdapter(runner, assets);
+        org.springframework.test.util.ReflectionTestUtils.setField(adapter, "artStyles", styles);
+        org.springframework.test.util.ReflectionTestUtils.setField(adapter, "operations", operations);
+        var execution = new com.antshorttv.execution.AiExecutionTaskEntity();
+        execution.businessType = "SCRIPT_AI_OPERATION"; execution.businessId = 500L;
+        when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{}"));
+        when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
+        adapter.executeChild(plan(), task(), stage(), 101L,
+            new com.antshorttv.execution.AiExecutionContext(execution,
+                new com.antshorttv.execution.AiExecutionClaim(1L, 2L, "claim", 1, "SUBMIT")), 99L);
+        var input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
+        assertThat(input.getValue().input()).contains("frozen-operation", "黏土");
+    }
+
+    @Test
+    void loadsFrozenAssetStyleWithoutChangingSharedEpisodeCache() {
+        var styles = new com.antshorttv.style.AssetArtStyleService(
+            mock(com.antshorttv.project.ProjectMapper.class), new com.fasterxml.jackson.databind.ObjectMapper());
+        var contexts = mock(EpisodePromptContextService.class);
+        when(contexts.prepare(any(), any(), any())).thenReturn(
+            new EpisodePromptContextService.Prepared(501L, "COMMON_PREFIX", "CACHE_KEY", "HASH"));
+        var adapter = new AssetRecognitionAgentAdapter(runner, assets, contexts);
+        org.springframework.test.util.ReflectionTestUtils.setField(adapter, "artStyles", styles);
+        var task = task();
+        task.setArtStyleSnapshot(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(
+            new com.antshorttv.style.AssetArtStyleService.Snapshot("V2", "frozen-r1",
+                styles.catalog().stream().filter(s -> s.code().equals("realpeople_modern_city")).findFirst().orElseThrow())).toString());
+        when(runner.runFormal(any(WorkflowAgentExecutionPlan.class), any(WorkflowAgentRunInput.class)))
+            .thenReturn(new WorkflowAgentRunResult(77L, "{}"));
+        when(assets.hasCoverage(7L, 9L, 101L, 77L)).thenReturn(true);
+        adapter.executeChild(plan(), task, stage(), 101L, null, 99L, AssetRecognitionScope.PROP, AssetPromptPolicy.FILL_EMPTY);
+        var input = ArgumentCaptor.forClass(WorkflowAgentRunInput.class);
+        verify(runner).runFormal(any(WorkflowAgentExecutionPlan.class), input.capture());
+        assertThat(input.getValue().input()).contains("frozen-r1", "道具美术").doesNotContain("角色美术", "场景美术");
+        assertThat(input.getValue().stableContext()).isEqualTo("COMMON_PREFIX");
+        assertThat(input.getValue().promptCacheKey()).isEqualTo("CACHE_KEY");
+    }
+
+    @Test
     void reusesTheSameFrozenContextContractWithoutSummaryData() {
         EpisodePromptContextService contexts = mock(EpisodePromptContextService.class);
         when(contexts.prepare(any(), any(), any())).thenReturn(

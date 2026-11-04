@@ -1010,6 +1010,56 @@ describe('ProductionWorkbenchScript', () => {
     expect(await screen.findByText('最危险的捉迷藏')).toBeInTheDocument();
     expect(mocks.queryAssetSettingsSummary).not.toHaveBeenCalled();
   });
+
+  it('shows actual variant counts from the lightweight asset summary', async () => {
+    const workspace = await mocks.queryScriptWorkspace();
+    mocks.queryScriptWorkspace.mockResolvedValue({ data: {
+      ...workspace.data, analysis: { status: 'COMPLETED', stages: [] },
+    } });
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: {
+      projectId: 1,
+      characters: [{ id: 1248, name: '王大山', identity: null, personality: [], appearance: null,
+        prompt: '已有角色外观设定', visualSummary: { variantCount: 2, episodeCount: 3 } }],
+      scenes: [],
+      props: [{ id: 1, name: '鸭蛋', visualSummary: { variantCount: 4, episodeCount: 2 } }],
+    } });
+    render(<ProductionWorkbenchScript />);
+
+    const biographies = await screen.findByRole('region', { name: '人物小传' });
+    await within(biographies).findByText('王大山');
+    expect(within(biographies).getByText(/已识别 2 个角色形态，覆盖 3 集/)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '正式资产统计' }))
+      .toHaveTextContent(/角色形态\s*2\s*· 道具形态\s*4/);
+    expect(within(biographies).queryByText(/暂无变装资产/)).not.toBeInTheDocument();
+    expect(within(biographies).queryByText(/已生成/)).not.toBeInTheDocument();
+  });
+
+  it('distinguishes missing biographies from existing appearance settings', async () => {
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: {
+      projectId: 1,
+      characters: [
+        { id: 1, name: '王大山', identity: null, personality: [], appearance: null, prompt: '已有角色外观设定' },
+        { id: 2, name: '胡百德', identity: null, personality: [], appearance: null, prompt: null },
+      ], scenes: [], props: [],
+    } });
+    render(<ProductionWorkbenchScript />);
+
+    expect(await screen.findByText('暂未提取人物小传，可在「设定」页查看已有角色外观设定。')).toBeInTheDocument();
+    expect(screen.getByText('暂未提取人物小传。')).toBeInTheDocument();
+    expect(screen.queryByText(/身份：-；性格：-；简介：-/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('暂未识别角色形态。')).toHaveLength(2);
+  });
+
+  it('keeps saved biography fields visible', async () => {
+    mocks.queryAssetSettingsSummary.mockResolvedValue({ data: {
+      projectId: 1,
+      characters: [{ id: 1, name: '林晚', identity: '医生', personality: ['坚强', '冷静'], appearance: '白色外套' }],
+      scenes: [], props: [],
+    } });
+    render(<ProductionWorkbenchScript />);
+    expect(await screen.findByText('身份：医生；性格：坚强、冷静；简介：白色外套')).toBeInTheDocument();
+  });
+
   it('keeps the script usable when deferred asset loading fails and retries only those assets', async () => {
     mocks.queryAssetSettingsSummary.mockRejectedValueOnce(new Error('offline'));
     render(<ProductionWorkbenchScript />);

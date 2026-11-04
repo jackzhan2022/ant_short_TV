@@ -1,0 +1,461 @@
+{
+  "type": "reference-image-generated-previews",
+  "changes": "Generated new subjects and compositions through Free Creation using one reference per style. Original PNGs are stored in COS; Tencent CI imageSlim produces displays delivered through stable backend URLs and signed CDN redirects.",
+  "referenceRights": "Upstream reference attribution and license files are retained. Generating new images from references does not automatically remove upstream rights obligations.",
+  "images": [
+    {
+      "code": "2D_90s_japanese_anime",
+      "name": "90 年代日式动画",
+      "width": 1672,
+      "height": 941,
+      "sha256": "28f3af185be125160aa69ef2e0cf543a96dcd1c31f07570377d33e2744a6ccf6",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 57,
+        "outputId": 138,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜90 年代日式动画。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：成年年轻女画师穿米白针织衫和蓝色长裙，抱着画册，站在海边小镇有轨电车站。午后暖阳，远处海面和红色电车，微风轻拂。\n画风要点：手绘赛璐璐平涂，纤细流畅轮廓和少量清楚阴影层；暖黄、象牙白与灰蓝的中低饱和配色，强调色局部使用。排除照片写实、塑料三维、泛滥霓虹与粗噪点，不将赛璐璐写入负向禁项。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/2D_90s_japanese_anime/images/1.png",
+        "sourceBlobSha": "cb6615127aa701f65c056494a9c70046642fe735"
+      },
+      "imageUrl": "/api/style-library/v2/images/2D_90s_japanese_anime",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 1,
+        "originalBytes": 1032310,
+        "displayBytes": 1031080,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "2D_chinese_guofeng",
+      "name": "国风二次元",
+      "width": 1672,
+      "height": 941,
+      "sha256": "602455e105769ef4e6bfc4d1e3224d86987c505f4d79ae169dcce7c42f0da3c6",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 58,
+        "outputId": 144,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜国风二次元。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位成年女琴师穿青绿交领长裙，手提琴囊，走过临水园林的月洞门。远处白墙黛瓦、荷叶和一株垂柳，清晨微光，淡淡水雾。东方形制清楚，二维细线和赛璐璐色面。\n画风要点：东方形制与新国潮美学，细腻笔触、清晰线条、赛璐璐色面。月白、青绿、靛蓝为基底，朱红与金色少量强调；不混入真人毛孔、PBR或粗黑描边。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/2D_chinese_guofeng/images/1.png",
+        "sourceBlobSha": "f88fa5ab1102666607fa4eb19611e70c74d93a2d"
+      },
+      "imageUrl": "/api/style-library/v2/images/2D_chinese_guofeng",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 2,
+        "originalBytes": 1146829,
+        "displayBytes": 1146183,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "2D_flat_design",
+      "name": "二维扁平设计",
+      "width": 1672,
+      "height": 941,
+      "sha256": "276ddd928d3807506ef84e51daa81d0cfe01e1e6ef866d03aefbe2a90f5bbca3",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 59,
+        "outputId": 136,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜二维扁平设计。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位戴橙色帽子的成年旅行者背着蓝色背包，站在层叠茶山间的小桥旁，远处有村落和圆形太阳。以几何形状、蓝橙绿有限纯色色块和极简轮廓表现，无渐变、景深或材质纹理。\n画风要点：二维矢量扁平表现，几何造型、纯色填充、均匀清晰轮廓；控制颜色数量，用蓝、橙、白、灰等建立色域。光影要求转译为明度色块，无写实阴影、渐变、体积光、材质贴图或摄影景深。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/2D_flat_design/images/1.png",
+        "sourceBlobSha": "060586c5093e00c2932b8b911458523f118a94cd"
+      },
+      "imageUrl": "/api/style-library/v2/images/2D_flat_design",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 3,
+        "originalBytes": 706785,
+        "displayBytes": 702862,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "2D_mature_urban_romance",
+      "name": "成熟都市言情动画",
+      "width": 1672,
+      "height": 941,
+      "sha256": "1e1a11b8ea42f764ad74f94ee005cccc9810edb4c67416f9fe86bbb85e69eb68",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 60,
+        "outputId": 137,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜成熟都市言情动画。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位三十岁左右的成年女建筑师穿深蓝西装，手持图纸筒，站在现代美术馆玻璃长廊，黄昏城市灯光初亮。成熟自然的人物比例，冷蓝灰环境中一束琥珀色窗光，细腻二维动画电影感。\n画风要点：成熟都市言情二维动画，赛璐璐上色、细线、冷蓝灰基底与琥珀暖点，低调光影但暗部可读；不混入真人照片、三维塑料或无依据的幼化造型。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/2D_mature_urban_romance/images/2.png",
+        "sourceBlobSha": "35ef20d4462e6e73c5f3c888ce4bc61b3e96a48a"
+      },
+      "imageUrl": "/api/style-library/v2/images/2D_mature_urban_romance",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 4,
+        "originalBytes": 865350,
+        "displayBytes": 863914,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "3D_anime_render",
+      "name": "三维动画渲染",
+      "width": 1672,
+      "height": 941,
+      "sha256": "36f8d9365015993da24536f2454cbd79bd86f0bd0904f7f8034b300ea7961d37",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 61,
+        "outputId": 146,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜三维动画渲染。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位成年年轻园艺师穿浅蓝衬衫和陶土橙围裙，捧着一盆小花，站在屋顶温室入口，身后是有层次的绿植和晴朗城市远景。立体卡通角色造型，圆润但清楚的体积，柔和阳光和风格化材质。\n画风要点：风格化三维动画，有明确空间体积与赛璐璐式清晰轮廓，暖橙、天空蓝、象牙白等明快但不荧光的配色；柔和灯光与清楚明暗层次，排除照片级毛孔、蜡像高亮、廉价塑料和低多边形。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/3D_anime_render/images/1.png",
+        "sourceBlobSha": "3c324a8d9764e15a4a1ccebed1d824fb82c0a9e8"
+      },
+      "imageUrl": "/api/style-library/v2/images/3D_anime_render",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 5,
+        "originalBytes": 909342,
+        "displayBytes": 909335,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "3D_chinese_traditional",
+      "name": "国风三维",
+      "width": 1672,
+      "height": 941,
+      "sha256": "55309a9cc8c409010bd9ef1fb15253c291109e435331013a1194f60a0e503aa1",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 62,
+        "outputId": 141,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "quality": "high",
+          "outputFormat": "png",
+          "aspectRatio": "16:9"
+        },
+        "prompt": "画风2.0示例｜国风三维。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位成年女性藏书官穿月白与青绿交领长袍，抱着卷轴，站在山间藏书阁外的木质回廊。飞檐、木构、青石与远山形成层次，傍晚斜光。东方精细三维建模，丝绸、木、石的物理材质清楚可辨。\n画风要点：国风三维，高精度建模与PBR物理材质，接触阴影和空间纵深；月白、青绿、朱红、靛蓝与少量金色。东方形制来自结构与工艺，不混成平面插画或真人照片。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/3D_chinese_traditional/images/1.png",
+        "sourceBlobSha": "0770585eaabe8be4ef4cf2b46f4723043f1dead7"
+      },
+      "imageUrl": "/api/style-library/v2/images/3D_chinese_traditional",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 6,
+        "originalBytes": 1044499,
+        "displayBytes": 1043520,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "3D_clay_stopmotion",
+      "name": "黏土定格",
+      "width": 1672,
+      "height": 941,
+      "sha256": "576aee4c7fec861d7023ee7cec916aac04510dba723636b11af1674f39cd5f38",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 63,
+        "outputId": 139,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜黏土定格。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位成年女性面包师穿淡蓝衣服和奶油白围裙，捧着圆面包站在微缩街角面包店门前，陶土红屋顶、纸花和小自行车点缀环境。所有人物和布景为手工黏土定格，保留轻微指印、刻痕、圆润轮廓和真实微缩接触阴影。\n画风要点：手工黏土定格美术，圆润轮廓、细小指压痕与工具刻痕，奶油、陶土红、淡蓝等柔和配色；微缩尺度与柔和侧光，不磨平所有手工痕迹，不做光滑塑料玩具。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/3D_clay_stopmotion/images/1.png",
+        "sourceBlobSha": "1cc96ee5b1ef50f31df377c8e04634ef7fac2299"
+      },
+      "imageUrl": "/api/style-library/v2/images/3D_clay_stopmotion",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 7,
+        "originalBytes": 979261,
+        "displayBytes": 979258,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "3D_guofeng_cyber",
+      "name": "国风赛博三维",
+      "width": 1672,
+      "height": 941,
+      "sha256": "34be1ca015caed16d74e665ccaa4fd9405535364ac6138d245979a5c2ad18dc7",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 69,
+        "outputId": 148,
+        "model": "gpt-image-2.5-flare",
+        "parameters": {
+          "count": 1,
+          "quality": "medium",
+          "outputFormat": "png",
+          "aspectRatio": "16:9"
+        },
+        "prompt": "画风2.0示例｜国风赛博三维。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位成年女机械师穿靛蓝中式短袍与朱红机能腰封，站在未来中式机械工坊门口。身旁一只小型青铜送信机械鸟停靠充电架，屋檐下有整齐连接的管线和克制的青蓝指示灯。精细三维，中式形制清晰、科技部件功能明确，青铜、织物和瓷面材质各异。\n画风要点：高精度三维与PBR材质，中式形制为主体，传统基底色与少量青蓝或粉紫技术光点。科技部件须有剧本或既有设定依据，写明用途、连接与载体；不因风格擅加义体、满屏霓虹或魔法能量。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": [
+          64,
+          68
+        ]
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/3D_guofeng_cyber/images/0d631a31-eb61-49ad-855f-396afb5fb48a.jpg",
+        "sourceBlobSha": "77d5673cf4240976f22536e35d1be89483794157"
+      },
+      "imageUrl": "/api/style-library/v2/images/3D_guofeng_cyber",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 8,
+        "originalBytes": 1092319,
+        "displayBytes": 1090537,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "realpeople_ancient_chinese",
+      "name": "古风真人",
+      "width": 1672,
+      "height": 941,
+      "sha256": "5c59e6899edf99e14d1a2e21196e64a0c93c17e9cc20b6be58d9c1e5f32439a0",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 65,
+        "outputId": 142,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "aspectRatio": "16:9",
+          "quality": "high",
+          "outputFormat": "png"
+        },
+        "prompt": "画风2.0示例｜古风真人。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位二十八岁左右的成年中国女医者，穿素雅青绿色交领衣裙，提着竹制药箱，站在雨后江南老宅的临水回廊。远处石桥和黛瓦，柔和阴天光。真人古装电影剧照，真实皮肤、发丝和布料，自然表情与摄影光学，不是插画或三维。\n画风要点：古风真人电影摄影，自然皮肤纹理、真实发丝和织物重力，年代与架空边界以剧本为准；月白、靛蓝、墨色基底与少量琥珀暖光。使用可拍摄的材质和真实光源，不使用CG、PBR、游戏引擎或二次元表述。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/realpeople_ancient_chinese/images/1.png",
+        "sourceBlobSha": "6b629b4f10ffb59f56a0643bfe5ff899f50cd05d"
+      },
+      "imageUrl": "/api/style-library/v2/images/realpeople_ancient_chinese",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 9,
+        "originalBytes": 1126440,
+        "displayBytes": 1125135,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "realpeople_modern_city",
+      "name": "真人都市电影",
+      "width": 1672,
+      "height": 941,
+      "sha256": "f991ac211d9a2436486a894d038c9fbd039b607bc954307a5877caf048ff2a95",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 66,
+        "outputId": 145,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "quality": "high",
+          "outputFormat": "png",
+          "aspectRatio": "16:9"
+        },
+        "prompt": "画风2.0示例｜真人都市电影。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位四十岁左右的中国女性修表师，穿干净的灰绿色棉衬衫，站在老城区修表铺的木桌旁，手里轻拿一只旧腕表。窗外现代街道，桌面有整齐工具，柔和侧窗光，克制中性色。写实都市电影剧照，普通人的自然比例与皮肤纹理，生活质感，非时尚广告。\n画风要点：真人都市电影摄影，克制真实；自然皮肤纹理、真实材料与合理生活痕迹。颜色来自天光和实际灯具，不套全场青橙滤镜；雾灰、都市白、藏青为可选基底。排除CG、PBR、游戏引擎、塑料假面和无毛孔磨皮，不将所有人变成精修模特。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/realpeople_modern_city/images/748b3dec-9419-464f-a3cc-62d7f9c3a25a.jpg",
+        "sourceBlobSha": "15a2572b577e4b3e84a8f8d3555fcfab04f93e01"
+      },
+      "imageUrl": "/api/style-library/v2/images/realpeople_modern_city",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 10,
+        "originalBytes": 1032114,
+        "displayBytes": 1031402,
+        "processing": "Tencent CI imageSlim"
+      }
+    },
+    {
+      "code": "realpeople_urban_modern",
+      "name": "都市甜宠写实",
+      "width": 1672,
+      "height": 941,
+      "sha256": "2065ce74ca57cb57fb1cb1a6d6cd103733a1c1f004d0c5e5f1b5f061833e2154",
+      "generation": {
+        "application": "https://antv.aixmax.cn/free-creation",
+        "date": "2026-11-04",
+        "creationId": 67,
+        "outputId": 143,
+        "model": "gpt-image-2.5-sunburst",
+        "parameters": {
+          "count": 1,
+          "quality": "high",
+          "outputFormat": "png",
+          "aspectRatio": "16:9"
+        },
+        "prompt": "画风2.0示例｜都市甜宠写实。以上传旧图作为画风参考，学习其艺术媒介、造型语言、材质和色彩，生成全新人物与场景，不照搬原人物、姿势或构图。16:9单幅完整画面，人物置于右侧三分之一，左侧呈现可辨的环境层次，适合画风选项示例卡。不要文字、标志、水印、边框、人物设定多视图或拼贴。\n画面内容：一位二十七岁左右的成年中国女花艺师，穿奶油色针织开衫和浅粉长裙，抱着一束白色与浅粉花朵，站在现代街角花店外。午后温暖逆光，玻璃窗和整洁街景，轻松温柔的自然微笑。都市甜宠真人剧照，明亮柔和、真实皮肤细节和摄影景深，非动漫或三维。\n画风要点：现代都市真人写实摄影，真实但精致；米白、灰、冷蓝基底与奶油粉、琥珀局部暖点，中低饱和与清楚明暗反差。保留自然皮肤与面料细节，避免动画CG、重柔焦、过度磨皮和全场低反差。",
+        "downloadedImageSize": [
+          1672,
+          941
+        ],
+        "failedCreationIds": []
+      },
+      "reference": {
+        "repository": "HBAI-Ltd/Toonflow-app",
+        "commit": "cd3e7c4e83963bea255be2e621eb78d2cd1c2188",
+        "sourcePath": "data/skills/art_skills/realpeople_urban_modern/images/1.png",
+        "sourceBlobSha": "a51ea735c07d0335b0dcfa8faa4c5993456eb5d3"
+      },
+      "imageUrl": "/api/style-library/v2/images/realpeople_urban_modern",
+      "sha256Scope": "original PNG",
+      "storage": {
+        "assetType": "STYLE_LIBRARY_V2",
+        "assetId": 11,
+        "originalBytes": 916902,
+        "displayBytes": 916899,
+        "processing": "Tencent CI imageSlim"
+      }
+    }
+  ]
+}
