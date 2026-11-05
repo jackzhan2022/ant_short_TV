@@ -8,6 +8,15 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class AiExecutionPoolsTest {
+    @Test void operationsSnapshotReadsLocalReservationsWithoutRefreshingBusinessConfiguration() {
+        var config=mock(AiConcurrencyConfigService.class);when(config.current()).thenReturn(settings(2));
+        try(var pools=new AiExecutionPools(config)) {
+            assertThat(pools.snapshot().get("TEXT").get("limit")).isNull();verifyNoInteractions(config);
+            var slot=pools.tryAcquire(AiExecutionPoolType.TEXT);clearInvocations(config);
+            assertThat(pools.snapshot().get("TEXT")).containsEntry("reserved",1).containsEntry("limit",2);
+            verifyNoInteractions(config);slot.close();assertThat(pools.snapshot().get("TEXT")).containsEntry("reserved",0);
+        }
+    }
     @Test
     void reservesBeforeDispatchAndKeepsTypesIndependentWhileLimitsDrain() throws Exception {
         var config = mock(AiConcurrencyConfigService.class);

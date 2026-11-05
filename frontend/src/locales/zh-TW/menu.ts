@@ -1,4 +1,5 @@
 export default {
+  'menu.operations': '運維中心',
   'menu.downloads': '下載中心',
   'menu.system-audio': '系統音訊庫',
   'menu.free-creation': '自由創作',
@@ -58,7 +59,7 @@ export default {
   'menu.editor.koni': '拓撲編輯器',
   'menu.ai-service-management': '管理後台',
   'menu.ai-service-management.model-management': '管理後台',
-  'menu.operations': 'AI運維',
+  'menu.ai-service-management.operations': 'AI運維',
   'menu.ai-service-management.logs': '調用日誌',
   'menu.video-script-decomposition': '視頻拆劇',
   'menu.style-library': '風格庫',

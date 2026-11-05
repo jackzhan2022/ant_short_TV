@@ -29,7 +29,16 @@ export default function access(
   const canUseDramaAdministration =
     hasActiveTenant &&
     initialState?.bootstrap?.platform.roles.includes('PLATFORM_ADMIN') === true;
+  const hasOperationsPermission = (permission: string) =>
+    Boolean(currentUser) &&
+    !initialState?.bootstrap?.session?.impersonation &&
+    platformPermissions.includes(permission);
   return {
+    canViewOperations: hasOperationsPermission('PLATFORM_OPERATIONS_VIEW'),
+    canViewOperationsLogs: hasOperationsPermission('PLATFORM_OPERATIONS_LOG_VIEW'),
+    canEditOperationsRules: hasOperationsPermission('PLATFORM_OPERATIONS_RULE_EDIT'),
+    canManageOperationsAlerts: hasOperationsPermission('PLATFORM_OPERATIONS_ALERT_MANAGE'),
+    canEditOperationsSettings: hasOperationsPermission('PLATFORM_OPERATIONS_SETTINGS_EDIT'),
     canAdmin: currentUser && currentUser.access === 'admin',
     canManageTenantWorkflowSkills: hasMenu('AI_MANAGEMENT'),
     canViewTenantWorkflowSkills: hasMenu('AI_MANAGEMENT'),

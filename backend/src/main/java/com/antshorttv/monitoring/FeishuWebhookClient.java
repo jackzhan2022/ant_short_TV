@@ -34,7 +34,12 @@ public class FeishuWebhookClient {
     }
 
     public boolean send(String text) {
-        if (!properties.enabled() || properties.feishuWebhookUrl().isBlank()) return false;
+        return properties.enabled() && sendOperational(text);
+    }
+
+    /** The operations policy controls immediate notifications independently of the legacy digest flag. */
+    public boolean sendOperational(String text) {
+        if (properties.feishuWebhookUrl().isBlank()) return false;
         try {
             var payload = new LinkedHashMap<String, Object>();
             payload.put("msg_type", "text");

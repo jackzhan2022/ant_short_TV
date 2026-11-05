@@ -7,15 +7,26 @@ import {
   dialog,
   ipcMain,
   nativeImage,
+  powerMonitor,
   protocol,
   safeStorage,
   session,
   shell,
 } from 'electron';
+import { DramartCollector } from './dramart';
 import { automaticName } from './output';
 import { generateImage, validateDraft } from './provider';
+import { ImageQueue } from './queue';
 import type { Creation, Draft, Result } from './shared';
 import { StudioStore } from './store';
+import { WorkspaceController } from './workspace';
+import type {
+  AssetPrompt,
+  BatchInput,
+  SourceAsset,
+  SourceProject,
+  WorkspaceAPI,
+} from './workspace-shared';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -29,14 +40,24 @@ app.setAppUserModelId('com.antshorttv.antv-image-studio');
 const ownsLock = app.requestSingleInstanceLock();
 let window: BrowserWindow | undefined;
 let store: StudioStore;
-let active:
-  | { id: string; controller: AbortController; stopped: boolean }
-  | undefined;
+interface ActiveTask {
+  id: string;
+  controller: AbortController;
+  stopped: boolean;
+}
+const active = new Map<string, ActiveTask>();
+let queue: ImageQueue;
+let workspace: WorkspaceController;
+let quitting = false;
 const indexPath = path.join(__dirname, 'index.html');
 
 function emit(record: Creation) {
   if (window && !window.isDestroyed())
     window.webContents.send('studio:update', record);
+}
+function changed() {
+  if (window && !window.isDestroyed())
+    window.webContents.send('workspace:changed');
 }
 
 function handle<T>(name: string, work: (input: T) => unknown) {
@@ -66,7 +87,7 @@ async function run(
   draft: Draft,
   key: string,
   responseModel: string,
-  task: NonNullable<typeof active>,
+  task: ActiveTask,
 ) {
   const timeout = AbortSignal.timeout(10 * 60 * 1000);
   try {
@@ -105,16 +126,22 @@ async function run(
       });
     }
   } catch (error) {
-    const status = task.stopped ? 'stopped' : 'failed';
-    const message = task.stopped
-      ? '已停止本机等待。服务商可能继续生成并计费，本工具不会自动重试。'
-      : timeout.aborted
-        ? '等待超过 10 分钟。服务商可能已受理，请核查后再决定是否重试。'
-        : error instanceof TypeError
-          ? '无法连接图片服务，或响应中断。请核查网络及服务商记录后再决定是否重试。'
-          : error instanceof Error
-            ? error.message
-            : '图片生成失败。';
+    const status = quitting
+      ? 'interrupted'
+      : task.stopped
+        ? 'stopped'
+        : 'failed';
+    const message = quitting
+      ? '应用退出时仍在生成，上游可能已受理；不会自动重试。'
+      : task.stopped
+        ? '已停止本机等待。服务商可能继续生成并计费，本工具不会自动重试。'
+        : timeout.aborted
+          ? '等待超过 10 分钟。服务商可能已受理，请核查后再决定是否重试。'
+          : error instanceof TypeError
+            ? '无法连接图片服务，或响应中断。请核查网络及服务商记录后再决定是否重试。'
+            : error instanceof Error
+              ? error.message
+              : '图片生成失败。';
     try {
       emit(
         store.finish(record.id, {
@@ -131,8 +158,54 @@ async function run(
       });
     }
   } finally {
-    if (active === task) active = undefined;
+    active.delete(task.id);
   }
+}
+
+async function dispatch(id: string) {
+  try {
+    const key = store.key();
+    const draft = validateDraft(store.reuse(id));
+    const record = store.start(id);
+    const task: ActiveTask = {
+      id,
+      controller: new AbortController(),
+      stopped: false,
+    };
+    active.set(id, task);
+    emit(record);
+    await run(
+      record,
+      draft,
+      key,
+      record.responseModel ?? store.settings().responseModel,
+      task,
+    );
+  } catch (error) {
+    emit(
+      store.finish(id, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : '任务提交失败。',
+      }),
+    );
+  }
+}
+function safeComponent(name: string, id: number) {
+  const clean =
+    name
+      .replace(/[<>:"/\\|?*]/g, '_')
+      .split('')
+      .map((character) => (character.charCodeAt(0) < 32 ? '_' : character))
+      .join('')
+      .trim()
+      .replace(/[. ]+$/g, '')
+      .slice(0, 48) || '未命名';
+  return `${clean}_${id}`;
+}
+function positiveId(value: number) {
+  if (!Number.isSafeInteger(value) || value < 1)
+    throw new Error('无效的资源编号。');
+  return value;
 }
 
 async function initialize() {
@@ -150,6 +223,21 @@ async function initialize() {
       ? path.join(app.getPath('userData'), 'images')
       : path.join(app.getPath('pictures'), 'ANTV生图'),
   );
+  queue = new ImageQueue(dispatch, changed, {
+    limit: store.settings().concurrency,
+    waiting: store
+      .list()
+      .filter((record) => record.status === 'queued')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((record) => record.id),
+  });
+  workspace = new WorkspaceController(
+    app.getPath('userData'),
+    new DramartCollector(changed),
+    () => queue.state(),
+    changed,
+  );
+  powerMonitor.on('resume', () => workspace.resumeSync());
   protocol.handle('antv-media', (request) => {
     try {
       const url = new URL(request.url);
@@ -186,28 +274,217 @@ async function initialize() {
     if (selection.canceled || !selection.filePaths[0]) return store.settings();
     return store.setOutputDirectory(selection.filePaths[0]);
   });
-  handle<Parameters<StudioStore['updateSettings']>[0]>('settings', (input) =>
-    store.updateSettings(input),
-  );
-  handle<Draft>('generate', (input) => {
-    if (active) throw new Error('请等待当前图片生成完成。');
-    const draft = validateDraft(input);
-    const key = store.key();
-    const record = store.create(draft);
-    const task = {
-      id: record.id,
-      controller: new AbortController(),
-      stopped: false,
-    };
-    active = task;
-    void run(record, draft, key, store.settings().responseModel, task);
-    return record;
+  handle<Parameters<StudioStore['updateSettings']>[0]>('settings', (input) => {
+    const settings = store.updateSettings(input);
+    queue.setLimit(settings.concurrency);
+    return settings;
   });
-  handle('stop', () => {
-    if (active) {
-      active.stopped = true;
-      active.controller.abort();
+  handle<Draft>('generate', (input) => {
+    const draft = validateDraft(input);
+    store.key();
+    const record = store.create(draft, { queued: true });
+    emit(record);
+    queue.add([record.id]);
+    return store.list().find((item) => item.id === record.id);
+  });
+  handle<string | undefined>('stop', (id) => {
+    for (const task of active.values()) {
+      if (id && task.id !== id) continue;
+      task.stopped = true;
+      task.controller.abort();
     }
+  });
+  handle<boolean>('workspace-state', (refresh) =>
+    refresh ? workspace.refresh() : workspace.state(),
+  );
+  handle<Parameters<WorkspaceAPI['configure']>[0]>(
+    'workspace-configure',
+    (input) => workspace.configure(input),
+  );
+  handle('workspace-login-cloud', () => workspace.loginCloud());
+  handle<number>('workspace-open-project', (id) =>
+    workspace.loginCloud(positiveId(id)),
+  );
+  handle<number>('workspace-team', (id) =>
+    workspace.selectTeam(positiveId(id)),
+  );
+  handle('workspace-login-source', () => workspace.loginSource());
+  handle('workspace-sync', () => workspace.sync());
+  handle<number>('workspace-assets', (id) =>
+    workspace
+      .requireClient()
+      .get(`/api/desktop/source-projects/${positiveId(id)}/assets`),
+  );
+  handle<{ id: number; projectId: number }>('workspace-bind', async (input) => {
+    await workspace
+      .requireClient()
+      .send<SourceProject>(
+        `/api/desktop/source-projects/${positiveId(input.id)}/binding`,
+        'PUT',
+        { projectId: positiveId(input.projectId) },
+      );
+    return workspace.refresh();
+  });
+  handle<number>('workspace-match', (id) =>
+    workspace
+      .requireClient()
+      .send<SourceAsset[]>(
+        `/api/desktop/source-projects/${positiveId(id)}/match`,
+        'POST',
+        {},
+      ),
+  );
+  handle<Parameters<WorkspaceAPI['candidates']>[0]>(
+    'workspace-candidates',
+    (input) => {
+      if (!['CHARACTER', 'SCENE', 'PROP'].includes(input.type))
+        throw new Error('资产类型无效。');
+      return workspace
+        .requireClient()
+        .get(
+          `/api/desktop/source-projects/${positiveId(input.id)}/candidates?type=${input.type}${input.sourceParentId ? `&sourceParentId=${encodeURIComponent(input.sourceParentId)}` : ''}`,
+        );
+    },
+  );
+  handle<Parameters<WorkspaceAPI['resolve']>[0]>('workspace-resolve', (input) =>
+    workspace
+      .requireClient()
+      .send(
+        `/api/desktop/source-projects/assets/${positiveId(input.id)}/match`,
+        'PUT',
+        {
+          assetId: positiveId(input.assetId),
+          variantId:
+            input.variantId === undefined ? null : positiveId(input.variantId),
+        },
+      ),
+  );
+  function validateIds(ids: number[]) {
+    if (
+      !Array.isArray(ids) ||
+      !ids.length ||
+      ids.length > 500 ||
+      new Set(ids).size !== ids.length
+    )
+      throw new Error('请选择 1～500 个不同的资产。');
+    return ids.map(positiveId);
+  }
+  handle<number[]>('workspace-prompts', (ids) =>
+    workspace
+      .requireClient()
+      .send('/api/desktop/source-projects/prompts', 'POST', {
+        assetIds: validateIds(ids),
+      }),
+  );
+  handle<BatchInput>('workspace-batch', (input) =>
+    workspace.withBatch(
+      input,
+      async (client, parameters, tenantId, teamName) => {
+        const ids = validateIds(parameters.assetIds);
+        store.key();
+        const prompts = await client.send<AssetPrompt[]>(
+          '/api/desktop/source-projects/prompts',
+          'POST',
+          { assetIds: ids },
+        );
+        if (
+          prompts.length !== ids.length ||
+          new Set(prompts.map((item) => item.sourceAssetId)).size !==
+            ids.length ||
+          prompts.some((item) => !ids.includes(item.sourceAssetId))
+        )
+          throw new Error('部分资产提示词不可用，请刷新后重试。');
+        const drafts = prompts.map((item) =>
+          validateDraft({
+            ...parameters,
+            outputName: safeComponent(
+              item.sourceParentName
+                ? `${item.sourceParentName.slice(0, 20)}_${item.name.slice(0, 20)}`
+                : item.name,
+              item.sourceAssetId,
+            ),
+            prompt: item.prompt,
+            references: [],
+          }),
+        );
+        const created: Creation[] = [];
+        try {
+          prompts.forEach((item, index) => {
+            created.push(
+              store.create(drafts[index], {
+                queued: true,
+                outputGroup: [
+                  safeComponent(teamName, tenantId),
+                  safeComponent(
+                    item.sourceProjectName,
+                    positiveId(item.sourceProjectId),
+                  ),
+                  item.type,
+                ],
+                origin: {
+                  tenantId,
+                  teamName,
+                  sourceAssetId: item.sourceAssetId,
+                  projectName: item.sourceProjectName,
+                  assetName: item.name,
+                  type: item.type,
+                  targetProjectId: item.targetProjectId,
+                  targetAssetId: item.targetAssetId,
+                  targetVariantId: item.targetVariantId,
+                  sourceProjectId: item.sourceProjectId,
+                  sourceParentName: item.sourceParentName,
+                },
+              }),
+            );
+          });
+        } catch (error) {
+          for (const item of created)
+            emit(
+              store.finish(item.id, {
+                status: 'cancelled',
+                error: '批量任务保存失败，未提交。',
+              }),
+            );
+          throw error;
+        }
+        for (const item of created) emit(item);
+        queue.add(created.map((record) => record.id));
+        return store
+          .list()
+          .filter((item) => created.some((record) => record.id === item.id));
+      },
+    ),
+  );
+  handle<Parameters<WorkspaceAPI['queue']>[0]>('workspace-queue', (input) => {
+    if (input.action === 'pause') queue.pause();
+    else if (input.action === 'resume') {
+      store.key();
+      queue.resume();
+    } else if (input.action === 'limit') {
+      const settings = store.updateSettings({
+        responseModel: store.settings().responseModel,
+        concurrency: input.limit,
+      });
+      queue.setLimit(settings.concurrency);
+    } else if (input.action === 'cancel') {
+      if (!input.id || !queue.cancel(input.id))
+        throw new Error('只能取消等待中的任务。');
+      emit(store.finish(input.id, { status: 'cancelled' }));
+    } else if (input.action === 'retry') {
+      const record = store.get(input.id ?? '');
+      if (
+        !['failed', 'stopped', 'interrupted', 'cancelled'].includes(
+          record.status,
+        )
+      )
+        throw new Error('该任务不能重试。');
+      store.key();
+      validateDraft(store.reuse(record.id));
+      const retry = store.retry(record.id);
+      emit(retry);
+      queue.add([retry.id]);
+    } else throw new Error('无效的队列操作。');
+    return queue.state();
   });
   handle<string>('reuse', (id) => store.reuse(id));
   handle<{ id: string; index: number }>('reference', (input) =>
@@ -255,9 +532,13 @@ async function initialize() {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.once('ready-to-show', () => window?.show());
+  window.once('closed', () => {
+    window = undefined;
+    app.quit();
+  });
   window.on('close', (event) => {
     if (
-      active &&
+      active.size > 0 &&
       dialog.showMessageBoxSync(window as BrowserWindow, {
         type: 'question',
         buttons: ['继续等待', '退出工具'],
@@ -275,7 +556,8 @@ async function initialize() {
 if (!ownsLock) app.quit();
 else {
   app.on('second-instance', () => {
-    if (window?.isMinimized()) window.restore();
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
     window?.focus();
   });
   app
@@ -289,5 +571,10 @@ else {
       app.quit();
     });
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => active?.controller.abort());
+  app.on('before-quit', () => {
+    quitting = true;
+    queue?.pause();
+    for (const task of active.values()) task.controller.abort();
+    workspace?.close();
+  });
 }

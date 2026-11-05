@@ -1,4 +1,5 @@
 export default {
+  'menu.operations': '运维中心',
   'menu.downloads': '下载中心',
   'menu.system-audio': '系统音频库',
   'menu.free-creation': '自由创作',
@@ -59,7 +60,7 @@ export default {
   'menu.chatbot': 'AI 助手',
   'menu.ai-service-management': '管理后台',
   'menu.ai-service-management.model-management': '管理后台',
-  'menu.operations': 'AI运维',
+  'menu.ai-service-management.operations': 'AI运维',
   'menu.ai-service-management.providers': '平台 Provider',
   'menu.ai-service-management.models': '平台 Model',
   'menu.ai-service-management.billing': '模型计费',

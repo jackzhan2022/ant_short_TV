@@ -14,12 +14,17 @@ public class MonitoringBuffer {
     private final List<MonitoringEvent> events = new ArrayList<>();
     private final TreeMap<Instant, Long> dropped = new TreeMap<>();
     private Instant cleanupWindow;
+    private com.antshorttv.operations.telemetry.OperationsTelemetry telemetry;
 
     public MonitoringBuffer(MonitoringProperties properties) {
         this.properties = properties;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setOperationsTelemetry(com.antshorttv.operations.telemetry.OperationsTelemetry telemetry) { this.telemetry=telemetry; }
+
     public synchronized void record(MonitoringEvent event) {
+        if (telemetry != null) telemetry.captureEvent(event);
         if (!properties.enabled()) return;
         Instant windowEnd = MonitoringDigestScheduler.windowEnd(event.occurredAt()).plusSeconds(3600);
         // Expire stale data even if a previous scheduler run was skipped.

@@ -68,7 +68,9 @@ class MonitoringApiExceptionResolverTest {
                 new org.springframework.mock.http.MockHttpInputMessage(new byte[0])),
             new org.springframework.beans.TypeMismatchException("abc", Long.class)
         }) {
-            resolver.resolveException(new MockHttpServletRequest("POST", "/api/projects"), new MockHttpServletResponse(), null, exception);
+            var request=new MockHttpServletRequest("POST", "/api/projects");
+            resolver.resolveException(request, new MockHttpServletResponse(), null, exception);
+            assertThat(request.getAttribute("operations.outcome")).isEqualTo("BUSINESS_REJECTION");
         }
         verifyNoInteractions(buffer);
     }

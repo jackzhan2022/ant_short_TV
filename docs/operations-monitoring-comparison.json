@@ -1,0 +1,32 @@
+{
+  "fixture": "loopback JDK HTTP server, actual OperationsHttpFilter/Telemetry, isolated H2; not production/MySQL validation",
+  "durationSeconds": 180,
+  "actualDurationSeconds": 240.0026537,
+  "baselineSeconds": 60,
+  "qps": 100,
+  "requests": 24000,
+  "offSamples": 6000,
+  "onSamples": 18000,
+  "errors": 0,
+  "maxInFlight": 5,
+  "httpOffP95Ms": 2.398799,
+  "httpOnP95Ms": 1.3721,
+  "httpP95IncreaseMs": -1.0266989999999998,
+  "httpP95IncreasePercent": -42.800543105112176,
+  "httpBudgetPassed": true,
+  "heapStartBytes": 22443632,
+  "heapEndBytes": 24521400,
+  "heapPeakBytes": 101786072,
+  "queueMaximum": 0,
+  "metricMapMaximum": 6,
+  "boundedMemoryPassed": true,
+  "query": {
+    "24hP95Ms": 19.3263,
+    "24hBudgetPassed": true,
+    "24hExplain": "[{PLAN=SELECT\n    \"count_value\"\nFROM \"public\".\"ops_metric_bucket\"\n    /* public.idx_ops_metric_global: dimensions_key = ?2\n        AND bucket_at >= ?3\n        AND bucket_at < ?4\n        AND family = 'HTTP'\n        AND granularity = ?1\n     */\nWHERE (\"dimensions_key\" = ?2)\n    AND (\"bucket_at\" >= ?3)\n    AND (\"bucket_at\" < ?4)\n    AND (\"family\" = 'HTTP')\n    AND (\"granularity\" = ?1)}]",
+    "168hP95Ms": 5.1154,
+    "168hBudgetPassed": true,
+    "168hExplain": "[{PLAN=SELECT\n    \"count_value\"\nFROM \"public\".\"ops_metric_bucket\"\n    /* public.idx_ops_metric_global: dimensions_key = ?2\n        AND bucket_at >= ?3\n        AND bucket_at < ?4\n        AND family = 'HTTP'\n        AND granularity = ?1\n     */\nWHERE (\"dimensions_key\" = ?2)\n    AND (\"bucket_at\" >= ?3)\n    AND (\"bucket_at\" < ?4)\n    AND (\"family\" = 'HTTP')\n    AND (\"granularity\" = ?1)}]"
+  },
+  "fullDurationPassed": false
+}

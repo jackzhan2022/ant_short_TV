@@ -1,4 +1,5 @@
 export default {
+  'menu.operations': 'Operations',
   'menu.downloads': 'Downloads',
   'menu.system-audio': 'システム音声ライブラリ',
   'menu.free-creation': '自由創作',

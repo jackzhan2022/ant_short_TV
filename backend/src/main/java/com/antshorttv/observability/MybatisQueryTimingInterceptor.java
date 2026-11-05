@@ -22,11 +22,8 @@ import org.springframework.stereotype.Component;
 public class MybatisQueryTimingInterceptor implements Interceptor {
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
-        long started = System.nanoTime();
-        try {
+        try (var ignored = DatabaseQueryObservation.query()) {
             return invocation.proceed();
-        } finally {
-            DatabaseQueryObservation.recordQuery(System.nanoTime() - started);
         }
     }
 }

@@ -11,6 +11,18 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class FeishuWebhookClientTest {
+    @Test void operationalPolicyCanSendWhileLegacyDigestIsDisabled() throws Exception {
+        var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/hook",exchange -> {
+            byte[] bytes="{\"code\":0}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+        });server.start();
+        try {
+            var props=new MonitoringProperties(false,"http://127.0.0.1:"+server.getAddress().getPort()+"/hook","","test","one",10,true);
+            var client=new FeishuWebhookClient(props,new ObjectMapper(),HttpClient.newHttpClient());
+            assertThat(client.send("legacy")).isFalse();assertThat(client.sendOperational("operations")).isTrue();
+        } finally { server.stop(0); }
+    }
     @Test
     void requiresBusinessSuccessAndIncludesOptionalSignatureWithoutLeakingWebhook() throws Exception {
         var body = new AtomicReference<String>();

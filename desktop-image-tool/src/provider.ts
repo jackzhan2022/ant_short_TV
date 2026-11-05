@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { validateOutputName } from './output';
-import { BASE_URL, type Draft, type Format, SIZES } from './shared';
+import {
+  BASE_URL,
+  type Draft,
+  type Format,
+  MAX_PROMPT_LENGTH,
+  SIZES,
+} from './shared';
 
 export function imageFormat(bytes: Buffer): Format | undefined {
   if (
@@ -45,9 +51,9 @@ export function validateDraft(value: Draft): Draft {
     !value ||
     typeof value.prompt !== 'string' ||
     !value.prompt.trim() ||
-    value.prompt.length > 2000
+    value.prompt.length > MAX_PROMPT_LENGTH
   )
-    throw new Error('请输入 1～2000 字的画面描述。');
+    throw new Error(`请输入 1～${MAX_PROMPT_LENGTH} 字的画面描述。`);
   if (typeof value.model !== 'string' || !/^[\w.:-]{1,100}$/.test(value.model))
     throw new Error('图片模型名称无效。');
   if (

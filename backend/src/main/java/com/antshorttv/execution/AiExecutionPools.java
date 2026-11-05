@@ -40,13 +40,27 @@ public class AiExecutionPools implements AutoCloseable {
 
     private int limit(AiExecutionPoolType type) {
         var settings = config.current();
-        return switch (type) {
+        int value=switch (type) {
             case TEXT -> settings.textWorkers();
             case IMAGE -> settings.imageWorkers();
             case IMAGE_PUBLICATION -> publicationWorkers;
             case VIDEO_SUBMIT -> settings.videoSubmitWorkers();
             case VIDEO_QUERY -> settings.videoQueryWorkers();
         };
+        pools.get(type).lastObservedLimit=value;
+        return value;
+    }
+
+    /** Local observations only: monitoring must never refresh configuration using the business pool. */
+    public java.util.Map<String,java.util.Map<String,Object>> snapshot() {
+        var result=new java.util.LinkedHashMap<String,java.util.Map<String,Object>>();
+        pools.forEach((type,pool)->{synchronized(pool){
+            var values=new java.util.LinkedHashMap<String,Object>();values.put("reserved",pool.reserved);
+            values.put("active",pool.executor.getActiveCount());values.put("waiting",pool.executor.getQueue().size());
+            values.put("limit",type==AiExecutionPoolType.IMAGE_PUBLICATION?Integer.valueOf(publicationWorkers):pool.lastObservedLimit);
+            result.put(type.name(),values);
+        }});
+        return result;
     }
 
     @PreDestroy
@@ -58,6 +72,7 @@ public class AiExecutionPools implements AutoCloseable {
     private static final class Pool {
         final ThreadPoolExecutor executor;
         int reserved;
+        volatile Integer lastObservedLimit;
 
         Pool(AiExecutionPoolType type) {
             var sequence = new AtomicInteger();

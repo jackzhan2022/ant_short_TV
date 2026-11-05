@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { automaticName, copyWithoutOverwrite } from './output';
+import {
+  automaticName,
+  copyWithoutOverwrite,
+  validateOutputName,
+} from './output';
 import { decodeImage } from './provider';
 import {
+  type AssetOrigin,
   BASE_URL,
   type Creation,
   type Draft,
@@ -19,6 +24,7 @@ interface Config {
   outputDirectory?: string;
   keyCipher?: string;
   responseModel: string;
+  concurrency?: number;
 }
 interface Stored extends Creation {
   outputFormats: Format[];
@@ -79,6 +85,7 @@ export class StudioStore {
       hasKey: Boolean(this.config.keyCipher),
       responseModel: this.config.responseModel,
       baseUrl: BASE_URL,
+      concurrency: this.config.concurrency ?? 5,
     };
   }
 
@@ -103,6 +110,7 @@ export class StudioStore {
     key?: string;
     responseModel: string;
     clearKey?: boolean;
+    concurrency?: number;
   }): Settings {
     if (
       !input ||
@@ -111,6 +119,15 @@ export class StudioStore {
     )
       throw new Error('请求模型名称无效。');
     const next = { ...this.config, responseModel: input.responseModel };
+    if (input.concurrency !== undefined) {
+      if (
+        !Number.isInteger(input.concurrency) ||
+        input.concurrency < 1 ||
+        input.concurrency > 5
+      )
+        throw new Error('图片任务并发数必须为 1～5。');
+      next.concurrency = input.concurrency;
+    }
     if (input.clearKey) delete next.keyCipher;
     else if (input.key !== undefined && input.key !== '') {
       if (
@@ -153,15 +170,29 @@ export class StudioStore {
     return record;
   }
 
-  create(draft: Draft): Creation {
+  create(
+    draft: Draft,
+    options: {
+      queued?: boolean;
+      outputGroup?: string[];
+      origin?: AssetOrigin;
+    } = {},
+  ): Creation {
+    const group = (options.outputGroup ?? []).map((name) => {
+      const valid = validateOutputName(name);
+      if (!valid || valid !== name) throw new Error('资产保存分组名称无效。');
+      return valid;
+    });
     const id = randomUUID();
     const { references, ...parameters } = draft;
     const record: Stored = {
       ...parameters,
-      outputDirectory: this.settings().outputDirectory,
+      responseModel: this.settings().responseModel,
+      outputDirectory: path.join(this.settings().outputDirectory, ...group),
+      ...(options.origin ? { origin: options.origin } : {}),
       id,
       createdAt: new Date().toISOString(),
-      status: 'running',
+      status: options.queued ? 'queued' : 'running',
       referenceCount: references.length,
       imageCount: 0,
       outputFormats: [],
@@ -170,6 +201,37 @@ export class StudioStore {
     atomicJson(path.join(this.library, id, 'references.json'), references);
     atomicJson(path.join(this.library, id, 'record.json'), record);
     this.records.set(id, record);
+    return this.publicRecord(record);
+  }
+
+  start(id: string): Creation {
+    const record = this.get(id);
+    if (record.status !== 'queued')
+      throw new Error('只有等待中的任务可以提交。');
+    record.status = 'running';
+    record.error = undefined;
+    record.finishedAt = undefined;
+    atomicJson(path.join(this.library, id, 'record.json'), record);
+    return this.publicRecord(record);
+  }
+
+  retry(id: string): Creation {
+    const original = this.get(id);
+    if (
+      !['failed', 'stopped', 'interrupted', 'cancelled'].includes(
+        original.status,
+      )
+    )
+      throw new Error('该任务不能重试。');
+    const created = this.create(this.reuse(id), {
+      queued: true,
+      origin: original.origin,
+    });
+    const record = this.get(created.id);
+    record.outputDirectory = original.outputDirectory;
+    record.responseModel =
+      original.responseModel ?? this.settings().responseModel;
+    atomicJson(path.join(this.library, record.id, 'record.json'), record);
     return this.publicRecord(record);
   }
 

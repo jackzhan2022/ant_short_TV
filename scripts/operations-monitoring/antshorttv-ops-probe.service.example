@@ -1,0 +1,22 @@
+[Unit]
+Description=Ant Short TV independent availability probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ops-probe
+Group=ops-probe
+EnvironmentFile=/etc/antshorttv-ops-probe.env
+StateDirectory=antshorttv-ops-probe
+ExecStart=/usr/bin/python3 /opt/antshorttv-ops/external_probe.py --url ${OPS_PROBE_URL} --state /var/lib/antshorttv-ops-probe/state.json
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

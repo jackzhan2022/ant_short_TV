@@ -1,6 +1,6 @@
 {
   "name": "antv-image-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "ANTV生图 · 个人图片创作桌面工具",
   "author": "Ant Short TV",
@@ -11,7 +11,8 @@
     "lint": "biome check src tests scripts package.json tsconfig.json tsconfig.renderer.json && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "npm run build && node --test tests/*.cjs",
     "pack": "npm run build && electron-builder --win nsis portable --x64",
-    "smoke": "npm run build && node scripts/smoke.cjs"
+    "smoke": "npm run build && node scripts/smoke.cjs",
+    "smoke:workflow": "npm run build && node scripts/workflow-smoke.cjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",

@@ -15,10 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class AiCallLogWriter {
     private final JdbcTemplate jdbcTemplate;
+    private com.antshorttv.operations.telemetry.OperationsTelemetry telemetry;
 
     public AiCallLogWriter(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setOperationsTelemetry(com.antshorttv.operations.telemetry.OperationsTelemetry telemetry) { this.telemetry=telemetry; }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Long record(AiInvocationLogRequest logRequest) {
@@ -76,7 +80,9 @@ public class AiCallLogWriter {
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
-        return key == null ? null : key.longValue();
+        Long id=key == null ? null : key.longValue();
+        if (id != null && telemetry != null) telemetry.captureAiCall(id);
+        return id;
     }
 
     public void markBusinessFailure(Long callLogId, ErrorCode errorCode, String errorMessage) {
@@ -90,6 +96,7 @@ public class AiCallLogWriter {
                    business_outcome = 'FAILED'
              where id = ?
             """, trimSummary("业务解析失败：" + errorCode.name() + " " + errorMessage), callLogId);
+        if (telemetry != null) telemetry.captureAiCall(callLogId);
     }
 
     private String trimSummary(String value) {

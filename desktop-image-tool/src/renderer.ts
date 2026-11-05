@@ -8,6 +8,8 @@ import type {
   Settings,
   StudioAPI,
 } from './shared';
+import { MAX_PROMPT_LENGTH } from './shared.js';
+import { initializeWorkspace } from './workspace-renderer.js';
 
 declare global {
   interface Window {
@@ -71,8 +73,10 @@ let settings: Settings = {
   hasKey: false,
   baseUrl: '',
   responseModel: 'gpt-6-astra',
+  concurrency: 5,
 };
 const records = new Map<string, Creation>();
+let workspaceUI: ReturnType<typeof initializeWorkspace> | undefined;
 let references: Reference[] = [];
 let size = '1024x1024';
 let submitting = false;
@@ -108,7 +112,7 @@ function saveDraft() {
 }
 function updatePrompt() {
   get('prompt-count').textContent =
-    `${get<HTMLTextAreaElement>('prompt').value.length} / 2000`;
+    `${get<HTMLTextAreaElement>('prompt').value.length} / ${MAX_PROMPT_LENGTH}`;
   saveDraft();
 }
 function updateSize(value: string) {
@@ -121,20 +125,15 @@ function updateSize(value: string) {
     value === 'auto' ? '模型自动选择' : value.replace('x', ' × ');
 }
 function updateGenerate() {
-  const running = [...records.values()].some(
-    (record) => record.status === 'running',
-  );
   get<HTMLButtonElement>('generate').disabled =
-    !loaded || submitting || running || referenceReads > 0;
+    !loaded || submitting || referenceReads > 0;
   get('generate-text').textContent = referenceReads
     ? '正在读取参考图…'
     : submitting
       ? '正在提交…'
-      : running
-        ? '图片生成中…'
-        : settings.hasKey
-          ? '✦ 生成图片'
-          : '⚿ 配置 Key 后开始创作';
+      : settings.hasKey
+        ? '✦ 生成图片'
+        : '⚿ 配置 Key 后开始创作';
 }
 function renderSettings() {
   renderDirectory();
@@ -434,6 +433,8 @@ get('open-folder').onclick = () => {
 };
 
 const statusLabels: Record<Creation['status'], string> = {
+  queued: '等待中',
+  cancelled: '已取消',
   running: '生成中',
   succeeded: '已完成',
   failed: '生成失败',
@@ -492,7 +493,7 @@ function recordCard(record: Creation) {
         '停止等待',
         async () => {
           if (confirm('停止本机等待？服务商可能仍会生成并计费。'))
-            unwrap(await api.stop());
+            unwrap(await api.stop(record.id));
         },
         'text-button',
       ),
@@ -559,9 +560,19 @@ function renderRecords() {
   get('record-count').textContent = String(records.size);
   get('empty').hidden = records.size > 0;
   updateGenerate();
+  workspaceUI?.updateRecords([...records.values()]);
 }
 function mergeRecord(record: Creation) {
-  if (records.get(record.id)?.finishedAt && record.status === 'running') return;
+  if (
+    records.get(record.id)?.finishedAt &&
+    ['running', 'queued'].includes(record.status)
+  )
+    return;
+  if (
+    records.get(record.id)?.status === 'running' &&
+    record.status === 'queued'
+  )
+    return;
   records.set(record.id, record);
 }
 async function generate() {
@@ -606,7 +617,8 @@ document.addEventListener('keydown', (event) => {
   if (
     (event.ctrlKey || event.metaKey) &&
     event.key === 'Enter' &&
-    !document.querySelector('dialog[open]')
+    !document.querySelector('dialog[open]') &&
+    workspaceUI?.currentView() === 'create'
   ) {
     event.preventDefault();
     void generate();
@@ -626,7 +638,10 @@ async function initialize() {
       localStorage.getItem('antv-studio-draft-v1') || 'null',
     );
     if (saved && typeof saved.prompt === 'string') {
-      get<HTMLTextAreaElement>('prompt').value = saved.prompt.slice(0, 2000);
+      get<HTMLTextAreaElement>('prompt').value = saved.prompt.slice(
+        0,
+        MAX_PROMPT_LENGTH,
+      );
       if (typeof saved.model === 'string')
         get<HTMLInputElement>('model').value = saved.model;
       if (typeof saved.outputName === 'string')
@@ -662,6 +677,17 @@ async function initialize() {
   loaded = true;
   renderSettings();
   renderRecords();
+  workspaceUI = initializeWorkspace({
+    notify,
+    settings: () => settings,
+    parameters: draft,
+    openSettings,
+    merge: (values) => {
+      for (const record of values) mergeRecord(record);
+      renderRecords();
+    },
+  });
+  workspaceUI.updateRecords([...records.values()]);
 }
 void initialize().catch((error) =>
   showError(

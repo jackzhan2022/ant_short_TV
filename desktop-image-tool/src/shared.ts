@@ -9,6 +9,26 @@ export const SIZES = [
 ] as const;
 export type Format = 'png' | 'jpeg' | 'webp';
 export type Quality = 'auto' | 'low' | 'medium' | 'high';
+export const MAX_PROMPT_LENGTH = 24000;
+export interface QueueState {
+  limit: number;
+  paused: boolean;
+  waiting: string[];
+  running: string[];
+}
+export interface AssetOrigin {
+  tenantId: number;
+  teamName: string;
+  sourceAssetId: number;
+  projectName: string;
+  assetName: string;
+  type: string;
+  targetProjectId: number;
+  targetAssetId?: number;
+  targetVariantId?: number | null;
+  sourceProjectId?: number;
+  sourceParentName?: string | null;
+}
 export interface Reference {
   name: string;
   dataUrl: string;
@@ -23,6 +43,7 @@ export interface Draft {
   references: Reference[];
 }
 export interface Creation {
+  responseModel?: string;
   outputName?: string;
   outputDirectory?: string;
   savedFiles?: string[];
@@ -30,7 +51,15 @@ export interface Creation {
   id: string;
   createdAt: string;
   finishedAt?: string;
-  status: 'running' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
+  status:
+    | 'queued'
+    | 'cancelled'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'stopped'
+    | 'interrupted';
+  origin?: AssetOrigin;
   prompt: string;
   model: string;
   size: string;
@@ -46,6 +75,7 @@ export interface Settings {
   hasKey: boolean;
   responseModel: string;
   baseUrl: string;
+  concurrency: number;
 }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export interface StudioAPI {
@@ -55,9 +85,10 @@ export interface StudioAPI {
     key?: string;
     responseModel: string;
     clearKey?: boolean;
+    concurrency?: number;
   }): Promise<Result<Settings>>;
   generate(draft: Draft): Promise<Result<Creation>>;
-  stop(): Promise<Result<void>>;
+  stop(id?: string): Promise<Result<void>>;
   reuse(id: string): Promise<Result<Draft>>;
   reference(input: { id: string; index: number }): Promise<Result<Reference>>;
   save(input: { id: string; index: number }): Promise<Result<boolean>>;

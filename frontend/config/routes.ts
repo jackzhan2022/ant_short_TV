@@ -11,6 +11,13 @@
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
+  {
+    path: '/operations',
+    name: 'operations',
+    icon: 'dashboard',
+    access: 'canViewOperations',
+    component: './operations',
+  },
   { path: '/system-audio', name: 'system-audio', hideInMenu: true, icon: 'audio', access: 'canViewSystemAudio', component: './system-audio' },
   { path: '/asset-library', name: 'asset-library', icon: 'folderOpen', access: 'canViewAssetLibrary', component: './asset-library' },
   { path: '/asset-library/projects/:projectId', hideInMenu: true, access: 'canViewAssetLibrary', component: './asset-library' },

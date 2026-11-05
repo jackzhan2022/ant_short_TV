@@ -16,12 +16,14 @@ const os = require('node:os');
   const errors = [];
   const launch = async () => {
     application = await electron.launch({
-      executablePath: require('electron'),
+      executablePath:
+        process.env.ANTV_ELECTRON_EXECUTABLE || require('electron'),
       args: [root],
       env,
     });
     page = await application.firstWindow();
     page.on('pageerror', (error) => errors.push(error.message));
+    await page.locator('[data-view="create"]').click();
     await page.locator('#generate:not([disabled])').waitFor();
   };
   try {
@@ -30,7 +32,10 @@ const os = require('node:os');
     await page.locator('#example').click();
     await page.screenshot({ path: path.join(out, 'workspace.png') });
     await page.locator('#settings-open').click();
-    assert.equal(await page.locator('input[type=url]').count(), 0);
+    assert.equal(
+      await page.locator('#settings-dialog input[type=url]').count(),
+      0,
+    );
     const chosenDirectory = path.join(data, 'custom-images');
     fs.mkdirSync(chosenDirectory);
     await application.evaluate(({ dialog }, destination) => {
@@ -86,7 +91,7 @@ const os = require('node:os');
       .fill('集成测试画面（本地图标模拟响应，非真实生成）');
     await page.locator('#output-name').fill('角色A_正面');
     await page.locator('#generate').click();
-    await page.locator('.status.succeeded').waitFor();
+    await page.locator('#records .status.succeeded').waitFor();
     await page
       .locator('.thumbnail-button img')
       .evaluate((image) => image.decode());
@@ -175,7 +180,7 @@ const os = require('node:os');
     await page.locator('.pending').waitFor();
     page.once('dialog', (dialog) => dialog.accept());
     await page.locator('.pending button').click();
-    await page.locator('.status.stopped').waitFor();
+    await page.locator('#records .status.stopped').waitFor();
     await page.evaluate(async () => {
       const result = await window.studio.state();
       if (
@@ -201,6 +206,43 @@ const os = require('node:os');
       .locator('.thumbnail-button img')
       .evaluate((image) => image.decode());
     assert.deepEqual(errors, []);
+    await application.evaluate(({ BrowserWindow }) => {
+      new BrowserWindow({
+        show: false,
+        webPreferences: {
+          sandbox: true,
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+    });
+    const exited = new Promise((resolve) =>
+      application.process().once('exit', resolve),
+    );
+    await application
+      .evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((window) => window.isVisible())
+          .close();
+      })
+      .catch(() => {});
+    let exitTimer;
+    try {
+      await Promise.race([
+        exited,
+        new Promise((_resolve, reject) => {
+          exitTimer = setTimeout(
+            () =>
+              reject(
+                new Error('Main close left hidden browser/process running'),
+              ),
+            10000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(exitTimer);
+    }
     console.log(
       'PASS Electron: encrypted key, generation, persistence, reference deduplication, preserved draft, full image, save, cancellation, narrow layout, isolated renderer.',
     );

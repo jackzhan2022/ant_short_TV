@@ -156,7 +156,7 @@ test('main-process validation rejects forged parameters, oversized and invalid r
   );
   for (const patch of [
     { prompt: '' },
-    { prompt: 'a'.repeat(2001) },
+    { prompt: 'a'.repeat(24001) },
     { model: '../path' },
     { size: '999x1' },
     { format: 'svg' },

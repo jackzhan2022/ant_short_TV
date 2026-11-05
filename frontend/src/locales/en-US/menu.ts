@@ -1,4 +1,5 @@
 export default {
+  'menu.operations': 'Operations',
   'menu.downloads': 'Downloads',
   'menu.system-audio': 'System audio library',
   'menu.free-creation': 'Free Creation',

@@ -111,3 +111,63 @@ test('restart marks unfinished requests interrupted rather than submitting them 
   assert.equal(reopened.get(record.id).imageCount, 0);
   assert.match(reopened.get(record.id).error, /不会自动重试/);
 });
+
+test('unsubmitted tasks survive restart queued, dispatch transitions before provider calls', (t) => {
+  const store = setup(t);
+  const record = store.create(draft, { queued: true });
+  assert.equal(record.status, 'queued');
+  const reopened = new StudioStore(store.root, codec);
+  assert.equal(reopened.get(record.id).status, 'queued');
+  assert.equal(reopened.start(record.id).status, 'running');
+  assert.throws(() => reopened.start(record.id));
+  assert.equal(
+    new StudioStore(store.root, codec).get(record.id).status,
+    'interrupted',
+  );
+});
+
+test('batch output groups stay below selected directory and concurrency cannot exceed five', (t) => {
+  const store = setup(t);
+  const record = store.create(draft, {
+    queued: true,
+    outputGroup: ['项目A', '角色'],
+  });
+  assert.equal(
+    record.outputDirectory,
+    path.join(store.settings().outputDirectory, '项目A', '角色'),
+  );
+  assert.throws(() => store.create(draft, { outputGroup: ['..', 'secret'] }));
+  assert.throws(() =>
+    store.updateSettings({ responseModel: 'gpt-6-astra', concurrency: 6 }),
+  );
+  store.updateSettings({ responseModel: 'gpt-6-astra', concurrency: 3 });
+  assert.equal(new StudioStore(store.root, codec).settings().concurrency, 3);
+});
+
+test('explicit retry preserves original prompt, destination and request model after settings change', (t) => {
+  const store = setup(t);
+  const original = store.create(draft, {
+    queued: true,
+    outputGroup: ['源项目', '角色'],
+    origin: {
+      tenantId: 1,
+      teamName: 'A',
+      sourceAssetId: 10,
+      projectName: '项目',
+      assetName: '角色',
+      type: 'CHARACTER',
+      targetProjectId: 20,
+      targetAssetId: 30,
+    },
+  });
+  assert.throws(() => store.retry(original.id));
+  store.finish(original.id, { status: 'interrupted' });
+  store.updateSettings({ responseModel: 'new-model' });
+  const retry = store.retry(original.id);
+  assert.notEqual(retry.id, original.id);
+  assert.equal(retry.status, 'queued');
+  assert.equal(retry.outputDirectory, original.outputDirectory);
+  assert.equal(retry.responseModel, original.responseModel);
+  assert.deepEqual(retry.origin, original.origin);
+  assert.equal(retry.prompt, original.prompt);
+});

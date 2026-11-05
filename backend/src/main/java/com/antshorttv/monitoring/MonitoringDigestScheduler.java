@@ -1,5 +1,7 @@
 package com.antshorttv.monitoring;
 
+import com.antshorttv.operations.alerts.OperationsPersistentDigest;
+import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -21,22 +23,32 @@ public class MonitoringDigestScheduler {
     private final MonitoringAiFailureSource aiFailures;
     private final MonitoringDigestFormatter formatter;
     private final FeishuWebhookClient client;
+    private final OperationsPersistentDigest persistentDigest;
     private ThreadPoolTaskScheduler scheduler;
     private Instant lastWindow;
 
     public MonitoringDigestScheduler(MonitoringProperties properties, MonitoringBuffer buffer,
         MonitoringAiFailureSource aiFailures, MonitoringDigestFormatter formatter, FeishuWebhookClient client) {
+        this(properties,buffer,aiFailures,formatter,client,null);
+    }
+
+    @Autowired
+    public MonitoringDigestScheduler(MonitoringProperties properties, MonitoringBuffer buffer,
+        MonitoringAiFailureSource aiFailures, MonitoringDigestFormatter formatter, FeishuWebhookClient client,
+        OperationsPersistentDigest persistentDigest) {
         this.properties = properties;
         this.buffer = buffer;
         this.aiFailures = aiFailures;
         this.formatter = formatter;
         this.client = client;
+        this.persistentDigest = persistentDigest;
     }
 
     @PostConstruct
     void start() {
         if (!properties.enabled()) return;
         if (properties.feishuWebhookUrl().isBlank()) {
+            if (persistentDigest != null && persistentDigest.enabled()) return;
             throw new IllegalArgumentException("MONITORING_FEISHU_WEBHOOK_URL is required when monitoring is enabled");
         }
         // Do not register this as a bean: otherwise it could become the default scheduler for all application jobs.
@@ -56,7 +68,12 @@ public class MonitoringDigestScheduler {
 
     synchronized void publish(Instant now) {
         if (!properties.enabled()) return;
+        if (persistentDigest != null && persistentDigest.enabled()) {
+            persistentDigest.publish(now);
+            return;
+        }
         Instant end = windowEnd(now);
+        if (persistentDigest != null && persistentDigest.published(end)) return;
         if (lastWindow != null && !end.isAfter(lastWindow)) return;
         Instant start = end.minusSeconds(3600);
         var batch = buffer.drain(start, end);

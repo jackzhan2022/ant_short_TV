@@ -8,13 +8,10 @@ import org.springframework.stereotype.Component;
 @Aspect
 @Component
 public class JdbcTemplateTimingAspect {
-    @Around("execution(* org.springframework.jdbc.core.JdbcTemplate.*(..))")
+    @Around("execution(* org.springframework.jdbc.core.JdbcTemplate.query*(..)) || execution(* org.springframework.jdbc.core.JdbcTemplate.update(..)) || execution(* org.springframework.jdbc.core.JdbcTemplate.batchUpdate(..)) || execution(* org.springframework.jdbc.core.JdbcTemplate.execute(..))")
     public Object recordJdbcTemplateCall(ProceedingJoinPoint joinPoint) throws Throwable {
-        long started = System.nanoTime();
-        try {
+        try (var ignored = DatabaseQueryObservation.query()) {
             return joinPoint.proceed();
-        } finally {
-            DatabaseQueryObservation.recordQuery(System.nanoTime() - started);
         }
     }
 }

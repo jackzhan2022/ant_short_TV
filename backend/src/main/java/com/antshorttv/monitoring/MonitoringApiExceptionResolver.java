@@ -38,6 +38,14 @@ public class MonitoringApiExceptionResolver implements HandlerExceptionResolver 
     @Override
     public ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception exception) {
         if (!request.getRequestURI().startsWith("/api/") || request.getRequestURI().startsWith("/api/monitoring/")) return null;
+        if (request.getRequestURI().startsWith("/api/platform/operations")) return null;
+        boolean rejected=(exception instanceof BusinessException business && !TECHNICAL.contains(business.getErrorCode()))
+            || exception instanceof jakarta.validation.ConstraintViolationException
+            || exception instanceof org.springframework.http.converter.HttpMessageNotReadableException
+            || exception instanceof org.springframework.beans.TypeMismatchException
+            || (exception instanceof ErrorResponse error && error.getStatusCode().value()<500)
+            || exception instanceof AccessDeniedException || exception instanceof AuthenticationException;
+        request.setAttribute("operations.outcome",rejected?"BUSINESS_REJECTION":exception instanceof java.io.IOException?"CANCELED":"TECHNICAL_ERROR");
         if (exception instanceof BusinessException business && !TECHNICAL.contains(business.getErrorCode())) return null;
         if (exception instanceof jakarta.validation.ConstraintViolationException
             || exception instanceof org.springframework.http.converter.HttpMessageNotReadableException

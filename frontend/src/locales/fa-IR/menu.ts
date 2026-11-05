@@ -1,4 +1,5 @@
 export default {
+  'menu.operations': 'Operations',
   'menu.downloads': 'Downloads',
   'menu.system-audio': 'کتابخانه صوتی سیستم',
   'menu.free-creation': 'آفرینش آزاد',

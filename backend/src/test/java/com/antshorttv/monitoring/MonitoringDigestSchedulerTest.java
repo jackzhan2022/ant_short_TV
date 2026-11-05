@@ -29,4 +29,16 @@ class MonitoringDigestSchedulerTest {
         verify(client, times(2)).send("part 2");
         verify(source).collect(end.minusSeconds(3600), end);
     }
+    @Test void persistentModeCutsOverBothLegacySourcesAndRestoresLegacyWhenDisabled() {
+        var props=new MonitoringProperties(true,"","","test","one",100,true);
+        var buffer=mock(MonitoringBuffer.class);
+        var source=mock(MonitoringAiFailureSource.class);
+        var formatter=mock(MonitoringDigestFormatter.class);
+        var client=mock(FeishuWebhookClient.class);
+        var persistent=mock(com.antshorttv.operations.alerts.OperationsPersistentDigest.class);
+        when(persistent.enabled()).thenReturn(true);
+        var scheduler=new MonitoringDigestScheduler(props,buffer,source,formatter,client,persistent);
+        Instant now=Instant.parse("2026-11-05T01:30:10Z");scheduler.publish(now);
+        verify(persistent).publish(now);verifyNoInteractions(buffer,source,formatter,client);
+    }
 }
