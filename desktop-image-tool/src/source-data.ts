@@ -48,11 +48,28 @@ function requiredId(row: Row, key: string): string {
 }
 
 function name(row: Row): string {
-  const value = record(row.Meta)?.Name ?? row.Name;
+  const value = row.ProjectName ?? record(row.Meta)?.Name ?? row.Name;
   if (typeof value !== 'string' || !value.trim() || value.length > 1000) {
     throw new Error('源站列表名称结构不受支持，未同步任何部分结果。');
   }
   return value;
+}
+
+export function accessibleTeamIds(value: unknown): string[] {
+  const root = record(value);
+  if (record(root?.ResponseMetadata)?.Error || root?.Error)
+    throw new Error('无法获取火山账号的可访问范围，请检查登录状态。');
+  const teams = record(record(root?.Result)?.MemDescription)?.Teams;
+  if (!Array.isArray(teams) || teams.length > 10000)
+    throw new Error('火山账号成员信息缺少完整团队范围，未同步部分结果。');
+  const ids = teams.map((team) => {
+    const row = record(team);
+    if (!row) throw new Error('火山账号团队范围结构不受支持。');
+    return requiredId(row, 'TeamID');
+  });
+  if (new Set(ids).size !== ids.length)
+    throw new Error('火山账号团队范围出现重复身份。');
+  return ids;
 }
 
 export function recognizedListEndpoint(
@@ -217,7 +234,11 @@ export async function readAllPages(
   throw new Error('源站列表超过分页安全上限，结果不完整。');
 }
 
-export function projectAssetNames(type: AssetType, items: Row[]): SourceName[] {
+export function projectAssetNames(
+  type: AssetType,
+  items: Row[],
+  skippedUnnamedVariant: () => void = () => {},
+): SourceName[] {
   const key =
     type === 'CHARACTER'
       ? 'CharacterId'
@@ -232,6 +253,16 @@ export function projectAssetNames(type: AssetType, items: Row[]): SourceName[] {
     const sourceParentId = explicitParent ?? inheritedParent;
     if (sourceParentId === sourceAssetId)
       throw new Error('源站变体父级身份无效。');
+    const rawName = record(row.Meta)?.Name ?? row.Name;
+    if (sourceParentId && typeof rawName === 'string' && !rawName.trim()) {
+      if (
+        row.Variants !== undefined &&
+        (!Array.isArray(row.Variants) || row.Variants.length)
+      )
+        throw new Error('源站变体层级不受支持。');
+      skippedUnnamedVariant();
+      return;
+    }
     const value: SourceName = {
       sourceAssetId,
       ...(sourceParentId ? { sourceParentId } : {}),
@@ -261,31 +292,33 @@ export async function collectAllProjects(
   templates: ListTemplate[],
   fetcher: ListFetch,
   discovered: (count: number) => void = () => {},
+  skippedUnnamedVariant: () => void = () => {},
 ): Promise<SourceCollection[]> {
-  const teamTemplate = templates.find((item) => item.action === 'ListTeams');
-  const projectTemplate = templates.find(
-    (item) => item.action === 'ListProjects',
-  );
-  const scriptTemplate = templates.find(
-    (item) => item.action === 'ListScripts',
-  );
-  if (!teamTemplate)
-    throw new Error(
-      '尚未观察到完整团队列表 ListTeams。请在源站登录窗口打开团队切换列表，再回到项目列表；已访问项目不能代表全部可访问项目。',
-    );
-  if (!projectTemplate)
-    throw new Error(
-      '尚未观察到带 TeamId 和分页的 ListProjects。请在源站打开项目列表后重试。',
-    );
-  if (!scriptTemplate)
-    throw new Error(
-      '尚未观察到带 TeamId / ProjectId 和分页的 ListScripts。请在源站打开项目的剧本列表后重试；项目默认 ScriptId 不能证明全部剧本已覆盖。',
-    );
-  const teams = await readAllPages(teamTemplate, {}, fetcher, 'TeamId');
+  const projectTemplate =
+    templates.find((item) => item.action === 'ListProjects') ??
+    ({
+      url: `${ASSET_BASE}ListProjects`,
+      action: 'ListProjects',
+      pageSize: 100,
+      filters: true,
+      scopes: { TeamId: 'top' },
+    } satisfies ListTemplate);
+  const apiBase = projectTemplate.url.slice(0, -'ListProjects'.length);
+  const scriptTemplate =
+    templates.find((item) => item.action === 'ListScripts') ??
+    ({
+      url: `${apiBase}ListScripts`,
+      action: 'ListScripts',
+      pageSize: 100,
+      filters: true,
+      scopes: { TeamId: 'top', ProjectId: 'filters' },
+    } satisfies ListTemplate);
+  // The live website obtains all accessible memberships from DescribeUser.
+  // Refresh this on every sync; the currently selected source team is not the scope.
+  const teams = accessibleTeamIds(await fetcher(`${apiBase}DescribeUser`, {}));
   const projects: SourceCollection[] = [];
   let projectCount = 0;
-  for (const team of teams) {
-    const sourceTeamId = requiredId(team, 'TeamId');
+  for (const sourceTeamId of teams) {
     const rows = await readAllPages(
       projectTemplate,
       { TeamId: sourceTeamId },
@@ -335,7 +368,7 @@ export async function collectAllProjects(
       ['PROP', 'ListProps', 'PropId'],
     ] as const) {
       const template: ListTemplate = {
-        url: `${ASSET_BASE}${action}`,
+        url: `${apiBase}${action}`,
         action: 'ListProjects',
         pageSize: 1000,
         filters: true,
@@ -351,7 +384,9 @@ export async function collectAllProjects(
         fetcher,
         identity,
       );
-      project.assets.push(...projectAssetNames(type, rows));
+      project.assets.push(
+        ...projectAssetNames(type, rows, skippedUnnamedVariant),
+      );
     }
   }
   return projects;

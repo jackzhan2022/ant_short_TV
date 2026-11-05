@@ -7,6 +7,7 @@ export interface SourceStatus {
   loggedIn: boolean;
   syncing: boolean;
   discoveredProjects: number;
+  skippedUnnamedVariants?: number;
   lastSync?: string;
   error?: string;
 }

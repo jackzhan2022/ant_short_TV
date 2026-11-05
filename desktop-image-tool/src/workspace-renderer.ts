@@ -316,7 +316,7 @@ export function initializeWorkspace(hooks: Hooks) {
         : '尚未连接剧智创';
     const teamSelect = get<HTMLSelectElement>('team-select');
     teamSelect.replaceChildren(
-      option('', next.authenticated ? '请选择团队' : '请先登录'),
+      option('', next.authenticated ? '请选择剧智创团队' : '请先登录'),
       ...next.teams.map((team) => option(String(team.id), team.name)),
     );
     teamSelect.value = String(next.tenantId ?? '');
@@ -331,7 +331,7 @@ export function initializeWorkspace(hooks: Hooks) {
       ? '正在核对全部项目并同步名称…'
       : (next.source.error ??
         (next.source.loggedIn
-          ? `火山剧创已登录 · 已发现 ${next.source.discoveredProjects} 个项目${next.source.lastSync ? ` · 最近拉取 ${new Date(next.source.lastSync).toLocaleTimeString()}` : ''}`
+          ? `火山剧创已登录 · 已发现 ${next.source.discoveredProjects} 个项目${next.source.lastSync ? ` · 最近拉取 ${new Date(next.source.lastSync).toLocaleTimeString()}` : ''}${next.source.skippedUnnamedVariants ? ` · ${next.source.skippedUnnamedVariants} 个空白名称变体未纳入匹配` : ''}`
           : '请登录火山剧创；登录失效时自动同步暂停。'));
     get<HTMLButtonElement>('sync-source').disabled =
       !next.tenantId || next.source.syncing;

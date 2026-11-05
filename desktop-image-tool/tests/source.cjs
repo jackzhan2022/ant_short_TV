@@ -13,6 +13,60 @@ const template = (action, scope = {}) =>
     ...scope,
   });
 const result = (Items, Total = Items.length) => ({ Result: { Items, Total } });
+const memberships = (...ids) => ({
+  Result: { MemDescription: { Teams: ids.map((TeamID) => ({ TeamID })) } },
+});
+
+test('real source memberships and ProjectName synchronize every team without observing or calling ListTeams', async () => {
+  const calls = [];
+  const projects = await source.collectAllProjects([], async (url, body) => {
+    const action = url.split('/').at(-1);
+    calls.push({ action, body });
+    if (action === 'DescribeUser') return memberships('t1', 't2');
+    if (action === 'ListProjects')
+      return result([
+        {
+          ProjectId: `p-${body.TeamId}`,
+          TeamId: body.TeamId,
+          ProjectName: '真实项目名称',
+        },
+      ]);
+    if (action === 'ListScripts')
+      return result([{ ScriptId: `s-${body.TeamId}` }]);
+    return result([]);
+  });
+  assert.equal(projects.length, 2);
+  assert.deepEqual(
+    projects.map((p) => p.sourceTeamId),
+    ['t1', 't2'],
+  );
+  assert.equal(projects[0].name, '真实项目名称');
+  assert.ok(!calls.some((call) => call.action === 'ListTeams'));
+  assert.deepEqual(calls[0], { action: 'DescribeUser', body: {} });
+  assert.deepEqual(
+    calls.find((call) => call.action === 'ListScripts').body.Filters,
+    { ProjectId: 'p-t1' },
+  );
+});
+
+test('membership discovery rejects malformed or duplicate teams and refreshes on each collection', async () => {
+  assert.equal(typeof source.accessibleTeamIds, 'function');
+  assert.deepEqual(source.accessibleTeamIds(memberships('a', 'b')), ['a', 'b']);
+  assert.deepEqual(source.accessibleTeamIds(memberships()), []);
+  assert.throws(() => source.accessibleTeamIds(memberships('a', 'a')), /重复/);
+  assert.throws(() => source.accessibleTeamIds({ Result: {} }), /成员|团队/);
+  let reads = 0;
+  const fetcher = async (url) => {
+    if (url.endsWith('DescribeUser')) {
+      reads++;
+      return memberships();
+    }
+    throw new Error('No list calls for an empty membership');
+  };
+  await source.collectAllProjects([], fetcher);
+  await source.collectAllProjects([], fetcher);
+  assert.equal(reads, 2);
+});
 
 test('pagination proves total coverage and rejects repeating or uncounted pages', async () => {
   assert.equal(typeof source.readAllPages, 'function');
@@ -152,8 +206,7 @@ test('all teams and their projects are enumerated before assets, failure never r
   const fetcher = async (url, body) => {
     const action = url.split('/').at(-1);
     requests.push({ action, body });
-    if (action === 'ListTeams')
-      return result([{ TeamId: 't1' }, { TeamId: 't2' }]);
+    if (action === 'DescribeUser') return memberships('t1', 't2');
     if (action === 'ListProjects')
       return result([
         {
@@ -195,13 +248,11 @@ test('unknown project identity and missing script enumeration fail with an actio
     template('ListProjects', { TeamId: 't' }),
   ];
   await assert.rejects(
-    source.collectAllProjects(templates, async (url) =>
-      result(
-        url.endsWith('ListTeams')
-          ? [{ TeamId: 't' }]
-          : [{ ProjectId: 'p', ScriptId: 'default', Name: 'P' }],
-      ),
-    ),
+    source.collectAllProjects(templates, async (url) => {
+      if (url.endsWith('DescribeUser')) return memberships('t');
+      if (url.endsWith('ListScripts')) return result([]);
+      return result([{ ProjectId: 'p', ScriptId: 'default', Name: 'P' }]);
+    }),
     /ListScripts|ScriptId/,
   );
 });
@@ -238,7 +289,7 @@ test('script lists are fully enumerated per project and scopes never cross teams
   const projects = await source.collectAllProjects(
     templates,
     async (url, body) => {
-      if (url.endsWith('ListTeams')) return result([{ TeamId: 't' }]);
+      if (url.endsWith('DescribeUser')) return memberships('t');
       if (url.endsWith('ListProjects')) {
         assert.deepEqual(body.Filters, { TeamId: 't' });
         return result([{ ProjectId: 'p', ScriptId: 'default', Name: 'P' }]);
@@ -264,11 +315,11 @@ test('script lists are fully enumerated per project and scopes never cross teams
   assert.deepEqual(discovered, [1]);
   await assert.rejects(
     source.collectAllProjects(templates, async (url) =>
-      result(
-        url.endsWith('ListTeams')
-          ? [{ TeamId: 't' }]
-          : [{ ProjectId: 'p', TeamId: 'different', ScriptId: 's', Name: 'P' }],
-      ),
+      url.endsWith('DescribeUser')
+        ? memberships('t')
+        : result([
+            { ProjectId: 'p', TeamId: 'different', ScriptId: 's', Name: 'P' },
+          ]),
     ),
     /团队/,
   );
@@ -327,7 +378,7 @@ test('independent secure browser login and session expiry update collector state
       this.webContents.getURL = () =>
         'https://console.volcengine.com/dramart/projectlist/';
       this.webContents.executeJavaScript = async (script) => {
-        assert.ok(script.includes("credentials: 'include'"));
+        assert.ok(script.includes('webpackChunkshort_drama_fe'));
         assert.ok(!script.includes('document.cookie'));
         return { status: 401 };
       };
@@ -437,6 +488,14 @@ test('independent secure browser login and session expiry update collector state
   assert.equal(collector.state().loggedIn, false);
   assert.equal(collector.state().syncing, false);
   assert.equal(collector.state().lastSync, undefined);
+  // A fresh authenticated read must work even without observed lists or a cached login flag.
+  browser.webContents.executeJavaScript = async () => ({
+    status: 200,
+    value: memberships(),
+  });
+  assert.deepEqual(await collector.collect(), []);
+  assert.equal(collector.state().loggedIn, true);
+  assert.ok(collector.state().lastSync);
   collector.close();
   assert.equal(browser.destroyed, true);
 });

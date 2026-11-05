@@ -4,11 +4,11 @@ import {
   collectAllProjects,
   type ListTemplate,
   learnListRequest,
-  listResult,
   recognizedListEndpoint,
   record,
   SOURCE_ORIGIN,
 } from './source-data';
+import { readSourcePage } from './source-page';
 import type {
   SourceCollection,
   SourceCollector,
@@ -99,7 +99,7 @@ export class DramartCollector implements SourceCollector {
         void this.observe(method, record(parameters) ?? {}, window).catch(
           () => {
             this.update({
-              error: '源站列表发现失败；请重新打开团队和项目列表后重试。',
+              error: '源站列表发现失败，请重试同步。',
             });
           },
         );
@@ -190,37 +190,8 @@ export class DramartCollector implements SourceCollector {
     }
     if (method !== 'Network.loadingFinished') return;
     this.pending.delete(requestId);
-    if (
-      Number(parameters.encodedDataLength) > RESPONSE_LIMIT ||
-      window.isDestroyed()
-    )
-      return;
-    const response = record(
-      await window.webContents.debugger.sendCommand('Network.getResponseBody', {
-        requestId,
-      }),
-    );
-    if (
-      typeof response?.body !== 'string' ||
-      response.body.length > RESPONSE_LIMIT
-    )
-      return;
-    const text = response.base64Encoded
-      ? Buffer.from(response.body, 'base64').toString('utf8')
-      : response.body;
-    let value: unknown;
-    try {
-      value = JSON.parse(text);
-    } catch {
-      return;
-    }
-    if (authenticationExpired(value)) {
-      this.templates.clear();
-      this.update({ loggedIn: false, error: '源站登录已失效，请重新登录。' });
-      return;
-    }
-    // Validate the pagination response without retaining source response bodies.
-    listResult(value);
+    if (window.isDestroyed()) return;
+    // Learn only request shape. Source response bodies (especially scripts) stay in-page.
     this.templates.set(template.action, template);
     this.update({ loggedIn: true, error: undefined });
   }
@@ -239,36 +210,22 @@ export class DramartCollector implements SourceCollector {
       !window.webContents.getURL().startsWith(`${SOURCE_ORIGIN}/`)
     )
       throw new Error('请先在源站窗口完成登录并返回项目列表。');
-    // Runs in the authenticated page so normal cookies and the site's fetch/signing hooks apply.
-    // No cookies or authorization headers cross into the application or its persisted state.
-    const response: unknown =
-      await window.webContents.executeJavaScript(`(async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 30000);
-      try {
-        const response = await window.fetch(${JSON.stringify(url)}, {
-          method: 'POST', credentials: 'include', redirect: 'error',
-          headers: { 'Content-Type': 'application/json' },
-          body: ${JSON.stringify(JSON.stringify(body))}, signal: controller.signal
-        });
-        if (!response.ok) return { status: response.status };
-        const length = Number(response.headers.get('content-length') || 0);
-        if (length > ${RESPONSE_LIMIT}) return { oversized: true };
-        const reader = response.body.getReader();
-        const chunks = []; let size = 0;
-        while (true) {
-          const next = await reader.read();
-          if (next.done) break;
-          size += next.value.byteLength;
-          if (size > ${RESPONSE_LIMIT}) { await reader.cancel(); return { oversized: true }; }
-          chunks.push(next.value);
-        }
-        const bytes = new Uint8Array(size); let offset = 0;
-        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-        return { status: response.status, value: JSON.parse(new TextDecoder().decode(bytes)) };
-      } catch { return { failed: true }; }
-      finally { clearTimeout(timer); }
-    })()`);
+    const endpoint = new URL(url);
+    const match =
+      /^\/api\/top\/dramart\/cn-beijing\/2026-01-12\/(DescribeUser|ListProjects|ListScripts|ListCharacters|ListScenes|ListProps)$/.exec(
+        endpoint.pathname,
+      );
+    if (
+      endpoint.origin !== SOURCE_ORIGIN ||
+      endpoint.search ||
+      endpoint.hash ||
+      !match
+    )
+      throw new Error('不支持的源站只读接口。');
+    // The page SDK applies its own CSRF handling; credentials never leave the page.
+    const response: unknown = await window.webContents.executeJavaScript(
+      `(${readSourcePage.toString()})(${JSON.stringify(match[1])}, ${JSON.stringify(body)}, ${RESPONSE_LIMIT})`,
+    );
     const result = record(response);
     if (
       result?.status === 401 ||
@@ -281,9 +238,13 @@ export class DramartCollector implements SourceCollector {
     }
     if (result?.oversized)
       throw new Error('源站列表响应超过安全大小，无法完成完整同步。');
+    if (result?.unavailable)
+      throw new Error(
+        '源站页面尚未就绪，请完成登录并返回火山剧创项目列表后重试。',
+      );
     if (result?.failed || result?.status !== 200)
       throw new Error(
-        '源站只读列表请求失败；可能需要重新登录或接口签名约定已变化。',
+        '源站只读列表请求失败，请检查网络或联系维护人员检查接口适配。',
       );
     return result.value;
   }
@@ -291,19 +252,29 @@ export class DramartCollector implements SourceCollector {
   async collect(): Promise<SourceCollection[]> {
     if (this.status.syncing)
       throw new Error('源站正在同步，请等待本次同步结束。');
-    this.update({ syncing: true, discoveredProjects: 0, error: undefined });
+    this.update({
+      syncing: true,
+      discoveredProjects: 0,
+      skippedUnnamedVariants: 0,
+      error: undefined,
+    });
     try {
       const window = await this.open(false);
-      if (!this.status.loggedIn)
-        throw new Error(
-          '请先在火山剧创窗口登录，并打开团队切换列表与项目列表，再重试同步。',
-        );
       const projects = await collectAllProjects(
         [...this.templates.values()],
         (url, body) => this.fetchList(window, url, body),
         (count) => this.update({ discoveredProjects: count }),
+        () =>
+          this.update({
+            skippedUnnamedVariants:
+              (this.status.skippedUnnamedVariants ?? 0) + 1,
+          }),
       );
-      this.update({ lastSync: new Date().toISOString(), error: undefined });
+      this.update({
+        loggedIn: true,
+        lastSync: new Date().toISOString(),
+        error: undefined,
+      });
       return projects;
     } catch (error) {
       const message =
