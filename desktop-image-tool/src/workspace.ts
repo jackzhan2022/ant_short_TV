@@ -19,6 +19,8 @@ interface Config {
   connectionId: string;
   tenantId?: number;
 }
+const DEFAULT_CLOUD_URL = 'https://antv.aixmax.cn';
+
 export class WorkspaceController {
   private config: Config;
   private client?: CloudClient;
@@ -45,10 +47,18 @@ export class WorkspaceController {
     private changed: () => void,
   ) {
     this.file = path.join(root, 'workspace.json');
-    this.config = fs.existsSync(this.file)
+    const exists = fs.existsSync(this.file);
+    this.config = exists
       ? JSON.parse(fs.readFileSync(this.file, 'utf8'))
-      : { cloudUrl: '', autoSyncMinutes: 0, connectionId: randomUUID() };
-    if (this.config.cloudUrl) this.connect();
+      : {
+          cloudUrl: DEFAULT_CLOUD_URL,
+          autoSyncMinutes: 0,
+          connectionId: randomUUID(),
+        };
+    const needsDefault = !this.config.cloudUrl?.trim();
+    if (needsDefault) this.config.cloudUrl = DEFAULT_CLOUD_URL;
+    if (!exists || needsDefault) this.save();
+    this.connect();
     this.schedule();
   }
   state(): WorkspaceState {
@@ -99,9 +109,9 @@ export class WorkspaceController {
     fs.writeFileSync(next, JSON.stringify(this.config), { mode: 0o600 });
     fs.renameSync(next, this.file);
   }
-  configure(input: { cloudUrl: string; autoSyncMinutes: number }) {
+  configure(input: { cloudUrl?: string; autoSyncMinutes: number }) {
     this.idle();
-    const cloudUrl = normalizeCloudUrl(input.cloudUrl);
+    const cloudUrl = normalizeCloudUrl(input.cloudUrl ?? this.config.cloudUrl);
     if (
       !Number.isInteger(input.autoSyncMinutes) ||
       input.autoSyncMinutes < 0 ||
@@ -129,7 +139,7 @@ export class WorkspaceController {
     return this.refresh();
   }
   async loginCloud(projectId?: number) {
-    if (!this.client) throw new Error('请先配置剧智创平台地址。');
+    if (!this.client) throw new Error('剧智创连接尚未就绪，请重启客户端。');
     if (
       projectId !== undefined &&
       !this.targets.some((project) => project.id === projectId)

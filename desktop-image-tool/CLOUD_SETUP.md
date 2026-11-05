@@ -7,7 +7,7 @@
 1. 按已有后端流程构建发布包含 com.antshorttv.desktop 的版本；上线前按现有流程备份数据库、核对 Flyway 顺序。
 2. 应用启动时按顺序执行运维 V174/V175 和 V176__desktop_source_assets.sql，后者新增来源项目及资产名称表。新增迁移已在隔离 MySQL 8.0、生产库结构副本上验证；线上执行结果由发布记录确认。
 3. 复用现有 HttpOnly 登录 Cookie、XSRF-TOKEN / X-XSRF-TOKEN、团队成员与 ELEMENT:VIEW 项目权限。X-Tenant-Id 本身不是授权。
-4. 配置现有 HTTPS 站点根地址，不带路径、查询或凭据。仅本地开发允许 HTTP localhost/127.0.0.1。
+4. 客户端默认连接 https://antv.aixmax.cn，界面无需填写平台地址。已有空地址配置会自动升级，保留连接编号和同步间隔；本地开发夹具仍可在配置文件中使用 HTTP localhost/127.0.0.1。
 
 接口前缀 /api/desktop/source-projects，使用现有 ApiResponse：
 

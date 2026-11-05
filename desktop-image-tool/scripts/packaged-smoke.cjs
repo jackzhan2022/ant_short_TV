@@ -53,7 +53,7 @@ const asar = require('@electron/asar');
     }));
     assert.equal(path.resolve(runtime.data), path.resolve(data));
     assert.equal(runtime.packaged, true);
-    assert.equal(runtime.version, '0.2.0');
+    assert.equal(runtime.version, '0.2.1');
     const page = await application.firstWindow();
     const errors = [];
     page.on('pageerror', (failure) => errors.push(failure.message));
@@ -61,6 +61,16 @@ const asar = require('@electron/asar');
       .locator('#generate:not([disabled])')
       .waitFor({ state: 'attached' });
     assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
+    const workspace = await page.evaluate(() => window.workspace.state());
+    assert.equal(workspace.ok, true);
+    assert.equal(workspace.value.cloudUrl, 'https://antv.aixmax.cn');
+    await page.locator('#connection-open').click();
+    assert.equal(
+      await page.locator('#cloud-url').textContent(),
+      'https://antv.aixmax.cn',
+    );
+    assert.equal(await page.locator('input#cloud-url').count(), 0);
+    await page.locator('[data-close="connection-dialog"]').click();
     await page.locator('[data-view="queue"]').click();
     await page.locator('#queue-view').waitFor();
     await page.locator('[data-view="create"]').click();
@@ -78,7 +88,7 @@ const asar = require('@electron/asar');
     });
     assert.deepEqual(errors, []);
     console.log(
-      'PASS packaged 0.2.0: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or remote services used.',
+      'PASS packaged 0.2.1: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.',
     );
   } finally {
     if (application) await application.close().catch(() => {});

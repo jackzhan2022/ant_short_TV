@@ -5,11 +5,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const flush = () => new Promise((resolve) => setImmediate(resolve));
-function setup(t, transport) {
+function setup(t, transport, config) {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), 'antv-workspace-test-'),
   );
   const original = Module._load;
+  if (config)
+    fs.writeFileSync(
+      path.join(directory, 'workspace.json'),
+      JSON.stringify(config),
+    );
   Module._load = function (name, ...args) {
     if (name === 'electron')
       return {
@@ -42,13 +47,54 @@ function setup(t, transport) {
     workspace.close();
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  return workspace;
+  return { workspace, directory };
 }
 const response = (data) =>
   new Response(JSON.stringify({ success: true, data }));
+test('a fresh client connects to production without configuring a platform URL and persists its identity', async (t) => {
+  const requests = [];
+  const { workspace, directory } = setup(t, async (url) => {
+    requests.push(url);
+    return response([]);
+  });
+  assert.equal(workspace.state().cloudUrl, 'https://antv.aixmax.cn');
+  const saved = JSON.parse(
+    fs.readFileSync(path.join(directory, 'workspace.json'), 'utf8'),
+  );
+  assert.ok(saved.connectionId);
+  await workspace.configure({ autoSyncMinutes: 15 });
+  assert.equal(workspace.state().cloudUrl, 'https://antv.aixmax.cn');
+  assert.equal(workspace.state().autoSyncMinutes, 15);
+  assert.ok(requests.length > 0);
+  assert.ok(
+    requests.every((url) => new URL(url).origin === 'https://antv.aixmax.cn'),
+  );
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(directory, 'workspace.json'), 'utf8'))
+      .connectionId,
+    saved.connectionId,
+  );
+});
+test('legacy blank platform settings migrate to production while preserving connection identity and interval', (t) => {
+  const { workspace, directory } = setup(t, async () => response([]), {
+    cloudUrl: '',
+    autoSyncMinutes: 30,
+    connectionId: 'existing-connection',
+  });
+  assert.equal(workspace.state().cloudUrl, 'https://antv.aixmax.cn');
+  assert.equal(workspace.state().autoSyncMinutes, 30);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(directory, 'workspace.json'), 'utf8')),
+    {
+      cloudUrl: 'https://antv.aixmax.cn',
+      autoSyncMinutes: 30,
+      connectionId: 'existing-connection',
+    },
+  );
+});
 test('a late response from an old platform cannot overwrite the selected platform inventory', async (t) => {
   let release;
-  const workspace = setup(t, async (url) => {
+  const { workspace } = setup(t, async (url) => {
     const parsed = new URL(url);
     if (parsed.pathname === '/api/tenants/my')
       return response([{ id: 1, name: 'team', status: 'ACTIVE' }]);
@@ -77,7 +123,7 @@ test('a late response from an old platform cannot overwrite the selected platfor
   assert.equal(workspace.state().targets[0].name, 'b.example');
 });
 test('cloud project pagination rejects duplicate IDs instead of claiming complete coverage', async (t) => {
-  const workspace = setup(t, async (url) => {
+  const { workspace } = setup(t, async (url) => {
     const parsed = new URL(url);
     if (parsed.pathname.endsWith('/my'))
       return response([{ id: 1, name: 'team', status: 'ACTIVE' }]);

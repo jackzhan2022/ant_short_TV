@@ -98,7 +98,7 @@ export interface BatchInput {
 export interface WorkspaceAPI {
   state(refresh?: boolean): Promise<Result<WorkspaceState>>;
   configure(input: {
-    cloudUrl: string;
+    cloudUrl?: string;
     autoSyncMinutes: number;
   }): Promise<Result<WorkspaceState>>;
   loginCloud(): Promise<Result<void>>;

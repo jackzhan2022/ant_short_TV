@@ -147,7 +147,7 @@ export function initializeWorkspace(hooks: Hooks) {
     item.onclick = () =>
       get<HTMLDialogElement>(item.dataset.close ?? '').close();
   get('connection-open').onclick = () => {
-    get<HTMLInputElement>('cloud-url').value = state?.cloudUrl ?? '';
+    get('cloud-url').textContent = state?.cloudUrl ?? '';
     get<HTMLInputElement>('auto-sync').value = String(
       state?.autoSyncMinutes ?? 0,
     );
@@ -159,12 +159,11 @@ export function initializeWorkspace(hooks: Hooks) {
       apply(
         unwrap(
           await api.configure({
-            cloudUrl: get<HTMLInputElement>('cloud-url').value.trim(),
             autoSyncMinutes: Number(get<HTMLInputElement>('auto-sync').value),
           }),
         ),
       );
-      hooks.notify('连接配置已保存，请登录后选择团队。');
+      hooks.notify('同步设置已保存。');
     });
   };
   get('login-cloud').onclick = () => {
@@ -270,7 +269,7 @@ export function initializeWorkspace(hooks: Hooks) {
       project?.name ?? '连接团队，开始匹配资产';
     get('binding-label').textContent = project
       ? `来源团队 ${project.sourceTeamId} · 同步 ${project.syncedAt.replace('T', ' ')}`
-      : '先配置平台地址并登录，再同步火山剧创项目名称。';
+      : '登录剧智创并选择团队，再同步火山剧创项目名称。';
     const target = get<HTMLSelectElement>('target-project');
     const signature = JSON.stringify([
       state?.tenantId,

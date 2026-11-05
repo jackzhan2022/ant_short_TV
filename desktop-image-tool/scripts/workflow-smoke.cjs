@@ -122,6 +122,14 @@ const os = require('node:os');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = `http://127.0.0.1:${server.address().port}`;
+  fs.writeFileSync(
+    path.join(data, 'workspace.json'),
+    JSON.stringify({
+      cloudUrl: address,
+      autoSyncMinutes: 0,
+      connectionId: 'workflow-fixture',
+    }),
+  );
   const env = { ...process.env, ANTV_STUDIO_TEST_DATA: data };
   delete env.ELECTRON_RUN_AS_NODE;
   let application;
@@ -198,7 +206,8 @@ const os = require('node:os');
     await page.locator('#save-settings').click();
     await page.locator('#settings-dialog').waitFor({ state: 'hidden' });
     await page.locator('#connection-open').click();
-    await page.locator('#cloud-url').fill(address);
+    assert.equal(await page.locator('#cloud-url').textContent(), address);
+    assert.equal(await page.locator('input#cloud-url').count(), 0);
     await page.locator('#connection-form button[type=submit]').click();
     await page.waitForFunction(
       () => document.querySelector('#team-select').options.length === 3,
@@ -243,9 +252,7 @@ const os = require('node:os');
     );
     releaseMatch();
     await page.waitForFunction(() =>
-      document
-        .querySelector('#workspace-error')
-        .textContent.includes('选择已改变'),
+      document.querySelector('#toast').textContent.includes('选择已改变'),
     );
     assert.match(
       await page.locator('#asset-rows').textContent(),
