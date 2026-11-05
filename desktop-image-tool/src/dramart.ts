@@ -20,6 +20,7 @@ const RESPONSE_LIMIT = 8 * 1024 * 1024;
 
 export class DramartCollector implements SourceCollector {
   private window?: BrowserWindow;
+  private initializing?: Promise<unknown>;
   private templates = new Map<string, ListTemplate>();
   private pending = new Map<string, ListTemplate>();
   private status: SourceStatus = {
@@ -45,6 +46,7 @@ export class DramartCollector implements SourceCollector {
         this.window.show();
         this.window.focus();
       }
+      await this.initializing;
       return this.window;
     }
     const window = new BrowserWindow({
@@ -90,24 +92,36 @@ export class DramartCollector implements SourceCollector {
     window.on('closed', () => {
       if (this.window === window) this.window = undefined;
     });
-    const debuggerClient = window.webContents.debugger;
-    debuggerClient.attach('1.3');
-    debuggerClient.on('message', (_event, method, parameters) => {
-      void this.observe(method, record(parameters) ?? {}, window).catch(() => {
-        this.update({
-          error: '源站列表发现失败；请重新打开团队和项目列表后重试。',
-        });
-      });
-    });
-    await debuggerClient.sendCommand('Network.enable', {
-      maxTotalBufferSize: RESPONSE_LIMIT * 2,
-      maxResourceBufferSize: RESPONSE_LIMIT,
-    });
     try {
-      await window.loadURL(PROJECT_LIST);
+      const debuggerClient = window.webContents.debugger;
+      debuggerClient.attach('1.3');
+      debuggerClient.on('message', (_event, method, parameters) => {
+        void this.observe(method, record(parameters) ?? {}, window).catch(
+          () => {
+            this.update({
+              error: '源站列表发现失败；请重新打开团队和项目列表后重试。',
+            });
+          },
+        );
+      });
+      // Network.enable needs a renderer, which the first navigation creates.
+      // Register observation first, then start both operations without awaiting either.
+      this.initializing = Promise.all([
+        debuggerClient.sendCommand('Network.enable', {
+          maxTotalBufferSize: RESPONSE_LIMIT * 2,
+          maxResourceBufferSize: RESPONSE_LIMIT,
+        }),
+        window.loadURL(PROJECT_LIST),
+      ]);
+      await this.initializing;
+      this.update({ error: undefined });
     } catch {
+      if (this.window === window) this.window = undefined;
+      if (!window.isDestroyed()) window.destroy();
       this.update({ error: '无法打开火山剧创，请检查网络后重试。' });
       throw new Error('无法打开火山剧创登录窗口。');
+    } finally {
+      this.initializing = undefined;
     }
     return window;
   }

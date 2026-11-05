@@ -1,10 +1,10 @@
-# ANTV生图 0.2.1
+# ANTV生图 0.2.2
 
 Windows 客户端：火山剧创资产名称同步 → 剧智创团队项目绑定与名称匹配 → 复用已有提示词 → 本机批量生图与保存。保留自由创作、参考图编辑和本地历史。
 
 ## 安装与使用
 
-1. 安装 `release-antv/ANTV生图-0.2.1-Setup.exe`，或运行 `ANTV生图-0.2.1-Portable.exe`。最终用户无需安装 Node.js。
+1. 安装 `release-antv/ANTV生图-0.2.2-Setup.exe`，或运行 `ANTV生图-0.2.2-Portable.exe`。最终用户无需安装 Node.js。
 2. 客户端已内置 `https://antv.aixmax.cn`，无需填写平台地址。在「连接设置」点击「登录剧智创」，手动登录并关闭登录窗口。多团队必须选择团队；首次只有一个团队自动选中。团队权限撤销后需重新选择，不会自动改到其他团队。
 3. 点击「登录火山剧创」，在独立内置浏览器正常登录，打开团队切换列表、项目列表和剧本列表，使客户端观察实际只读列表契约。关闭来源窗口会隐藏并保持会话；关闭客户端主窗口会退出程序。
 4. 点击「同步全部项目名称」。完整枚举团队、项目和剧本资产范围后，拉取角色、场景、道具名称。缺少接口契约、分页不完整或登录失效会明确报错，不把访问过的项目冒充全量。
@@ -46,9 +46,14 @@ npm run lint
 npm test
 npm run smoke
 npm run smoke:workflow
+node scripts/source-browser-smoke.cjs
 npm run pack
+node scripts/packaged-smoke.cjs
+node scripts/source-browser-smoke.cjs --packaged
 ```
 
 smoke 验证原有创作、Key 加密、参考图、预览保存、重启及主窗口关闭后隐藏窗口退出。smoke:workflow 使用本地 HTTP 云服务和本地图片响应，覆盖 Cookie/CSRF、团队选择/撤销、白名单名称上传、绑定匹配、项目切换竞争、12 个批量任务+自由创作共用 5 槽位、暂停/降低并发、分组保存和重启。均不调用真实模型。
 
-可用 ANTV_ELECTRON_EXECUTABLE 指定测试 Electron。构建运行时为 Electron 45.2.1；可用 `npm run pack -- --config.electronDist=本机已校验运行时目录`。安装包未配置商业代码签名。
+source-browser-smoke 使用全新临时会话直接启动 Electron，验证真实火山登录表单、窗口实际绘制、关闭隐藏与重新打开；不使用调试器驱动浏览器，避免改变初始化行为。`--packaged` 读取安装包内的采集器代码。0.2.2 修复首次导航前等待 Network.enable 导致的白屏，并允许加载失败后重新打开。
+
+可用 ANTV_ELECTRON_EXECUTABLE 指定测试 Electron。开发依赖为 Electron 45.2.1，本次安装包使用已校验的 45.2.3 运行时；可用 `npm run pack -- --config.electronDist=本机已校验运行时目录 --config.electronVersion=45.2.3`。安装包未配置商业代码签名。

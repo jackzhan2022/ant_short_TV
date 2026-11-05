@@ -440,3 +440,70 @@ test('independent secure browser login and session expiry update collector state
   collector.close();
   assert.equal(browser.destroyed, true);
 });
+
+test('source navigation starts without waiting for the renderer-dependent network listener and failed opens can retry', async () => {
+  const { EventEmitter } = require('node:events');
+  const Module = require('node:module');
+  const original = Module._load;
+  const windows = [];
+  let fail = true;
+  class FakeWindow extends EventEmitter {
+    constructor() {
+      super();
+      windows.push(this);
+      this.webContents = new EventEmitter();
+      this.webContents.session = {
+        setPermissionRequestHandler() {},
+        setPermissionCheckHandler() {},
+      };
+      this.webContents.setWindowOpenHandler = () => {};
+      this.webContents.debugger = new EventEmitter();
+      this.webContents.debugger.attach = () => {};
+      this.webContents.debugger.sendCommand = () =>
+        new Promise((resolve) => {
+          this.enableNetwork = resolve;
+        });
+    }
+    async loadURL() {
+      this.navigationStarted = true;
+      this.enableNetwork();
+      if (fail) throw new Error('ERR_CONNECTION_RESET');
+    }
+    isDestroyed() {
+      return Boolean(this.destroyed);
+    }
+    show() {}
+    focus() {}
+    destroy() {
+      this.destroyed = true;
+    }
+  }
+  let DramartCollector;
+  try {
+    Module._load = function (request, ...args) {
+      return request === 'electron'
+        ? { BrowserWindow: FakeWindow }
+        : original.call(this, request, ...args);
+    };
+    delete require.cache[require.resolve('../dist/dramart')];
+    ({ DramartCollector } = require('../dist/dramart'));
+  } finally {
+    Module._load = original;
+  }
+  const collector = new DramartCollector(() => {});
+  const first = collector.login();
+  assert.equal(
+    windows[0].navigationStarted,
+    true,
+    'navigation must start even while Network.enable is pending',
+  );
+  await assert.rejects(first, /无法打开/);
+  assert.equal(windows[0].destroyed, true);
+  assert.match(collector.state().error, /重试/);
+  fail = false;
+  await collector.login();
+  assert.equal(windows.length, 2);
+  assert.equal(windows[1].navigationStarted, true);
+  assert.equal(collector.state().error, undefined);
+  collector.close();
+});
