@@ -57,3 +57,5 @@ smoke 验证原有创作、Key 加密、参考图、预览保存、重启及主�
 source-browser-smoke 使用全新临时会话直接启动 Electron，验证真实火山登录表单、窗口实际绘制、关闭隐藏与重新打开；不使用调试器驱动浏览器，避免改变初始化行为。`--packaged` 读取安装包内的采集器代码。0.2.2 已修复首次导航白屏；0.2.3 移除 ListTeams 和手动切换来源团队的依赖，修正网页 SDK 认证调用，并显示空白名称变体的排除数量。
 
 可用 ANTV_ELECTRON_EXECUTABLE 指定测试 Electron。开发依赖为 Electron 45.2.1，本次安装包使用已校验的 45.2.3 运行时；可用 `npm run pack -- --config.electronDist=本机已校验运行时目录 --config.electronVersion=45.2.3`。安装包未配置商业代码签名。
+
+0.2.3 便携版使用 `--config.portable.useZip=true` 构建，避开本机 7z 追加提权助手时的文件占用问题；已实测便携启动器解包、独立临时配置启动及正常退出。来源修正及验证详情见 [验证记录](../docs/desktop-source-discovery-fix-2026-11-05.md)。
