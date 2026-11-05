@@ -69,6 +69,17 @@ export interface SourceSnapshot extends SourceProjectIdentity {
   complete: boolean;
   assets: SourceName[];
 }
+export interface SyncStatus {
+  phase: 'idle' | 'collecting' | 'uploading' | 'complete' | 'failed';
+  totalScopes: number;
+  uploadedScopes: number;
+  failedScopes: number;
+  uploadedProjects: number;
+  automaticPaused: boolean;
+  lastSuccessAt?: string;
+  nextRunAt?: string;
+  error?: string;
+}
 export interface WorkspaceState {
   cloudUrl: string;
   teams: Team[];
@@ -79,6 +90,7 @@ export interface WorkspaceState {
   projects: SourceProject[];
   targets: TargetProject[];
   autoSyncMinutes: number;
+  syncStatus: SyncStatus;
   source: {
     loggedIn: boolean;
     syncing: boolean;

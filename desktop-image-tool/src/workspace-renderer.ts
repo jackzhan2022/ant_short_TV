@@ -239,30 +239,36 @@ export function initializeWorkspace(hooks: Hooks) {
     return state?.projects.find((project) => project.id === projectId);
   }
   function renderProjects() {
+    const active = (state?.projects ?? []).filter((project) => project.active);
+    const count = new Set(
+      active.map(
+        (project) => `${project.sourceTeamId}/${project.sourceProjectId}`,
+      ),
+    ).size;
+    get('project-count').textContent =
+      `云端已保存 ${count} 个项目 · ${active.length} 份资产清单`;
     get('project-list').replaceChildren(
-      ...(state?.projects ?? [])
-        .filter((project) => project.active)
-        .map((project) => {
-          const item = button(
-            '',
-            async () => {
-              projectId = project.id;
-              renderProjects();
-              await loadAssets();
-            },
-            `project-item${project.id === projectId ? ' selected' : ''}`,
-          );
-          item.append(
-            node('strong', project.name),
-            node(
-              'small',
-              project.targetProjectName
-                ? `→ ${project.targetProjectName}`
-                : '尚未绑定剧智创项目',
-            ),
-          );
-          return item;
-        }),
+      ...active.map((project) => {
+        const item = button(
+          '',
+          async () => {
+            projectId = project.id;
+            renderProjects();
+            await loadAssets();
+          },
+          `project-item${project.id === projectId ? ' selected' : ''}`,
+        );
+        item.append(
+          node('strong', project.name),
+          node(
+            'small',
+            project.targetProjectName
+              ? `→ ${project.targetProjectName}`
+              : '尚未绑定剧智创项目',
+          ),
+        );
+        return item;
+      }),
     );
     const project = currentProject();
     get('asset-project-name').textContent =
@@ -327,12 +333,34 @@ export function initializeWorkspace(hooks: Hooks) {
           ? '仅展示当前账号有权限的团队。'
           : '当前账号暂无可用团队。'
         : '团队列表由登录后的实际权限返回。');
-    get('source-status').textContent = next.source.syncing
-      ? '正在核对全部项目并同步名称…'
-      : (next.source.error ??
-        (next.source.loggedIn
-          ? `火山剧创已登录 · 已发现 ${next.source.discoveredProjects} 个项目${next.source.lastSync ? ` · 最近拉取 ${new Date(next.source.lastSync).toLocaleTimeString()}` : ''}${next.source.skippedUnnamedVariants ? ` · ${next.source.skippedUnnamedVariants} 个空白名称变体未纳入匹配` : ''}`
-          : '请登录火山剧创；登录失效时自动同步暂停。'));
+    teamSelect.disabled = next.source.syncing;
+    const sync = next.syncStatus;
+    const messages = [
+      sync.phase === 'collecting'
+        ? '正在核对全部来源项目与资产名称，可继续创建图片任务。'
+        : sync.phase === 'uploading'
+          ? `正在上传 ${sync.uploadedScopes}/${sync.totalScopes} 份资产清单 · ${sync.failedScopes} 份失败`
+          : sync.phase === 'failed'
+            ? (sync.error ?? '同步失败，请重试。')
+            : sync.phase === 'complete'
+              ? `同步完成：${sync.uploadedProjects} 个项目 · ${sync.uploadedScopes} 份资产清单`
+              : '点击同步全部项目名称；将自动检查已保存的火山登录状态。',
+    ];
+    if (sync.lastSuccessAt)
+      messages.push(
+        `最近完整同步 ${new Date(sync.lastSuccessAt).toLocaleString()}`,
+      );
+    if (sync.automaticPaused)
+      messages.push('自动同步已暂停；手动同步成功或保存同步设置后恢复。');
+    else if (sync.nextRunAt)
+      messages.push(
+        `下次自动同步 ${new Date(sync.nextRunAt).toLocaleTimeString()}`,
+      );
+    if (next.source.skippedUnnamedVariants)
+      messages.push(
+        `${next.source.skippedUnnamedVariants} 个空白名称变体未纳入匹配`,
+      );
+    get('source-status').textContent = messages.join(' · ');
     get<HTMLButtonElement>('sync-source').disabled =
       !next.tenantId || next.source.syncing;
     if (next.error) error(next.error);

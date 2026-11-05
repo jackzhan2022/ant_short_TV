@@ -47,7 +47,7 @@ function setup(t, transport, config) {
     workspace.close();
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  return { workspace, directory };
+  return { workspace, directory, source };
 }
 const response = (data) =>
   new Response(JSON.stringify({ success: true, data }));
@@ -146,4 +146,161 @@ test('cloud project pagination rejects duplicate IDs instead of claiming complet
   });
   assert.match(state.error, /分页/);
   assert.equal(state.targets.length, 0);
+});
+
+const basicTransport = async (url) => {
+  const pathname = new URL(url).pathname;
+  if (pathname === '/api/tenants/my')
+    return response([{ id: 1, name: 'Team', status: 'ACTIVE' }]);
+  if (pathname === '/api/projects') return response({ total: 0, data: [] });
+  return response([]);
+};
+const collection = (id) => ({
+  sourceTeamId: 't',
+  sourceProjectId: id,
+  sourceScriptId: `s-${id}`,
+  name: id,
+  assets: [],
+});
+
+test('background source sync permits batch creation in the same team while still preventing team changes', async (t) => {
+  const { workspace, source } = setup(t, basicTransport);
+  await workspace.refresh();
+  let release;
+  source.collect = () =>
+    new Promise((resolve) => {
+      release = () => resolve([]);
+    });
+  const sync = workspace.sync();
+  await flush();
+  try {
+    assert.equal(workspace.state().source.syncing, true);
+    const result = await workspace.withBatch(
+      {},
+      async (_client, _input, teamId) => teamId,
+    );
+    assert.equal(result, 1);
+    await assert.rejects(workspace.selectTeam(2), /同步/);
+    await workspace.configure({ autoSyncMinutes: 0 });
+    assert.equal(workspace.state().autoSyncMinutes, 0);
+  } finally {
+    release();
+    await sync;
+  }
+});
+
+test('one rejected project does not hide later projects and refresh cannot erase sync failure or claim success', async (t) => {
+  const saved = [];
+  const { workspace, source } = setup(t, async (url, init) => {
+    if (url.endsWith('/source-projects/sync')) {
+      const input = JSON.parse(init.body);
+      if (input.sourceProjectId === 'bad')
+        return new Response(
+          JSON.stringify({
+            success: false,
+            errorCode: 'VALIDATION_ERROR',
+            errorMessage: 'invalid source name',
+          }),
+          { status: 400 },
+        );
+      saved.push(input);
+      return response(input);
+    }
+    if (url.endsWith('/source-projects'))
+      return response(
+        saved.map((p, index) => ({ ...p, id: index + 1, active: true })),
+      );
+    return basicTransport(url);
+  });
+  source.collect = async () => [
+    collection('first'),
+    collection('bad'),
+    collection('last'),
+  ];
+  await workspace.refresh();
+  await assert.rejects(workspace.sync(), /bad|失败/);
+  assert.deepEqual(
+    saved.map((p) => p.sourceProjectId),
+    ['first', 'last'],
+  );
+  assert.equal(workspace.state().projects.length, 2);
+  assert.equal(workspace.state().syncStatus.phase, 'failed');
+  assert.equal(workspace.state().syncStatus.uploadedScopes, 2);
+  assert.equal(workspace.state().syncStatus.failedScopes, 1);
+  assert.equal(workspace.state().syncStatus.lastSuccessAt, undefined);
+  await workspace.refresh();
+  assert.equal(workspace.state().syncStatus.phase, 'failed');
+  assert.match(workspace.state().syncStatus.error, /bad/);
+});
+
+test('automatic sync checks a restored source session and schedules from completion without blocking batches', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { workspace, source } = setup(t, basicTransport, {
+    cloudUrl: 'https://antv.aixmax.cn',
+    autoSyncMinutes: 1,
+    connectionId: 'c',
+    tenantId: 1,
+  });
+  await workspace.refresh();
+  let reads = 0,
+    release;
+  source.state = () => ({
+    loggedIn: false,
+    syncing: false,
+    discoveredProjects: 0,
+  });
+  source.collect = () => {
+    reads++;
+    return new Promise((resolve) => {
+      release = () => resolve([]);
+    });
+  };
+  t.mock.timers.tick(60000);
+  await flush();
+  assert.equal(reads, 1);
+  t.mock.timers.tick(90000);
+  await flush();
+  assert.equal(reads, 1);
+  release();
+  await flush();
+  t.mock.timers.tick(59999);
+  await flush();
+  assert.equal(reads, 1);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(reads, 2);
+  release();
+  await flush();
+});
+
+test('failed automatic sync pauses instead of repeatedly occupying the client until an explicit retry', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { workspace, source } = setup(t, basicTransport, {
+    cloudUrl: 'https://antv.aixmax.cn',
+    autoSyncMinutes: 1,
+    connectionId: 'c',
+    tenantId: 1,
+  });
+  await workspace.refresh();
+  let reads = 0;
+  source.collect = async () => {
+    reads++;
+    throw new Error('source unavailable');
+  };
+  t.mock.timers.tick(60000);
+  await flush();
+  t.mock.timers.tick(600000);
+  await flush();
+  assert.equal(reads, 1);
+  assert.equal(workspace.state().syncStatus.automaticPaused, true);
+  assert.equal(await workspace.withBatch({}, async () => true), true);
+  source.collect = async () => {
+    reads++;
+    return [];
+  };
+  await workspace.sync();
+  assert.equal(workspace.state().syncStatus.automaticPaused, false);
+  t.mock.timers.tick(60000);
+  await flush();
+  assert.equal(reads, 3);
 });

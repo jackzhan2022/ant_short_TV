@@ -2,13 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, session } from 'electron';
-import { CloudClient, normalizeCloudUrl } from './cloud';
+import { CloudClient, CloudRequestError, normalizeCloudUrl } from './cloud';
 import type { QueueState } from './shared';
 import type { SourceCollector } from './source-types';
 import type {
   BatchInput,
   SourceProject,
   SourceSnapshot,
+  SyncStatus,
   TargetProject,
   WorkspaceState,
 } from './workspace-shared';
@@ -30,13 +31,21 @@ export class WorkspaceController {
   private error?: string;
   private busy = false;
   private syncing = false;
+  private syncStatus: SyncStatus = {
+    phase: 'idle',
+    totalScopes: 0,
+    uploadedScopes: 0,
+    failedScopes: 0,
+    uploadedProjects: 0,
+    automaticPaused: false,
+  };
   private version = 0;
   private closed = false;
   private refreshJob?: {
     client: CloudClient;
     promise: Promise<WorkspaceState>;
   };
-  private timer?: ReturnType<typeof setInterval>;
+  private timer?: ReturnType<typeof setTimeout>;
   private loginWindow?: BrowserWindow;
   private file: string;
 
@@ -65,6 +74,7 @@ export class WorkspaceController {
     return {
       cloudUrl: this.config.cloudUrl,
       autoSyncMinutes: this.config.autoSyncMinutes,
+      syncStatus: { ...this.syncStatus },
       teams: this.client?.teams ?? [],
       tenantId: this.client?.tenantId,
       teamName: this.client?.teams.find(
@@ -109,8 +119,17 @@ export class WorkspaceController {
     fs.writeFileSync(next, JSON.stringify(this.config), { mode: 0o600 });
     fs.renameSync(next, this.file);
   }
+  private resetSyncStatus() {
+    this.syncStatus = {
+      phase: 'idle',
+      totalScopes: 0,
+      uploadedScopes: 0,
+      failedScopes: 0,
+      uploadedProjects: 0,
+      automaticPaused: false,
+    };
+  }
   configure(input: { cloudUrl?: string; autoSyncMinutes: number }) {
-    this.idle();
     const cloudUrl = normalizeCloudUrl(input.cloudUrl ?? this.config.cloudUrl);
     if (
       !Number.isInteger(input.autoSyncMinutes) ||
@@ -118,7 +137,18 @@ export class WorkspaceController {
       input.autoSyncMinutes > 1440
     )
       throw new Error('同步间隔需为 0～1440 分钟，0 表示关闭。');
+    // Changing the interval does not change team or connection identity and is safe during work.
+    if (cloudUrl === this.config.cloudUrl) {
+      this.config.autoSyncMinutes = input.autoSyncMinutes;
+      this.syncStatus.automaticPaused = false;
+      this.save();
+      this.schedule();
+      this.changed();
+      return this.refresh();
+    }
+    this.idle();
     this.version++;
+    this.resetSyncStatus();
     if (this.config.cloudUrl !== cloudUrl) {
       this.loginWindow?.destroy();
       this.loginWindow = undefined;
@@ -185,7 +215,7 @@ export class WorkspaceController {
     await login.loadURL(destination);
   }
   refresh(): Promise<WorkspaceState> {
-    if (!this.client || this.busy || this.closed)
+    if (!this.client || this.busy || this.syncing || this.closed)
       return Promise.resolve(this.state());
     const client = this.client;
     if (this.refreshJob?.client === client) return this.refreshJob.promise;
@@ -291,6 +321,8 @@ export class WorkspaceController {
       this.targets = [];
       await client.selectTeam(id);
       this.config.tenantId = id;
+      this.resetSyncStatus();
+      this.schedule();
       this.save();
       return await this.refreshNow(client, this.version);
     } finally {
@@ -309,7 +341,8 @@ export class WorkspaceController {
     return client;
   }
   private idle() {
-    if (this.busy) throw new Error('正在同步或创建批量任务，请完成后再切换。');
+    if (this.busy || this.syncing)
+      throw new Error('正在同步或创建批量任务，请完成后再切换团队。');
   }
   loginSource() {
     return this.source.login();
@@ -317,16 +350,46 @@ export class WorkspaceController {
   async sync() {
     this.idle();
     const client = this.requireClient();
-    this.busy = true;
     this.syncing = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.syncStatus = {
+      phase: 'collecting',
+      totalScopes: 0,
+      uploadedScopes: 0,
+      failedScopes: 0,
+      uploadedProjects: 0,
+      automaticPaused: false,
+      lastSuccessAt: this.syncStatus.lastSuccessAt,
+    };
     this.changed();
     try {
+      if (this.refreshJob?.client === client) await this.refreshJob.promise;
       const tenantId = client.tenantId;
       await client.selectTeam(tenantId as number);
       const collections = await this.source.collect();
-      if (this.client !== client || client.tenantId !== tenantId)
+      if (this.closed || this.client !== client || client.tenantId !== tenantId)
         throw new Error('团队已改变，同步已中止。');
+      this.syncStatus.phase = 'uploading';
+      this.syncStatus.totalScopes = collections.length;
+      const projectKey = (value: {
+        sourceTeamId: string;
+        sourceProjectId: string;
+      }) => `${value.sourceTeamId}/${value.sourceProjectId}`;
+      const expected = new Map<string, number>();
+      const uploaded = new Map<string, number>();
       for (const collection of collections) {
+        const key = projectKey(collection);
+        expected.set(key, (expected.get(key) ?? 0) + 1);
+      }
+      const failures: string[] = [];
+      this.changed();
+      for (const collection of collections) {
+        if (
+          this.closed ||
+          this.client !== client ||
+          client.tenantId !== tenantId
+        )
+          throw new Error('团队已改变，同步已中止。');
         const payload: SourceSnapshot = {
           connectionId: this.config.connectionId,
           sourceTeamId: collection.sourceTeamId,
@@ -343,16 +406,50 @@ export class WorkspaceController {
             }),
           ),
         };
-        await client.send('/api/desktop/source-projects/sync', 'POST', payload);
+        try {
+          await client.send(
+            '/api/desktop/source-projects/sync',
+            'POST',
+            payload,
+          );
+          this.syncStatus.uploadedScopes++;
+          const key = projectKey(collection);
+          uploaded.set(key, (uploaded.get(key) ?? 0) + 1);
+          this.syncStatus.uploadedProjects = [...expected].filter(
+            ([id, count]) => uploaded.get(id) === count,
+          ).length;
+        } catch (error) {
+          this.syncStatus.failedScopes++;
+          failures.push(
+            `“${collection.name}”：${error instanceof Error ? error.message : '上传失败'}`,
+          );
+          // A rejected name/project must not prevent other valid projects from reaching the cloud.
+          // Session, permission and transport failures stop the run instead of issuing more requests.
+          if (
+            !(error instanceof CloudRequestError) ||
+            ![400, 422].includes(error.status)
+          )
+            break;
+        }
+        this.changed();
       }
-      await this.loadProjects();
+      if (client.tenantId === tenantId) await this.loadProjects();
+      if (failures.length)
+        throw new Error(
+          `未完整同步：已写入 ${this.syncStatus.uploadedScopes}/${collections.length} 份资产清单，${failures.length} 份失败。${failures.slice(0, 3).join('；')}`,
+        );
+      this.syncStatus.phase = 'complete';
+      this.syncStatus.lastSuccessAt = new Date().toISOString();
       this.error = undefined;
     } catch (error) {
-      this.error = error instanceof Error ? error.message : '同步失败。';
+      this.syncStatus.phase = 'failed';
+      this.syncStatus.error =
+        error instanceof Error ? error.message : '同步失败。';
+      this.syncStatus.automaticPaused = true;
       throw error;
     } finally {
-      this.busy = false;
       this.syncing = false;
+      this.schedule();
       this.changed();
     }
     return this.state();
@@ -366,10 +463,11 @@ export class WorkspaceController {
       teamName: string,
     ) => Promise<T>,
   ): Promise<T> {
-    this.idle();
+    if (this.busy) throw new Error('正在创建批量任务或切换团队，请稍后重试。');
     this.busy = true;
     this.changed();
     try {
+      if (this.refreshJob) await this.refreshJob.promise;
       const client = this.requireClient();
       const tenantId = client.tenantId as number;
       await client.selectTeam(tenantId);
@@ -386,28 +484,47 @@ export class WorkspaceController {
     }
   }
   private schedule() {
-    if (this.timer) clearInterval(this.timer);
-    if (this.config.autoSyncMinutes > 0)
-      this.timer = setInterval(() => {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+    this.syncStatus.nextRunAt = undefined;
+    if (
+      !this.closed &&
+      !this.syncing &&
+      !this.syncStatus.automaticPaused &&
+      this.config.autoSyncMinutes > 0
+    ) {
+      const delay = this.config.autoSyncMinutes * 60000;
+      this.syncStatus.nextRunAt = new Date(Date.now() + delay).toISOString();
+      this.timer = setTimeout(() => {
+        this.timer = undefined;
         this.resumeSync();
-      }, this.config.autoSyncMinutes * 60000);
+      }, delay);
+    }
   }
   resumeSync() {
     if (
       this.closed ||
-      this.busy ||
       this.config.autoSyncMinutes <= 0 ||
-      !this.client?.tenantId ||
-      !this.authenticated ||
-      !this.source.state().loggedIn
+      this.syncStatus.automaticPaused ||
+      this.syncing
     )
       return;
+    if (
+      this.busy ||
+      this.refreshJob ||
+      !this.client?.tenantId ||
+      !this.authenticated
+    ) {
+      this.schedule();
+      return;
+    }
+    // A restored source cookie has not yet produced observed requests. Let collect verify it.
     void this.sync().catch(() => {});
   }
   close() {
     this.closed = true;
     this.version++;
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) clearTimeout(this.timer);
     this.loginWindow?.destroy();
     this.source.close();
   }

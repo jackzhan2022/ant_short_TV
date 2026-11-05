@@ -229,6 +229,14 @@ const os = require('node:os');
       document.querySelector('#toast').textContent.includes('已同步'),
     );
     assert.equal(syncs.length, 1);
+    assert.match(
+      await page.locator('#source-status').textContent(),
+      /同步完成：1 个项目 · 1 份资产清单/,
+    );
+    assert.match(
+      await page.locator('#project-count').textContent(),
+      /云端已保存 1 个项目 · 2 份资产清单/,
+    );
     assert.equal(JSON.stringify(syncs).includes('MUST_NOT_UPLOAD'), false);
     assert.deepEqual(Object.keys(syncs[0].assets[0]).sort(), [
       'name',

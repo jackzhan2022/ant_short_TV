@@ -1,5 +1,14 @@
 import type { Team } from './workspace-shared';
 
+export class CloudRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export function normalizeCloudUrl(value: string): string {
   const url = new URL(value.trim());
   if (
@@ -109,21 +118,37 @@ export class CloudClient {
     if (response.status === 401) {
       if (this.tenantId !== undefined) this.selectionRequired = true;
       this.tenantId = undefined;
-      throw new Error('剧智创登录已失效，请重新登录。');
+      throw new CloudRequestError('剧智创登录已失效，请重新登录。', 401);
     }
-    if (!response.ok)
-      throw new Error(
-        response.status === 404 && path.startsWith('/api/desktop/')
-          ? '平台尚未启用桌面资产接口，请先部署配套后端。'
-          : `平台请求失败（${response.status}）。`,
+    const result = (await response.json().catch(() => undefined)) as
+      | {
+          success: boolean;
+          data: T;
+          errorCode?: string;
+          errorMessage?: string;
+        }
+      | undefined;
+    if (!response.ok) {
+      const reason =
+        result?.success === false &&
+        typeof result.errorCode === 'string' &&
+        typeof result.errorMessage === 'string' &&
+        result.errorMessage.length <= 1000
+          ? result.errorMessage
+          : undefined;
+      throw new CloudRequestError(
+        reason ??
+          (response.status === 404 && path.startsWith('/api/desktop/')
+            ? '平台尚未启用桌面资产接口，请先部署配套后端。'
+            : `平台请求失败（${response.status}）。`),
+        response.status,
       );
-    const result = (await response.json()) as {
-      success: boolean;
-      data: T;
-      errorMessage?: string;
-    };
-    if (!result.success)
-      throw new Error(result.errorMessage || '平台操作失败。');
+    }
+    if (!result?.success)
+      throw new CloudRequestError(
+        result?.errorMessage || '平台操作失败。',
+        response.status,
+      );
     return result.data;
   }
 }

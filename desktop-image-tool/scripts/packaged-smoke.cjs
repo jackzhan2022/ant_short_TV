@@ -54,7 +54,7 @@ const asar = require('@electron/asar');
     }));
     assert.equal(path.resolve(runtime.data), path.resolve(data));
     assert.equal(runtime.packaged, true);
-    assert.equal(runtime.version, '0.2.3');
+    assert.equal(runtime.version, '0.2.4');
     const page = await application.firstWindow();
     const errors = [];
     page.on('pageerror', (failure) => errors.push(failure.message));
@@ -89,7 +89,7 @@ const asar = require('@electron/asar');
     });
     assert.deepEqual(errors, []);
     console.log(
-      'PASS packaged 0.2.3: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.',
+      'PASS packaged 0.2.4: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.',
     );
   } finally {
     if (application) await application.close().catch(() => {});

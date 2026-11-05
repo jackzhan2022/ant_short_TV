@@ -116,3 +116,32 @@ test('a scoped 401 cannot silently switch subsequent syncs to a different team',
   await client.refreshTeams();
   assert.equal(client.tenantId, undefined);
 });
+
+test('structured cloud validation failures retain actionable reason and status without exposing raw error pages', async () => {
+  const client = new CloudClient(
+    'https://studio.example.com',
+    async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          errorCode: 'VALIDATION_ERROR',
+          errorMessage: 'invalid source name',
+        }),
+        { status: 400 },
+      ),
+    1,
+  );
+  await assert.rejects(
+    client.send('/api/desktop/source-projects/sync', 'POST', {}),
+    (error) => error.status === 400 && error.message === 'invalid source name',
+  );
+  const html = new CloudClient(
+    'https://studio.example.com',
+    async () => new Response('<html>SECRET</html>', { status: 502 }),
+    1,
+  );
+  await assert.rejects(
+    html.get('/api/desktop/source-projects'),
+    (error) => !error.message.includes('SECRET') && error.status === 502,
+  );
+});

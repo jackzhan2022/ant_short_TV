@@ -566,3 +566,36 @@ test('source navigation starts without waiting for the renderer-dependent networ
   assert.equal(collector.state().error, undefined);
   collector.close();
 });
+
+test('source display names normalize line breaks and tabs before cloud validation without changing asset identity', () => {
+  const items = source.projectAssetNames('SCENE', [
+    { SceneId: 'a', Meta: { Name: ' 王家客厅\n' } },
+    { SceneId: 'b', Meta: { Name: '客厅\t夜' } },
+    { SceneId: 'c', Meta: { Name: '走廊\r\n转角' } },
+  ]);
+  assert.deepEqual(
+    items.map((item) => item.name),
+    ['王家客厅', '客厅 夜', '走廊 转角'],
+  );
+  assert.deepEqual(
+    items.map((item) => item.sourceAssetId),
+    ['a', 'b', 'c'],
+  );
+  assert.throws(
+    () =>
+      source.projectAssetNames('PROP', [
+        {
+          PropId: 'p',
+          Meta: { Name: `bad${String.fromCharCode(0)}name` },
+        },
+      ]),
+    /名称/,
+  );
+  assert.throws(
+    () =>
+      source.projectAssetNames('PROP', [
+        { PropId: 'p', Meta: { Name: 'x'.repeat(201) } },
+      ]),
+    /名称/,
+  );
+});

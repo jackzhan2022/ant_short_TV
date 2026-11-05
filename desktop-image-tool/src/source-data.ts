@@ -49,10 +49,20 @@ function requiredId(row: Row, key: string): string {
 
 function name(row: Row): string {
   const value = row.ProjectName ?? record(row.Meta)?.Name ?? row.Name;
-  if (typeof value !== 'string' || !value.trim() || value.length > 1000) {
+  // Source names can contain formatting newlines/tabs; cloud names are single-line.
+  const normalized =
+    typeof value === 'string' ? value.replace(/[\t\r\n]+/g, ' ').trim() : '';
+  if (
+    !normalized ||
+    normalized.length > 200 ||
+    [...normalized].some((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || (code >= 127 && code <= 159);
+    })
+  ) {
     throw new Error('源站列表名称结构不受支持，未同步任何部分结果。');
   }
-  return value;
+  return normalized;
 }
 
 export function accessibleTeamIds(value: unknown): string[] {
