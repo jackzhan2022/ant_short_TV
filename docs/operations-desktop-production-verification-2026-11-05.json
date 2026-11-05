@@ -1,0 +1,68 @@
+{
+  "deployedCommit": "0de26ea7c8343018bc373ab111822302078a18fa",
+  "frontendSourceCommit": "86b57e588981da286e65d1c2008b2c8f6e61ee9f",
+  "release": "/opt/antv/releases/20261105171020-0de26ea7-operations-budget",
+  "previousRelease": "/opt/antv/releases/20261105165839-86b57e58-operations-desktop",
+  "backup": "/opt/antv/backups/20261105-operations-desktop",
+  "backendSha256": "4fbb6109606eea6188e1ad735573842dc11f9fbb58ec3bbd69bb653a14be50fd",
+  "frontendArchiveSha256": "f23b4d2be7f22b2ebc8062a2ee369bb94f6355dc86bf25bd14658cc8ca4a54f7",
+  "schemaVersion": "176",
+  "schemaMigrationsSucceeded": [
+    174,
+    175,
+    176
+  ],
+  "health": "UP",
+  "service": {
+    "MainPID": "3082625",
+    "NRestarts": "0",
+    "ActiveState": "active"
+  },
+  "frontendAssetsVerified": 8,
+  "retainedAssets": 648,
+  "protectedRoutes": {
+    "/api/currentUser": 401,
+    "/api/desktop/source-projects": 401,
+    "/api/platform/operations/snapshot": 401,
+    "/api/platform/operations/settings": 401
+  },
+  "environmentUnchanged": true,
+  "sharedSkillsUnchanged": true,
+  "modelAndPriceConfigurationUnchanged": true,
+  "taskStatePreserved": true,
+  "verificationWindowUtc": [
+    "2026-11-05T09:12:41.326980+00:00",
+    "2026-11-05T09:14:13.391436+00:00"
+  ],
+  "projectedCalls": [
+    10,
+    40
+  ],
+  "projectedExecutions": [
+    20,
+    59
+  ],
+  "reconciliationSucceededAtUtc": "2026-11-05 09:13:47.944",
+  "reconciliationConsecutiveFailures": 0,
+  "newMonitoringJobFailuresDuringVerification": 0,
+  "monitoringPipeline": {
+    "monitoringQueueDepth": 0,
+    "monitoringDropped": 0,
+    "monitoringDimensionOverflow": 0,
+    "monitoringLastFlushAt": "2026-11-05T09:14:08.427867078Z",
+    "monitoringLastFailure": null,
+    "monitoringActiveSweepAt": "2026-11-05T09:13:47.363155420Z"
+  },
+  "rules": 11,
+  "immediateNotificationsEnabled": false,
+  "externalProbeConfigured": false,
+  "historicalBackfillComplete": false,
+  "testResults": {
+    "initialBackend": 158,
+    "reconciliationFix": 16,
+    "frontend": 110,
+    "desktop": 39,
+    "probeScript": 4
+  },
+  "liveSourceEnumerationVerified": false
+}
