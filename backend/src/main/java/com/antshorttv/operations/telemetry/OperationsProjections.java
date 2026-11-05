@@ -11,6 +11,8 @@ import static com.antshorttv.operations.telemetry.OperationsTelemetry.*;
 /** Lightweight allowlisted reads only; never reads source summaries, prompts or results. */
 @Component
 public class OperationsProjections {
+    // Each page shares the one-second monitoring transaction, including per-row upserts.
+    private static final int SOURCE_BATCH_SIZE=10;
     private static final Set<String> LOCAL_REJECTIONS=Set.of("VALIDATION_ERROR","TEAM_POINTS_INSUFFICIENT","UNAUTHORIZED","FORBIDDEN","PROJECT_ACCESS_DENIED","AI_MODEL_NOT_FOUND","AI_MODEL_DISABLED","AI_MODEL_BILLING_MISSING","AI_PROVIDER_NOT_FOUND","AI_PROVIDER_DISABLED","AI_EXECUTION_STATUS_INVALID","AI_VIDEO_CONCURRENCY_LIMIT_EXCEEDED");
     private static final String CALL_FIELDS="c.id,c.created_at,c.tenant_id,t.project_id,c.provider_id,c.model_id,c.business_scene,c.service_type,c.trace_id,c.execution_id,c.attempt_id,c.transport_outcome,c.business_outcome,c.status,c.duration_ms,c.prompt_tokens,c.completion_tokens,"+sourceErrorCode();
     private static String sourceErrorCode() {
@@ -159,7 +161,7 @@ public class OperationsProjections {
         });
     }
 
-    /** Five bounded keyset scans total at most 500 source rows, including older active obligations. */
+    /** Five bounded keyset scans total at most 50 source rows, including older active obligations. */
     public void reconcile(Instant now) {
         for(boolean recent:List.of(true,false)) {
             scanCalls(now,recent);scanExecutions(now,recent);
@@ -171,10 +173,10 @@ public class OperationsProjections {
         String key="telemetry.calls."+(recent?"recent":"sweep");
         database.transactions().executeWithoutResult(status->{
             var cursor=cursor(key,now,recent);
-            var rows=sourceRows("select "+CALL_FIELDS+" from ai_call_log c left join ai_execution_task t on t.id=c.execution_id where c.id>? and c.created_at>=? and c.created_at<=? order by c.id limit 100",cursor.id(),cursor.from(),cursor.to());
+            var rows=sourceRows("select "+CALL_FIELDS+" from ai_call_log c left join ai_execution_task t on t.id=c.execution_id where c.id>? and c.created_at>=? and c.created_at<=? order by c.id limit "+SOURCE_BATCH_SIZE,cursor.id(),cursor.from(),cursor.to());
             for(var row:rows)projectCallSnapshot(row);
-            saveCursor(key,rows.size()==100?new ScanCursor(number(rows.get(rows.size()-1),"id"),cursor.at(),cursor.from(),cursor.to()):null);
-            if(rows.size()<100)org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+            saveCursor(key,rows.size()==SOURCE_BATCH_SIZE?new ScanCursor(number(rows.get(rows.size()-1),"id"),cursor.at(),cursor.from(),cursor.to()):null);
+            if(rows.size()<SOURCE_BATCH_SIZE)org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
                 @Override public void afterCommit(){synchronized(coverageCandidates){if(coverageCandidates.size()>=8)coverageCandidates.pollFirst();coverageCandidates.addLast(new CoverageRange(sourceInstant(cursor.from()),sourceInstant(cursor.to())));}}
             });
         });
@@ -183,10 +185,10 @@ public class OperationsProjections {
         String key="telemetry.executions."+(recent?"recent":"sweep");
         database.transactions().executeWithoutResult(status->{
             var cursor=cursor(key,now,recent);
-            var rows=sourceRows("select "+EXEC_FIELDS+" from ai_execution_task where updated_at>=? and updated_at<=? and (updated_at>? or (updated_at=? and id>?)) order by updated_at,id limit 100",cursor.from(),cursor.to(),cursor.at(),cursor.at(),cursor.id());
+            var rows=sourceRows("select "+EXEC_FIELDS+" from ai_execution_task where updated_at>=? and updated_at<=? and (updated_at>? or (updated_at=? and id>?)) order by updated_at,id limit "+SOURCE_BATCH_SIZE,cursor.from(),cursor.to(),cursor.at(),cursor.at(),cursor.id());
             for(var row:rows)projectExecutionSnapshot(row);
             Map<String,Object> last=rows.isEmpty()?Map.of():rows.get(rows.size()-1);
-            saveCursor(key,rows.size()==100?new ScanCursor(number(last,"id"),sourceDateTime(last.get("updated_at")),cursor.from(),cursor.to()):null);
+            saveCursor(key,rows.size()==SOURCE_BATCH_SIZE?new ScanCursor(number(last,"id"),sourceDateTime(last.get("updated_at")),cursor.from(),cursor.to()):null);
         });
     }
     private void scanActiveExecutions(Instant now) {
@@ -202,9 +204,9 @@ public class OperationsProjections {
                 var highest=database.jdbc().queryForList("select id from ai_execution_task where "+active+" order by id desc limit 1");
                 upper=highest.isEmpty()?0:number(highest.get(0),"id");
             }
-            var rows=sourceRows("select "+EXEC_FIELDS+" from ai_execution_task where "+active+" and id>? and id<=? order by id limit 100",id,upper);
+            var rows=sourceRows("select "+EXEC_FIELDS+" from ai_execution_task where "+active+" and id>? and id<=? order by id limit "+SOURCE_BATCH_SIZE,id,upper);
             for(var row:rows)projectExecutionSnapshot(row);
-            boolean finished=rows.size()<100 || number(rows.get(rows.size()-1),"id")>=upper;
+            boolean finished=rows.size()<SOURCE_BATCH_SIZE || number(rows.get(rows.size()-1),"id")>=upper;
             if(finished){id=0;upper=0;completed=now.toString();}else id=number(rows.get(rows.size()-1),"id");
             database.jdbc().update("update ops_runtime_setting set value_json=?,version=version+1,updated_at=? where setting_key=?",telemetry.json(Map.of("id",id,"upperId",upper,"completedAt",completed)),ts(now),key);
             if(!completed.isBlank()){Instant completeAt=Instant.parse(completed);org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){@Override public void afterCommit(){telemetry.activeSweepAt=completeAt;}});}

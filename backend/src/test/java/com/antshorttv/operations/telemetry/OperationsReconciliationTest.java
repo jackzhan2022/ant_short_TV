@@ -39,10 +39,10 @@ class OperationsReconciliationTest {
         jdbc.update("update ai_call_log set status='FAILED',transport_outcome='FAILED',business_outcome='NOT_REACHED',error_message='VALIDATION_ERROR redacted' where id=3");
         jdbc.update("insert into ai_execution_task(id,execution_version,status,created_at,updated_at) values(999,1,'RUNNING',?,?)",at.minusDays(2),at.minusDays(2));
         projections.reconcile(now);
-        assertThat(jdbc.queryForObject("select count(*) from ops_ai_call_projection",Long.class)).isEqualTo(100);
-        assertThat(jdbc.queryForObject("select count(*) from ops_execution_observation",Long.class)).isEqualTo(100);
-        assertThat(jdbc.queryForObject("select value_json from ops_runtime_setting where setting_key='telemetry.executions.recent'",String.class)).contains("\"id\":100","\"at\":");
-        projections.reconcile(now.plusSeconds(1));
+        assertThat(jdbc.queryForObject("select count(*) from ops_ai_call_projection",Long.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from ops_execution_observation",Long.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select value_json from ops_runtime_setting where setting_key='telemetry.executions.recent'",String.class)).contains("\"id\":10","\"at\":");
+        for(int page=1;page<13;page++)projections.reconcile(now.plusSeconds(page));
         var coverage=mock(OperationsCoverageService.class);projections.publishCoverage(coverage,now.plusSeconds(1));
         verifyNoInteractions(coverage);
         telemetry.flush();projections.publishCoverage(coverage,now.plusSeconds(1));
