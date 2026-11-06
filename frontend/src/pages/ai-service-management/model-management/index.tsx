@@ -2,6 +2,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
 import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
+import OperationsPage from '../../operations';
 import ConcurrencyConfigPage from '../concurrency-config';
 import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../platform-models';
@@ -85,6 +86,18 @@ const ModelManagementPage = () => {
     ? activeKey
     : items[0]?.key;
   const [activeModule, setActiveModule] = useState<string>();
+  const [activeSystemTab, setActiveSystemTab] = useState<string>();
+  const systemItems = [
+    ...(access.canViewPlatformAiConcurrency
+      ? [{ key: 'concurrency-config', label: '并行配置', children: <ConcurrencyConfigPage /> }]
+      : []),
+    ...(access.canViewOperations
+      ? [{ key: 'operations', label: '运维中心', children: <OperationsPage />, destroyOnHidden: true }]
+      : []),
+  ];
+  const selectedSystemTab = systemItems.some((item) => item.key === activeSystemTab)
+    ? activeSystemTab
+    : systemItems[0]?.key;
   const modules = [
     ...(selectedKey
       ? [
@@ -104,23 +117,19 @@ const ModelManagementPage = () => {
           },
         ]
       : []),
-    ...(access.canViewPlatformAiConcurrency
+    ...(selectedSystemTab
       ? [
           {
             key: 'system-management',
             label: '系统管理',
+            destroyOnHidden: true,
             children: (
               <Tabs
                 aria-label="系统管理功能"
                 className={styles.functions}
-                activeKey="concurrency-config"
-                items={[
-                  {
-                    key: 'concurrency-config',
-                    label: '并行配置',
-                    children: <ConcurrencyConfigPage />,
-                  },
-                ]}
+                activeKey={selectedSystemTab}
+                onChange={setActiveSystemTab}
+                items={systemItems}
               />
             ),
           },

@@ -71,6 +71,7 @@ export default function access(
     canViewAiCallLogs:
       currentUser && hasMenu('AI_MANAGEMENT'),
     canViewAiManagement:
+      hasOperationsPermission('PLATFORM_OPERATIONS_VIEW') ||
       currentUser &&
       (hasMenu('AI_MANAGEMENT') ||
         platformPermissions.includes('PLATFORM_AI_PROVIDER_VIEW') ||

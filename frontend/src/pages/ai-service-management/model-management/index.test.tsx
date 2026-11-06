@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     canManageTenantWorkflowSkills: false,
     canViewTenantWorkflowSkills: false,
     canViewPlatformAiConcurrency: false,
+    canViewOperations: false,
   },
 }));
 
@@ -52,6 +53,9 @@ vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
 vi.mock('../concurrency-config', () => ({
   default: () => <div>concurrency-config-page</div>,
 }));
+vi.mock('../../operations', () => ({
+  default: () => <div>operations-page</div>,
+}));
 vi.mock('../workflow-agents', () => ({
   default: () => <div>workflow-agent-page</div>,
 }));
@@ -74,6 +78,48 @@ describe('ModelManagementPage', () => {
     mocks.access.canManageTenantWorkflowSkills = false;
     mocks.access.canViewTenantWorkflowSkills = false;
     mocks.access.canViewPlatformAiConcurrency = false;
+    mocks.access.canViewOperations = false;
+  });
+
+  it('opens system management for an operations-only viewer', () => {
+    for (const key of Object.keys(mocks.access)) {
+      mocks.access[key as keyof typeof mocks.access] = false;
+    }
+    mocks.access.canViewOperations = true;
+    render(<ModelManagementPage />);
+    expect(screen.getByRole('button', { name: '系统管理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '运维中心' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '并行配置' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '大模型管理' })).not.toBeInTheDocument();
+    expect(screen.getByText('operations-page')).toBeInTheDocument();
+  });
+
+  it('switches between concurrency and operations under system management', () => {
+    mocks.access.canViewPlatformAiConcurrency = true;
+    mocks.access.canViewOperations = true;
+    render(<ModelManagementPage />);
+    expect(screen.queryByText('operations-page')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '系统管理' }));
+    expect(screen.getByText('concurrency-config-page')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '运维中心' }));
+    expect(screen.getByText('operations-page')).toBeInTheDocument();
+    expect(screen.queryByText('concurrency-config-page')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '并行配置' }));
+    expect(screen.getByText('concurrency-config-page')).toBeInTheDocument();
+    expect(screen.queryByText('operations-page')).not.toBeInTheDocument();
+  });
+
+  it('hides operations without its view permission and falls back after revocation', () => {
+    mocks.access.canViewPlatformAiConcurrency = true;
+    mocks.access.canViewOperations = true;
+    const view = render(<ModelManagementPage />);
+    fireEvent.click(screen.getByRole('button', { name: '系统管理' }));
+    fireEvent.click(screen.getByRole('button', { name: '运维中心' }));
+    mocks.access.canViewOperations = false;
+    view.rerender(<ModelManagementPage />);
+    expect(screen.queryByRole('button', { name: '运维中心' })).not.toBeInTheDocument();
+    expect(screen.queryByText('operations-page')).not.toBeInTheDocument();
+    expect(screen.getByText('concurrency-config-page')).toBeInTheDocument();
   });
 
   it('opens system management for a configuration-only user without a model module', () => {

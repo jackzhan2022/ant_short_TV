@@ -60,10 +60,21 @@ describe('operations platform permissions', () => {
       platformPermissions: ['PLATFORM_OPERATIONS_VIEW'],
     });
     expect(result.canViewOperations).toBe(true);
+    expect(result.canViewAiManagement).toBe(true);
     for (const key of keys.slice(1)) expect(result[key]).toBe(false);
     expect(routes.find((route) => route.path === '/operations')).toMatchObject({
       access: 'canViewOperations',
       component: './operations',
     });
+  });
+  it('does not grant management entry from an impersonated operations permission', () => {
+    expect(access({
+      currentUser: { userid: '1' },
+      platformPermissions: ['PLATFORM_OPERATIONS_VIEW'],
+      bootstrap: {
+        platform: { roles: ['PLATFORM_ADMIN'] },
+        session: { impersonation: { administratorId: 1, administratorName: 'admin', tenantId: 9 } },
+      },
+    }).canViewAiManagement).toBe(false);
   });
 });
