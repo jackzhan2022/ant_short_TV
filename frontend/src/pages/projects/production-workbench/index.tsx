@@ -20,6 +20,7 @@ import { formatPoints } from '@/utils/points';
 import { queryScriptContent } from './service';
 import ProjectAiConfigPage from './ai-config';
 import actionStyles from './WorkbenchActions.module.css';
+import headerStyles from './WorkbenchHeader.module.css';
 
 const topSteps = [
   { key: 'script', label: '剧本', icon: <BookOutlined /> },
@@ -183,21 +184,17 @@ const ProductionWorkbench = () => {
   return (
     <div style={{ minHeight: boundedWorkspace ? 0 : '100vh', height: boundedWorkspace ? 'calc(100dvh - 32px)' : undefined, display: boundedWorkspace ? 'grid' : undefined, gridTemplateRows: boundedWorkspace ? 'auto minmax(0, 1fr)' : undefined, overflow: boundedWorkspace ? 'hidden' : undefined, background: 'var(--app-color-bg-layout)' }}>
       <header
+        className={headerStyles.header}
         style={{
           minHeight: 68,
           boxSizing: 'border-box',
           overflowX: boundedWorkspace ? 'auto' : undefined,
           background: 'var(--app-color-bg-container)',
           borderBottom: '1px solid var(--app-color-border)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 12,
-          alignItems: 'center',
-          justifyContent: 'space-between',
           padding: '8px 16px',
         }}
       >
-        <Flex align="center" gap={12}>
+        <Flex className={headerStyles.identity} align="center" gap={12}>
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
@@ -262,7 +259,7 @@ const ProductionWorkbench = () => {
           </div>
         </Flex>
 
-        <Flex align="center" gap={0} style={{ flex: '0 0 auto', maxWidth: '100%', overflowX: 'auto' }}>
+        <Flex className={headerStyles.stages} align="center" gap={0} style={{ flex: '0 0 auto', maxWidth: '100%', overflowX: 'auto' }}>
           {topSteps.map((step, index) => {
             const active = step.key === activeStep;
             return (
@@ -273,6 +270,7 @@ const ProductionWorkbench = () => {
                 <button
                   type="button"
                   aria-label={step.label}
+                  aria-current={active ? 'step' : undefined}
                   onClick={() =>
                     history.push(
                       `/projects/${projectId}/production-workbench/${stepPaths[step.key]}`,
@@ -309,6 +307,7 @@ const ProductionWorkbench = () => {
 
         <button
           type="button"
+          className={headerStyles.credits}
           aria-label={`团队积分 ${pointBalance == null ? '-' : formatPoints(pointBalance)}，前往充值中心`}
           onClick={() => history.push('/recharge')}
           style={{
@@ -337,7 +336,7 @@ const ProductionWorkbench = () => {
           margin: '0 auto',
           width: '100%',
           maxWidth: 1880,
-          minWidth: boundedWorkspace ? 0 : 1100,
+          minWidth: 0,
           boxSizing: 'border-box',
           padding: boundedWorkspace ? 0 : '0 0 72px',
           height: boundedWorkspace ? '100%' : undefined,

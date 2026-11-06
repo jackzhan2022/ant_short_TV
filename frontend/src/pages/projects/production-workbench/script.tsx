@@ -1,7 +1,6 @@
 import PointEstimateButton from '@/components/PointEstimateButton';
 import PointEstimateModal from '@/components/PointEstimateButton/Modal';
 import {
-  CheckOutlined,
   LeftOutlined,
   ReloadOutlined,
   RightOutlined,
@@ -20,7 +19,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import ProjectCoverImage, { type ProjectCoverStatus } from '@/components/ProjectCoverImage';
@@ -28,6 +27,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 import { aiExecutionTaskService } from '@/services/ai-execution/task';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
 import './script-analysis-progress.css';
+import './script-workbench.css';
 import {
   type ProductionWorkspaceState,
   queryAssetSettingsSummary,
@@ -60,6 +60,7 @@ type ProjectLite = {
   scriptType?: string | null;
   breakdownStrength?: string | null;
   visualStyle?: string | null;
+  videoResolution?: string | null;
 };
 
 const fileFormatText: Record<string, string> = {
@@ -111,14 +112,6 @@ const getEpisodeBlocks = (
   return [];
 };
 
-const metricStyle = {
-  minHeight: 68,
-  borderRadius: 8,
-  border: '1px solid var(--app-color-border-secondary)',
-  background: 'var(--app-color-bg-container)',
-  padding: '12px 14px',
-} as const;
-
 const labelStyle = {
   display: 'block',
   color: 'var(--app-color-text-tertiary)',
@@ -158,6 +151,10 @@ export const ScriptAnalysisStateContainer = ({
       },
   );
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const activeStage = stages.find((stage) => stage.stageCode === analysis.currentStage)
+    || stages.find((stage) => ['RUNNING', 'DISPATCHED', 'FAILED', 'PARTIAL_FAILED'].includes(stage.status));
+  const currentFanout = activeStage?.fanout;
+  const hasDiagnostics = stages.some((stage) => stage.fanout || stage.splitProgress?.mode === 'CHUNK_FALLBACK');
   const branchStatusText = (status?: string | null) => {
     if (status === 'SUCCEEDED' || status === 'COMPLETED') return '已完成';
     if (status === 'RUNNING' || status === 'DISPATCHED') return '进行中';
@@ -182,34 +179,35 @@ export const ScriptAnalysisStateContainer = ({
       className="script-analysis-progress"
     >
       <div className={`script-analysis-status${isFailed ? ' is-failed' : ''}`}>
-        <span className="script-analysis-status-indicator" />
         <Typography.Title
           level={4}
           className="script-analysis-status-title"
-          style={{ margin: 0, fontSize: 18 }}
+          style={{ margin: 0 }}
         >
           {title}
         </Typography.Title>
-        <Typography.Text
-          type={isFailed ? 'danger' : 'secondary'}
-          className="script-analysis-status-message"
-        >
-          {guidance}
-        </Typography.Text>
       </div>
-      <div className="script-analysis-activity" aria-hidden="true" />
       <div className="script-analysis-stages">
         {stages.map((stage) => {
-          const completed = stage.status === 'SUCCEEDED';
+          const completed = stage.status === 'SUCCEEDED' || stage.status === 'COMPLETED';
+          const percent = completed ? 100 : stage.status === 'PENDING' ? 0
+            : Math.round(Math.max(0, Math.min(100, Number.isFinite(stage.progressPercent) ? stage.progressPercent : 0)));
+          const running = !isFailed && ['RUNNING', 'DISPATCHED'].includes(stage.status);
           const failed =
             stage.status === 'FAILED' || stage.status === 'PARTIAL_FAILED';
           return (
             <div
               key={stage.stageCode}
-              className={`script-analysis-stage${completed ? ' is-completed' : ''}${failed ? ' is-failed' : ''}${stage.status === 'RUNNING' ? ' is-running' : ''}`}
+              className={`script-analysis-stage${completed ? ' is-completed' : ''}${failed ? ' is-failed' : ''}${running ? ' is-running' : ''}`}
             >
-              <div className="script-analysis-stage-node">
-                {completed ? <CheckOutlined /> : `${stage.progressPercent}%`}
+              <div className="script-analysis-stage-node"
+                role="progressbar"
+                aria-label={`${analysisStageLabels[stage.stageCode]} · ${branchStatusText(stage.status)}`}
+                aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
+                style={{ '--stage-progress': `${percent}%` } as CSSProperties}
+              >
+                {running ? <span className="script-analysis-stage-sheen" aria-hidden="true" /> : null}
+                <span className="script-analysis-stage-percent">{percent}%</span>
               </div>
               <Typography.Text
                 type="secondary"
@@ -217,6 +215,47 @@ export const ScriptAnalysisStateContainer = ({
               >
                 {analysisStageLabels[stage.stageCode] || stage.stageCode}
               </Typography.Text>
+              {isFailed && stage.status === 'FAILED' && stage.retryable ? (
+                <div>
+                  <PointEstimateButton operations={projectId ? [{ url: `/api/projects/${projectId}/script-analysis/current/retry/${stage.stageCode}` }] : undefined}
+                    type="link"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => onRetryStage(stage.stageCode)}
+                    className="script-analysis-retry"
+                  >
+                    重试此步骤
+                  </PointEstimateButton>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <div className={`script-analysis-status-message${isFailed ? ' is-failed' : ''}`} role="status">
+        <span>{guidance}</span>
+        {currentFanout ? <span className="script-analysis-current-count">{currentFanout.completed}/{currentFanout.total} 集</span> : null}
+      </div>
+      {analysis.episodes?.length || hasDiagnostics ? (
+        <div className="script-analysis-details-entry">
+          <Button type="text" onClick={() => setDetailsOpen(true)}>
+            查看分集处理详情
+          </Button>
+        </div>
+      ) : null}
+      <Modal
+        title="分集处理详情"
+        open={detailsOpen}
+        onCancel={() => setDetailsOpen(false)}
+        footer={null}
+        width="min(920px, calc(100vw - 32px))"
+        destroyOnHidden
+      >
+        {hasDiagnostics ? <details className="script-analysis-diagnostics">
+          <summary>处理诊断</summary>
+          {stages.filter((stage) => stage.fanout || stage.splitProgress?.mode === 'CHUNK_FALLBACK').map((stage) => (
+            <section key={stage.stageCode}>
+              <h3>{analysisStageLabels[stage.stageCode]}</h3>
               {stage.fanout ? (
                 <div className="script-analysis-stage-detail">
                     {stage.fanout.completed}/{stage.fanout.total} 集
@@ -269,38 +308,9 @@ export const ScriptAnalysisStateContainer = ({
                     </div>
                 </div>
               ) : null}
-              {isFailed && stage.status === 'FAILED' && stage.retryable ? (
-                <div>
-                  <PointEstimateButton operations={projectId ? [{ url: `/api/projects/${projectId}/script-analysis/current/retry/${stage.stageCode}` }] : undefined}
-                    type="link"
-                    size="small"
-                    icon={<ReloadOutlined />}
-                    onClick={() => onRetryStage(stage.stageCode)}
-                    className="script-analysis-retry"
-                  >
-                    重试此步骤
-                  </PointEstimateButton>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-      {analysis.episodes?.length ? (
-        <div className="script-analysis-details-entry">
-          <Button onClick={() => setDetailsOpen(true)}>
-            查看分集处理详情
-          </Button>
-        </div>
-      ) : null}
-      <Modal
-        title="分集处理详情"
-        open={detailsOpen}
-        onCancel={() => setDetailsOpen(false)}
-        footer={null}
-        width="min(920px, calc(100vw - 32px))"
-        destroyOnHidden
-      >
+            </section>
+          ))}
+        </details> : null}
         <div className="script-analysis-details-summary">
           共 {analysis.episodes?.length || 0} 集
         </div>
@@ -342,11 +352,6 @@ export const ScriptAnalysisStateContainer = ({
           </table>
         </div>
       </Modal>
-      {isFailed ? (
-        <Typography.Text type="danger" style={{ marginTop: 24 }}>
-          {analysis.errorMessage || '解析失败，请重试。'}
-        </Typography.Text>
-      ) : null}
     </section>
   );
 };
@@ -743,17 +748,10 @@ const ProductionWorkbenchScript = () => {
   }
 
   return (
-    <div
-      style={{
-        minHeight: 'calc(100vh - 100px)',
-        padding: '48px 0 88px',
-        boxSizing: 'border-box',
-        background: 'var(--app-color-bg-layout)',
-      }}
-    >
-      <div style={{ width: 1000, margin: '0 auto' }}>
+    <div className="script-workbench">
+      <div className="script-workbench-content">
         {workspace?.versions.length ? (
-          <section aria-label="历史版本" style={{ marginBottom: 16 }}>
+          <section aria-label="历史版本" className="script-workbench-versions">
             <label>
               历史版本　
               <select
@@ -803,10 +801,10 @@ const ProductionWorkbenchScript = () => {
         <Flex
           justify="space-between"
           align="center"
-          style={{ marginBottom: 12 }}
+          className="script-workbench-titlebar"
         >
           <div>
-            <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
+            <Typography.Title level={4} style={{ margin: 0 }}>
               线上剧本内容
             </Typography.Title>
             <Typography.Text type="secondary">
@@ -887,23 +885,10 @@ const ProductionWorkbenchScript = () => {
         {workspace && (!analysis || analysis.status === 'COMPLETED') ? (
           <>
             <section
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '160px minmax(0, 1fr)',
-                gap: 32,
-                minHeight: 220,
-                marginBottom: 48,
-              }}
+              className="script-workbench-project"
             >
               <div
-                style={{
-                  width: 160,
-                  height: 220,
-                  overflow: 'hidden',
-                  borderRadius: 8,
-                  background: 'var(--app-color-bg-container)',
-                  boxShadow: '0 4px 12px rgb(0 0 0 / 10%)',
-                }}
+                className="script-workbench-cover"
               >
                 {project?.coverUrl ? (
                   <ProjectCoverImage
@@ -920,7 +905,7 @@ const ProductionWorkbenchScript = () => {
                   />
                 ) : null}
               </div>
-              <div>
+              <div className="script-workbench-project-info">
                 <Flex
                   justify="space-between"
                   align="center"
@@ -928,23 +913,19 @@ const ProductionWorkbenchScript = () => {
                 >
                   <Typography.Title
                     level={3}
-                    style={{ margin: 0, fontSize: 24 }}
+                    style={{ margin: 0 }}
                   >
                     {project?.name || script?.title || '未命名剧本'}
                   </Typography.Title>
                 </Flex>
-                <div
-                  style={{
-                    color: 'var(--app-color-text-secondary)',
-                    fontSize: 12,
-                    marginBottom: 16,
-                  }}
-                >
-                  {episodeBlocks.length} 集　|　{project?.aspectRatio || '-'}
-                  　|　720p　|　{project?.visualStyle || '-'}
+                <div className="script-workbench-specs">
+                  <span><small>剧集</small>{episodeBlocks.length} 集</span>
+                  <span><small>画幅</small>{project?.aspectRatio || '-'}</span>
+                  <span><small>分辨率</small>{project?.videoResolution || '-'}</span>
+                  <span><small>视觉风格</small>{project?.visualStyle || '-'}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <Tag color="blue">
+                <div className="script-workbench-tags">
+                  <Tag color="var(--app-color-primary)">
                     {scriptTypeText[project?.scriptType || ''] || '剧本'}
                   </Tag>
                   <Tag>
@@ -958,22 +939,17 @@ const ProductionWorkbenchScript = () => {
               </div>
             </section>
 
-            <section style={{ marginBottom: 48 }}>
+            <section className="script-workbench-section script-workbench-type">
               <Typography.Title
                 level={5}
-                style={{ margin: '0 0 12px', fontSize: 16 }}
+                className="script-workbench-section-title"
               >
                 剧本类型
               </Typography.Title>
               <div
-                style={{
-                  border: '1px solid var(--app-color-border-secondary)',
-                  borderRadius: 8,
-                  background: '#fff',
-                  padding: '16px 12px',
-                }}
+                className="script-workbench-panel"
               >
-                <div style={{ fontWeight: 600 }}>AI短剧</div>
+                <div style={{ fontWeight: 400 }}>AI短剧</div>
                 <div
                   style={{
                     marginTop: 4,
@@ -986,11 +962,11 @@ const ProductionWorkbenchScript = () => {
               </div>
             </section>
 
-            <section style={{ marginBottom: 48 }}>
+            <section className="script-workbench-section script-workbench-overview">
               <Flex
                 justify="space-between"
                 align="center"
-                style={{ marginBottom: 12 }}
+                className="script-workbench-sectionhead"
               >
                 <Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>
                   故事概览
@@ -1000,15 +976,7 @@ const ProductionWorkbenchScript = () => {
                 </Typography.Text>
               </Flex>
               <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 0,
-                  border: '1px solid var(--app-color-border-secondary)',
-                  borderRadius: 8,
-                  background: '#fff',
-                  padding: '12px 24px',
-                }}
+                className="script-workbench-panel script-workbench-overview-rows"
               >
                 {[
                   [
@@ -1045,17 +1013,7 @@ const ProductionWorkbenchScript = () => {
                 ].map(([label, value]) => (
                   <div
                     key={label}
-                    style={{
-                      gridColumn: label === '一句话梗概' ? '1 / -1' : undefined,
-                      display: 'grid',
-                      gridTemplateColumns: '94px 1fr',
-                      gap: 12,
-                      padding: '12px 0',
-                      borderBottom:
-                        '1px solid var(--app-color-border-secondary)',
-                      fontSize: 13,
-                      lineHeight: '22px',
-                    }}
+                    className="script-workbench-overview-row"
                   >
                     <span style={{ color: 'var(--app-color-text-tertiary)' }}>
                       {label}
@@ -1066,11 +1024,11 @@ const ProductionWorkbenchScript = () => {
               </div>
             </section>
 
-            <section ref={assetsSection.ref} aria-label="人物小传" style={{ marginBottom: 48 }}>
+            <section ref={assetsSection.ref} aria-label="人物小传" className="script-workbench-section script-workbench-characters">
               <Flex
                 justify="space-between"
                 align="center"
-                style={{ marginBottom: 12 }}
+                className="script-workbench-sectionhead"
               >
                 <Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>
                   人物小传
@@ -1086,11 +1044,7 @@ const ProductionWorkbenchScript = () => {
                 <Skeleton />
               ) : workspace?.characters.length ? (
                 <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: '24px 32px',
-                  }}
+                  className="script-workbench-character-grid"
                 >
                   {(showAllCharacters
                     ? workspace.characters
@@ -1105,26 +1059,13 @@ const ProductionWorkbenchScript = () => {
                     return (
                       <article
                         key={character.id}
-                        style={{
-                          padding: 12,
-                          border: '1px solid var(--app-color-border-secondary)',
-                          borderRadius: 8,
-                          background: '#fff',
-                        }}
+                        className="script-workbench-character"
                       >
-                        <div style={{ marginBottom: 8, fontWeight: 600 }}>
+                        <div className="script-workbench-character-name">
                           {character.name}
                         </div>
                         <div
-                          style={{
-                            minHeight: 48,
-                            padding: '6px 10px',
-                            borderRadius: 6,
-                            background: 'var(--app-color-bg-layout)',
-                            color: 'var(--app-color-text-secondary)',
-                            fontSize: 12,
-                            lineHeight: '19px',
-                          }}
+                          className="script-workbench-character-bio"
                         >
                           {hasBiography ? <>
                             身份：{character.identity || '-'}；性格：
@@ -1138,7 +1079,7 @@ const ProductionWorkbenchScript = () => {
                           style={{
                             margin: '12px 0 8px',
                             fontSize: 13,
-                            fontWeight: 600,
+                            fontWeight: 400,
                           }}
                         >
                           角色变装列表
@@ -1266,25 +1207,13 @@ const ProductionWorkbenchScript = () => {
         {analysis?.status === 'COMPLETED' && workspace ? (
           <section
             aria-label="正式分析结果"
-            style={{
-              background: '#fff',
-              border: '1px solid var(--app-color-border)',
-              borderRadius: 8,
-              padding: 18,
-              marginBottom: 14,
-            }}
+            className="script-workbench-panel script-workbench-section script-workbench-results"
           >
             <Typography.Title level={5} style={{ marginTop: 0 }}>
               正式分析结果
             </Typography.Title>
-            <div
-              style={{
-                display: 'grid',
-                gap: 12,
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              }}
-            >
-              <div style={metricStyle}>
+            <div className="script-workbench-result-grid">
+              <div className="script-workbench-result-metric">
                 <span style={labelStyle}>剧情全局理解</span>
                 <div style={{ marginTop: 6, lineHeight: '22px' }}>
                   {String(
@@ -1293,7 +1222,7 @@ const ProductionWorkbenchScript = () => {
                   )}
                 </div>
               </div>
-              <section ref={assetStatsSection.ref} aria-label="正式资产统计" style={metricStyle}>
+              <section ref={assetStatsSection.ref} aria-label="正式资产统计" className="script-workbench-result-metric">
                 <span style={labelStyle}>正式资产</span>
                 <div style={{ marginTop: 6, lineHeight: '22px' }}>
                   {assetsReadyProject === projectId ? <>角色 {workspace.characters.length} · 场景{' '}
@@ -1326,12 +1255,7 @@ const ProductionWorkbenchScript = () => {
           <section
             ref={episodesSection.ref}
             aria-label="分集剧情"
-            style={{
-              background: '#fff',
-              border: '1px solid var(--app-color-border)',
-              borderRadius: 8,
-              padding: 18,
-            }}
+            className="script-workbench-panel script-workbench-section script-workbench-episodes"
           >
             <Flex justify="space-between" align="center">
               <Typography.Title level={5} style={{ margin: 0, fontSize: 16 }}>
@@ -1357,7 +1281,7 @@ const ProductionWorkbenchScript = () => {
                 showIcon
                 title="分集提示（不影响保存和后续处理）"
                 description={
-                  <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                  <ul className="script-workbench-warning">
                     {workspace.episodeWarnings.map((warning) => (
                       <li key={warning.code + warning.message}>
                         {warning.message}
@@ -1368,15 +1292,7 @@ const ProductionWorkbenchScript = () => {
                 style={{ marginTop: 14 }}
               />
             ) : null}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '32px minmax(0, 1fr) 32px',
-                gap: 8,
-                alignItems: 'center',
-                margin: '14px 0',
-              }}
-            >
+            <div className="script-workbench-episode-toolbar">
               <Tooltip title="上一组剧集">
                 <button
                   type="button"
@@ -1404,14 +1320,7 @@ const ProductionWorkbenchScript = () => {
               <section
                 ref={episodeSelectorRef}
                 aria-label="分集选择器"
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  overflowX: 'auto',
-                  scrollbarWidth: 'none',
-                  scrollBehavior: 'smooth',
-                  padding: '1px 0',
-                }}
+                className="script-workbench-episode-list"
               >
                 {episodeBlocks.map((item) => {
                   const active = item.episodeNo === currentEpisodeNo;
@@ -1420,25 +1329,8 @@ const ProductionWorkbenchScript = () => {
                       key={item.episodeNo}
                       type="button"
                       onClick={() => setCurrentEpisodeNo(item.episodeNo)}
-                      style={{
-                        flex: '0 0 32px',
-                        width: 32,
-                        height: 32,
-                        padding: 0,
-                        borderRadius: 4,
-                        border: active
-                          ? '1px solid var(--app-color-primary)'
-                          : '1px solid var(--app-color-border)',
-                        background: active
-                          ? 'var(--app-color-primary-bg)'
-                          : '#fff',
-                        color: active
-                          ? '#334be4'
-                          : 'var(--app-color-text-secondary)',
-                        fontSize: 12,
-                        fontWeight: active ? 700 : 500,
-                        cursor: 'pointer',
-                      }}
+                      aria-pressed={active}
+                      className="script-workbench-episode"
                     >
                       {item.episodeNo}
                     </button>
@@ -1471,15 +1363,10 @@ const ProductionWorkbenchScript = () => {
               </Tooltip>
             </div>
 
-            <Typography.Text strong>当前集剧情正文</Typography.Text>
+            <div className="script-workbench-current"><span>当前集剧情正文</span><span>第 {currentEpisodeNo} 集 / {episodeBlocks.length} 集</span></div>
             {currentEpisode?.formalSummary ? (
               <div
-                style={{
-                  margin: '0 0 12px',
-                  padding: 12,
-                  borderRadius: 8,
-                  background: 'var(--app-color-bg-layout)',
-                }}
+                className="script-workbench-episode-summary"
               >
                 {summaryEditing ? (
                   <div style={{ display: 'grid', gap: 8 }}>
@@ -1588,16 +1475,9 @@ const ProductionWorkbenchScript = () => {
                   : '暂无本集正文')
               }
               readOnly
+              aria-label="当前集剧本正文"
+              className="script-workbench-script-text"
               autoSize={{ minRows: 22, maxRows: 34 }}
-              style={{
-                marginTop: 8,
-                background: 'var(--app-color-bg-container)',
-                borderColor: 'var(--app-color-border-secondary)',
-                borderRadius: 8,
-                color: 'var(--app-color-text)',
-                fontSize: 14,
-                lineHeight: '25px',
-              }}
             />
           </section>
         ) : null}

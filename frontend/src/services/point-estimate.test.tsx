@@ -78,7 +78,7 @@ describe('point estimates before submission', () => {
       }),
     );
     render(mocks.update.mock.calls[0][0].content);
-    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByLabelText('本次消耗积分')).toHaveTextContent('13');
     mocks.confirm.mock.calls[0][0].onOk();
     await expect(pending).resolves.toEqual({ data: { id: 9 } });
     expect(mocks.request).toHaveBeenCalledTimes(2);

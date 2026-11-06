@@ -170,6 +170,8 @@ describe('ProductionWorkbench shell', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /进入下一步/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设定' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '设定' })).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('button', { name: '剧本' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('button', { name: 'AI 模型' })).toBeInTheDocument();
     expect(await screen.findByText((_, element) => element?.textContent === '✦ 88')).toBeInTheDocument();
     expect(screen.getAllByText('9:16').length).toBeGreaterThan(0);

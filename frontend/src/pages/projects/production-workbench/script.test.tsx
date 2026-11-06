@@ -8,7 +8,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ProductionWorkbenchScript from './script';
+import ProductionWorkbenchScript, { ScriptAnalysisStateContainer } from './script';
 
 const mocks = vi.hoisted(() => ({
   queryScriptWorkspace: vi.fn(),
@@ -128,6 +128,22 @@ vi.mock('@/services/account-team/auth', () => ({
 }));
 
 describe('ProductionWorkbenchScript', () => {
+  it('shows real bounded percentages for every stage, including complete and pending stages', () => {
+    render(<ScriptAnalysisStateContainer analysis={{
+      id: 1, scriptVersionId: 1, status: 'RUNNING', overallProgress: 30,
+      stages: [
+        { id: 1, stageCode: 'GLOBAL_UNDERSTANDING', stageOrder: 1, status: 'COMPLETED', progressPercent: 97, completedUnits: 1, totalUnits: 1 },
+        { id: 2, stageCode: 'EPISODE_SPLITTING', stageOrder: 2, status: 'RUNNING', progressPercent: 45.6, completedUnits: 1, totalUnits: 3 },
+        { id: 3, stageCode: 'EPISODE_SUMMARY', stageOrder: 3, status: 'FAILED', progressPercent: 105, completedUnits: 1, totalUnits: 1 },
+      ],
+    }} onRetryStage={vi.fn()} />);
+    expect(screen.getAllByRole('progressbar')).toHaveLength(4);
+    expect(screen.getByRole('progressbar', { name: /剧情全局理解/ })).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByRole('progressbar', { name: /剧集智能拆分/ })).toHaveAttribute('aria-valuenow', '46');
+    expect(screen.getByRole('progressbar', { name: /剧集概要提炼/ })).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByRole('progressbar', { name: /角色场景识别/ })).toHaveAttribute('aria-valuenow', '0');
+  });
+
   it('refreshes failed analysis while a retry execution is still running', async () => {
     vi.useFakeTimers();
     try {
@@ -730,6 +746,8 @@ describe('ProductionWorkbenchScript', () => {
     expect(screen.getByText('角色场景识别')).toBeInTheDocument();
     expect(screen.getByText('正在提炼每集概要')).toBeInTheDocument();
     expect(screen.getByText('45%')).toBeInTheDocument();
+    expect(screen.getAllByText('100%')).toHaveLength(2);
+    expect(screen.queryByText('分块分析 7/12')).not.toBeInTheDocument();
     expect(screen.getByText(/1\/3 集/)).toBeInTheDocument();
     expect(screen.queryByText(/episode-/)).not.toBeInTheDocument();
     expect(screen.queryByText(/自动分镜会消耗积分/)).not.toBeInTheDocument();
@@ -805,7 +823,7 @@ describe('ProductionWorkbenchScript', () => {
     render(<ProductionWorkbenchScript />);
     expect(
       (await screen.findAllByText('模型服务暂时不可用')).length,
-    ).toBeGreaterThan(0);
+    ).toBe(1);
     expect(screen.queryByText('线上剧本正文')).not.toBeInTheDocument();
     expect(screen.getByText('剧情全局理解')).toBeInTheDocument();
     expect(screen.getByText('剧集智能拆分')).toBeInTheDocument();
