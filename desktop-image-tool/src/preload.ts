@@ -25,7 +25,8 @@ const workspace: WorkspaceAPI = {
   aiSettings: () => ipcRenderer.invoke('studio:workspace-ai-settings'),
   configureAi: (input) =>
     ipcRenderer.invoke('studio:workspace-ai-configure', input),
-  aiMatch: (id) => ipcRenderer.invoke('studio:workspace-ai-match', id),
+  aiMatch: (id, mode = 'vector') =>
+    ipcRenderer.invoke('studio:workspace-ai-match', { projectId: id, mode }),
   onAiProgress: (callback) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

@@ -1,4 +1,4 @@
-import type { AiMatchReview } from './ai-match-types';
+import type { AiMatchMode, AiMatchReview } from './ai-match-types';
 import type {
   Creation,
   Draft,
@@ -928,14 +928,14 @@ export function initializeWorkspace(hooks: Hooks) {
             option(
               '',
               suggestion.status === 'ambiguous' || suggestion.options.length > 1
-                ? '多个候选，请明确选择'
+                ? '请选择候选，确认后应用'
                 : '不采用本条建议',
             ),
           );
           for (const candidate of suggestion.options) {
             const item = option(
               aiChoiceKey(candidate),
-              `${candidate.parentName ? `${candidate.parentName} / ` : ''}${candidate.name} · 资产 #${candidate.assetId}${candidate.variantId !== null ? ` · 变体 #${candidate.variantId}` : ' · 主体'}${candidate.hasPrompt ? '' : '（缺少提示词）'}`,
+              `${candidate.parentName ? `${candidate.parentName} / ` : ''}${candidate.name}${candidate.similarity !== undefined ? ` · 相似度 ${candidate.similarity.toFixed(3)}` : ''} · 资产 #${candidate.assetId}${candidate.variantId !== null ? ` · 变体 #${candidate.variantId}` : ' · 主体'}${candidate.hasPrompt ? '' : '（缺少提示词）'}`,
             );
             item.disabled = !candidate.hasPrompt;
             select.append(item);
@@ -980,7 +980,7 @@ export function initializeWorkspace(hooks: Hooks) {
     );
     if (aiReview && !aiReview.suggestions.length)
       get('ai-results').append(
-        node('p', '当前没有需要 AI 辅助匹配的资产。', 'panel-empty'),
+        node('p', '当前没有未匹配资产，已有匹配不重复处理。', 'panel-empty'),
       );
     renderAiSelection();
   }
@@ -1004,10 +1004,21 @@ export function initializeWorkspace(hooks: Hooks) {
     get('ai-results').replaceChildren();
     get('ai-start').hidden = false;
     get<HTMLButtonElement>('ai-start').disabled = false;
+    get<HTMLSelectElement>('ai-method').disabled = false;
+    updateAiMethod();
     get('ai-apply').hidden = true;
     get('ai-selection').textContent = '已有匹配保留 · 确认前不修改匹配关系';
     get<HTMLDialogElement>('ai-match-dialog').showModal();
   };
+  function updateAiMethod() {
+    const local = get<HTMLSelectElement>('ai-method').value === 'vector';
+    get('ai-mode-help').textContent = local
+      ? '无需 API Key。首次下载约 24.5 MB 中文模型，名称向量缓存在本机；近似候选需要你明确选择。'
+      : '向本机配置的文本模型发送资产名称与类型，需要可用 API Key；确认前不修改匹配关系。';
+    get('ai-model-settings').hidden = local;
+    get('ai-start').textContent = local ? '开始本地向量匹配' : '开始大模型匹配';
+  }
+  get('ai-method').onchange = updateAiMethod;
   get('ai-model-settings').onclick = () => {
     invalidateAi();
     hooks.openSettings();
@@ -1023,20 +1034,25 @@ export function initializeWorkspace(hooks: Hooks) {
     get('ai-progress').textContent =
       progress.phase === 'preparing'
         ? '正在读取资产与候选名称…'
-        : `正在分析名称 · 已完成 ${progress.completed} / ${progress.total} 项 · 最多 3 批并行`;
+        : progress.phase === 'vector'
+          ? (progress.detail ??
+            `本地向量库 · 已就绪 ${progress.completed} / ${progress.total} 个名称`)
+          : `正在分析名称 · 已完成 ${progress.completed} / ${progress.total} 项 · 最多 3 批并行`;
   });
   get('ai-start').onclick = () => {
     if (!projectId || aiBusy || projectContext() !== aiContext) return;
     const sourceId = projectId;
+    const mode = get<HTMLSelectElement>('ai-method').value as AiMatchMode;
     const version = ++aiVersion;
     aiBusy = true;
     aiError();
     get<HTMLButtonElement>('ai-start').disabled = true;
+    get<HTMLSelectElement>('ai-method').disabled = true;
     get('ai-progress').textContent = '正在读取资产与候选名称…';
     get('ai-progress').hidden = false;
     void (async () => {
       try {
-        const review = unwrap(await api.aiMatch(sourceId));
+        const review = unwrap(await api.aiMatch(sourceId, mode));
         if (
           version !== aiVersion ||
           aiContext !== projectContext() ||
@@ -1066,6 +1082,7 @@ export function initializeWorkspace(hooks: Hooks) {
           aiBusy = false;
           get('ai-progress').hidden = true;
           get<HTMLButtonElement>('ai-start').disabled = false;
+          get<HTMLSelectElement>('ai-method').disabled = false;
         }
       }
     })();

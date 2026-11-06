@@ -15,7 +15,7 @@ import {
   shell,
 } from 'electron';
 import { AiSettingsStore } from './ai-match';
-import type { AiApplyInput, AiModelInput } from './ai-match-types';
+import type { AiApplyInput, AiMatchMode, AiModelInput } from './ai-match-types';
 import { AiReviewManager } from './ai-review';
 import { DramartCollector } from './dramart';
 import { automaticName, validateAssetOutputName } from './output';
@@ -23,6 +23,8 @@ import { generateImage, validateDraft } from './provider';
 import { ImageQueue } from './queue';
 import type { Creation, Draft, Result } from './shared';
 import { StudioStore } from './store';
+import { LocalVectorMatcher } from './vector-match';
+import { OfflineNameEncoder } from './vector-runtime';
 import { WorkspaceController } from './workspace';
 import type {
   AssetPrompt,
@@ -33,6 +35,15 @@ import type {
 } from './workspace-shared';
 
 protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'antv-vector',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
   {
     scheme: 'antv-media',
     privileges: { standard: true, secure: true, supportFetchAPI: false },
@@ -54,6 +65,8 @@ let queue: ImageQueue;
 let workspace: WorkspaceController;
 let aiSettings: AiSettingsStore;
 let aiReviews: AiReviewManager;
+let vectorEncoder: OfflineNameEncoder | undefined;
+let vectorMatcher: LocalVectorMatcher | undefined;
 let quitting = false;
 const indexPath = path.join(__dirname, 'index.html');
 
@@ -276,6 +289,14 @@ async function initialize() {
       if (window && !window.isDestroyed())
         window.webContents.send('workspace:ai-progress', progress);
     },
+    async (tasks, signal, progress) => {
+      vectorEncoder ??= new OfflineNameEncoder(app.getPath('userData'));
+      vectorMatcher ??= new LocalVectorMatcher(
+        app.getPath('userData'),
+        vectorEncoder,
+      );
+      return vectorMatcher.match(tasks, signal, progress);
+    },
   );
   powerMonitor.on('resume', () => workspace.resumeSync());
   protocol.handle('antv-media', (request) => {
@@ -342,7 +363,15 @@ async function initialize() {
     aiReviews.cancel();
     return aiSettings.update(input);
   });
-  handle<number>('workspace-ai-match', (id) => aiReviews.match(positiveId(id)));
+  handle<number | { projectId: number; mode: AiMatchMode }>(
+    'workspace-ai-match',
+    (input) => {
+      if (typeof input === 'number') return aiReviews.match(positiveId(input));
+      if (!input || !['vector', 'llm'].includes(input.mode))
+        throw new Error('匹配方式无效。');
+      return aiReviews.match(positiveId(input.projectId), input.mode);
+    },
+  );
   handle<AiApplyInput>('workspace-ai-apply', (input) =>
     workspace.withAssetOperation(() => aiReviews.apply(input)),
   );
@@ -646,6 +675,8 @@ else {
   app.on('before-quit', () => {
     quitting = true;
     aiReviews?.cancel();
+    vectorEncoder?.close();
+    vectorMatcher?.close();
     queue?.pause();
     for (const task of active.values()) task.controller.abort();
     workspace?.close();

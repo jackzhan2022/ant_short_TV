@@ -1,6 +1,7 @@
 import type {
   AiApplyInput,
   AiApplyResult,
+  AiMatchMode,
   AiMatchProgress,
   AiMatchReview,
   AiModelInput,
@@ -127,7 +128,10 @@ export interface BatchInput {
 export interface WorkspaceAPI {
   aiSettings(): Promise<Result<AiModelSettings>>;
   configureAi(input: AiModelInput): Promise<Result<AiModelSettings>>;
-  aiMatch(projectId: number): Promise<Result<AiMatchReview>>;
+  aiMatch(
+    projectId: number,
+    mode?: AiMatchMode,
+  ): Promise<Result<AiMatchReview>>;
   onAiProgress(callback: (progress: AiMatchProgress) => void): () => void;
   aiApply(input: AiApplyInput): Promise<Result<AiApplyResult>>;
   aiCancel(reviewId?: string): Promise<Result<void>>;

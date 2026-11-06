@@ -17,6 +17,7 @@ const http = require('node:http');
     '灯塔',
     '珍珠项链',
     '贝壳',
+    '需人工处理的冲突资产',
   ];
   const assets = names.map((name, index) => ({
     id: index + 1,
@@ -27,7 +28,7 @@ const http = require('node:http');
     active: true,
     matchStatus: [1, 3].includes(index)
       ? 'MATCHED'
-      : index === 4
+      : index === 6
         ? 'CONFLICT'
         : 'UNMATCHED',
     targetAssetId: [1, 3].includes(index) ? index + 100 : null,
@@ -101,6 +102,7 @@ const http = require('node:http');
       textCalls.push(body);
       await modelReady;
       const payload = JSON.parse(body.messages.at(-1).content);
+      assert.ok(payload.sources.every((s) => ![2, 4, 7].includes(s.id)));
       assert.equal(
         JSON.stringify(payload).includes('existing-secret-prompt'),
         false,
@@ -256,6 +258,7 @@ const http = require('node:http');
     await page.locator('#connection-open').click();
     await page.locator('#settings-open').click();
     await page.locator('#ai-settings-details summary').click();
+    await page.locator('#ai-settings-save:not([disabled])').waitFor();
     await page.locator('#ai-base-url').fill(`${address}/v1`);
     await page.locator('#ai-model').fill('local-text-test');
     await page.locator('#ai-key').fill('ai-only-test-key');
@@ -278,6 +281,7 @@ const http = require('node:http');
     );
     await page.locator('[data-close="source-project-dialog"]').last().click();
     await page.locator('#ai-match-open').click();
+    await page.locator('#ai-method').selectOption('llm');
     await page.locator('#ai-start').click();
     await page.waitForFunction(() =>
       document.querySelector('#ai-progress').textContent.includes('已完成 0 /'),

@@ -1,0 +1,16 @@
+Local vector matching
+
+Transformers.js 3.8.1: https://github.com/huggingface/transformers.js
+Apache License 2.0. The full license is distributed as TRANSFORMERS-LICENSE.
+
+ONNX Runtime Web: https://github.com/microsoft/onnxruntime
+MIT License. The full license is distributed as ONNX-RUNTIME-LICENSE.
+
+Model: BAAI/bge-small-zh-v1.5 (MIT)
+https://huggingface.co/BAAI/bge-small-zh-v1.5
+Quantized ONNX conversion: Xenova/bge-small-zh-v1.5
+Revision: 75c43b069aac4d136ba6bc1122f995fedcfd2781
+https://huggingface.co/Xenova/bge-small-zh-v1.5
+
+The model files are downloaded separately on first use. Their SHA-256 hashes
+are pinned in vector-model.ts. Names and vectors are processed locally.

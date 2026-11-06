@@ -3,6 +3,7 @@ import { type MatchTask, matchAssetNames } from './ai-match';
 import type {
   AiApplyInput,
   AiApplyResult,
+  AiMatchMode,
   AiMatchProgress,
   AiMatchReview,
   AiModelSettings,
@@ -50,7 +51,10 @@ const optionStamp = (c: Candidate) =>
 const candidateStamp = (rows: Candidate[]) =>
   JSON.stringify(rows.map(optionStamp).sort());
 const pending = (a: SourceAsset) =>
-  a.active && ['UNMATCHED', 'CONFLICT', 'REVIEW'].includes(a.matchStatus);
+  a.active &&
+  a.matchStatus === 'UNMATCHED' &&
+  !a.targetAssetId &&
+  !a.targetVariantId;
 
 export class AiReviewManager {
   private snapshot?: Snapshot;
@@ -63,6 +67,11 @@ export class AiReviewManager {
     private model: () => { settings: AiModelSettings; key: string },
     private matchNames: typeof matchAssetNames = matchAssetNames,
     private progress: (value: AiMatchProgress) => void = () => {},
+    private vectorMatch?: (
+      tasks: MatchTask[],
+      signal: AbortSignal,
+      progress: (completed: number, total: number, detail?: string) => void,
+    ) => Promise<AiSuggestion[]>,
   ) {}
   cancel(reviewId?: string) {
     if (
@@ -124,7 +133,11 @@ export class AiReviewManager {
           : c.variantId === null),
     );
   }
-  async match(projectId: number): Promise<AiMatchReview> {
+  async match(
+    projectId: number,
+    mode: AiMatchMode = 'llm',
+  ): Promise<AiMatchReview> {
+    if (mode !== 'vector' && mode !== 'llm') throw new Error('匹配方式无效。');
     if (this.applying) throw new Error('正在保存匹配，请稍后重试。');
     if (!Number.isSafeInteger(projectId) || projectId < 1)
       throw new Error('项目编号无效。');
@@ -186,7 +199,31 @@ export class AiReviewManager {
     check();
     const suggestions: AiSuggestion[] = [];
     const nonempty = tasks.filter((t) => t.candidates.length);
-    if (nonempty.length) {
+    if (nonempty.length && mode === 'vector') {
+      if (!this.vectorMatch) throw new Error('本地向量匹配尚未初始化。');
+      try {
+        suggestions.push(
+          ...(await this.vectorMatch(
+            nonempty,
+            controller.signal,
+            (completed, total, detail) => {
+              check();
+              this.progress({
+                projectId,
+                phase: 'vector',
+                completed,
+                total,
+                detail,
+              });
+            },
+          )),
+        );
+      } catch (error) {
+        controller.abort();
+        if (this.controller === controller) this.controller = undefined;
+        throw error;
+      }
+    } else if (nonempty.length) {
       const model = this.model();
       let next = 0;
       let completed = 0;
@@ -252,7 +289,11 @@ export class AiReviewManager {
       reviewId: randomUUID(),
       projectId,
       targetProjectId: project.targetProjectId as number,
-      model: nonempty.length ? this.model().settings.model : '',
+      model: nonempty.length
+        ? mode === 'vector'
+          ? '本地向量 · BGE-small-zh-v1.5'
+          : this.model().settings.model
+        : '',
       suggestions: [...suggestions, ...skipped].sort(
         (a, b) =>
           assets.findIndex((s) => s.id === a.sourceAssetId) -

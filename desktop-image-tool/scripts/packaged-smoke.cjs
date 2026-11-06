@@ -65,6 +65,18 @@ const crypto = require('node:crypto');
     'source-page.js',
     'ai-match.js',
     'ai-review.js',
+    'vector-match.js',
+    'vector-model.js',
+    'vector-runtime.js',
+    'vector-preload.js',
+    'vector-page.mjs',
+    'vector.html',
+    'vector-vendor/transformers.min.js',
+    'vector-vendor/ort-wasm-simd-threaded.jsep.mjs',
+    'vector-vendor/ort-wasm-simd-threaded.jsep.wasm',
+    'vector-vendor/TRANSFORMERS-LICENSE',
+    'vector-vendor/ONNX-RUNTIME-LICENSE',
+    'vector-vendor/NOTICE.txt',
     'index.html',
     'renderer/renderer.js',
     'renderer/workspace-renderer.js',
@@ -75,6 +87,14 @@ const crypto = require('node:crypto');
       fs.readFileSync(path.join(root, 'dist', name)),
       `packaged ${name} matches verified build`,
     );
+  assert.ok(
+    !asar
+      .listPackage(archive)
+      .some((name) =>
+        /(?:node_modules|model_quantized\.onnx|\.node$)/.test(name),
+      ),
+    'Native inference packages and model weights must stay outside the archive',
+  );
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'antv-packaged-'));
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;

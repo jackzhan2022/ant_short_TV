@@ -1,5 +1,7 @@
 import type { AssetType, SourceAsset } from './workspace-shared';
 
+export type AiMatchMode = 'vector' | 'llm';
+
 export interface AiModelSettings {
   baseUrl: string;
   model: string;
@@ -13,6 +15,7 @@ export interface AiModelInput {
   clearKey?: boolean;
 }
 export interface AiMatchOption {
+  similarity?: number;
   assetId: number;
   variantId: number | null;
   name: string;
@@ -36,8 +39,9 @@ export interface AiMatchReview {
   suggestions: AiSuggestion[];
 }
 export interface AiMatchProgress {
+  detail?: string;
   projectId: number;
-  phase: 'preparing' | 'matching';
+  phase: 'preparing' | 'matching' | 'vector';
   completed: number;
   total: number;
 }

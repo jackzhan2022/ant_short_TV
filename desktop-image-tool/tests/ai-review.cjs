@@ -4,7 +4,8 @@ let AiReviewManager;
 try {
   ({ AiReviewManager } = require('../dist/ai-review'));
 } catch {}
-function fixture(matcher, progress) {
+function fixture(matcher, progress, vectorMatch) {
+  let modelReads = 0;
   let identity = 'team-7-version-1';
   const project = {
     id: 8,
@@ -84,10 +85,13 @@ function fixture(matcher, progress) {
   };
   const manager = new AiReviewManager(
     () => ({ client, identity }),
-    () => ({
-      settings: { baseUrl: 'https://example.test', model: 'test-model' },
-      key: 'fake-key',
-    }),
+    () => {
+      modelReads++;
+      return {
+        settings: { baseUrl: 'https://example.test', model: 'test-model' },
+        key: 'fake-key',
+      };
+    },
     matcher ??
       (async (tasks) =>
         tasks.map((t) => ({
@@ -99,6 +103,7 @@ function fixture(matcher, progress) {
           status: 'suggested',
         }))),
     progress,
+    vectorMatch,
   );
   return {
     manager,
@@ -107,6 +112,9 @@ function fixture(matcher, progress) {
     project,
     candidates,
     writes,
+    get modelReads() {
+      return modelReads;
+    },
     changeIdentity() {
       identity = 'team-8-version-2';
     },
@@ -151,6 +159,74 @@ function manyAssets(f, count) {
     })),
   );
 }
+
+test('local vector reviews never read API settings or keys and use the existing confirmation checks', async () => {
+  let seen;
+  const f = fixture(
+    async () => {
+      throw Error('unexpected chat model');
+    },
+    undefined,
+    async (tasks, _signal, progress) => {
+      seen = tasks;
+      progress(2, 2);
+      return tasks.map((t) => ({
+        sourceAssetId: t.source.id,
+        sourceName: t.source.name,
+        type: t.source.type,
+        options: t.candidates.map((c) => ({ ...c, similarity: 0.8 })),
+        status: 'ambiguous',
+        reason: '本地向量候选',
+      }));
+    },
+  );
+  const review = await f.manager.match(8, 'vector');
+  assert.equal(f.modelReads, 0);
+  assert.deepEqual(
+    seen.map((t) => t.source.id),
+    [1],
+  );
+  assert.equal(f.writes.length, 0);
+  assert.match(review.model, /本地/);
+  const result = await f.manager.apply({
+    reviewId: review.reviewId,
+    choices: [{ sourceAssetId: 1, assetId: 41 }],
+  });
+  assert.equal(result.applied, 1);
+  assert.equal(f.modelReads, 0);
+});
+
+test('AI only submits active UNMATCHED sources without an existing target', async () => {
+  const submitted = [];
+  const f = fixture(async (tasks) => {
+    submitted.push(...tasks.map((t) => t.source.id));
+    return [];
+  });
+  manyAssets(f, 9);
+  ['MATCHED', 'CONFLICT', 'REVIEW', 'NO_PROMPT', 'UNBOUND', 'INACTIVE'].forEach(
+    (status, index) => {
+      f.assets[index + 1].matchStatus = status;
+    },
+  );
+  f.assets[7].active = false;
+  f.assets[8].targetAssetId = 99;
+  await f.manager.match(8);
+  assert.deepEqual(submitted, [1]);
+  assert.equal(f.writes.length, 0);
+});
+
+test('a project with no unmatched assets never reads candidates or calls models', async () => {
+  const f = fixture(async () => {
+    throw Error('unexpected model call');
+  });
+  for (const a of f.assets) a.matchStatus = 'MATCHED';
+  const get = f.client.get.bind(f.client);
+  f.client.get = (url) => {
+    assert.ok(!url.includes('/candidates'));
+    return get(url);
+  };
+  assert.deepEqual((await f.manager.match(8)).suggestions, []);
+});
 
 test('model batches use three slots, refill as completed, and retain source order', async () => {
   const calls = [];
