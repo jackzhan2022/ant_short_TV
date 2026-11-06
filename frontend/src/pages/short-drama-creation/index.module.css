@@ -1,193 +1,304 @@
-.pageContainer :where(.ant-pro-page-container-children-container) {
+.pageContainer :global(.ant-pro-page-container-children-container) {
   padding: 0;
 }
-
 .pageContainer {
-  margin: -24px;
+  margin: 0;
 }
-
 .creationShell {
-  min-height: 100vh;
-  padding: 64px 32px 72px;
+  min-height: calc(100vh - 56px);
+  padding: 48px clamp(24px, 4vw, 72px) 64px;
   background: var(--app-color-bg-layout);
 }
-
-.heroTitle {
-  margin: 0 0 30px;
-  text-align: center;
+.intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1320px;
+  margin: 0 auto 28px;
+  gap: 24px;
+}
+.eyebrow {
+  margin-bottom: 14px;
+  color: var(--app-color-text-secondary);
+  font-size: 11px;
+  letter-spacing: 2px;
+  font-weight: 600;
+}
+.intro .heroTitle {
+  margin: 0 0 12px;
   color: var(--app-color-text);
-  font-size: 34px;
-  font-weight: 750;
-  line-height: 1.25;
-  letter-spacing: 0;
+  font-size: clamp(24px, 2.5vw, 34px);
+  font-weight: 650;
+  letter-spacing: -1px;
 }
-
 .heroTitle span {
-  background: linear-gradient(
-    90deg,
-    var(--app-color-primary) 0%,
-    var(--app-color-primary-hover) 100%
-  );
-  background-clip: text;
-  color: transparent;
+  margin-left: 8px;
+  color: var(--app-color-primary);
 }
-
-.scriptPanel {
-  position: relative;
-  width: min(100%, 1120px);
-  margin: 0 auto;
-  overflow: hidden;
+.intro p {
+  margin: 0;
+  color: var(--app-color-text-secondary);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.creationBadge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 9px 14px;
   border: 1px solid var(--app-color-border);
-  border-radius: 12px;
+  border-radius: 24px;
+  color: var(--app-color-primary);
   background: var(--app-color-bg-container);
-  box-shadow: 0 10px 30px rgba(33, 36, 50, 0.06);
+  font-size: 12px;
+}
+.scriptPanel {
+  width: min(100%, 1320px);
+  margin: 0 auto;
+  border: 1px solid var(--app-color-border);
+  border-radius: 20px;
+  background: var(--app-color-bg-container);
+  box-shadow: 0 10px 36px
+    color-mix(in srgb, var(--app-color-text) 5%, transparent);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
-
 .scriptPanel:focus-within {
-  border-color: var(--app-color-primary);
-  box-shadow: 0 12px 34px rgb(82 82 255 / 10%);
+  border-color: color-mix(
+    in srgb,
+    var(--app-color-primary) 45%,
+    var(--app-color-border)
+  );
+  box-shadow: 0 10px 36px
+    color-mix(in srgb, var(--app-color-primary) 7%, transparent);
 }
-
-.regionTabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 52px;
-  border-bottom: 1px solid var(--app-color-border-secondary);
-  background: var(--app-color-fill-secondary);
-}
-
-.regionTab,
-.regionTabActive {
-  display: inline-flex;
+.composerHeading {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border: 0;
-  background: transparent;
+  gap: 8px;
+  margin: 0 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--app-color-border-secondary);
   color: var(--app-color-text-secondary);
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    color 0.18s ease,
-    background-color 0.18s ease;
 }
-
-.regionTabActive {
-  position: relative;
-  background: var(--app-color-bg-container);
-  color: var(--app-color-primary);
-  font-weight: 650;
+.composerHeading > :where(.ant-input) {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 4px;
+  color: var(--app-color-text);
+  font-size: 16px;
+  font-weight: 600;
 }
-
-.scriptInputWrap {
-  position: relative;
-  min-height: 226px;
-  background: var(--app-color-bg-container);
+.uploadButton {
+  flex-shrink: 0;
+  height: 36px;
+  color: var(--app-color-text-secondary);
+  font-size: 13px;
 }
-
-.scriptTextarea {
-  height: 226px;
-  padding: 24px 24px 70px;
+.scriptPanel .scriptTextarea {
+  height: 228px;
+  padding: 24px 28px 12px;
   border: 0;
-  background: var(--app-color-bg-container);
-  resize: none;
+  border-radius: 0;
+  background: transparent;
+  resize: vertical;
   color: var(--app-color-text);
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.9;
   box-shadow: none;
+  min-height: 160px;
+  max-height: 480px;
 }
-
 .scriptTextarea::placeholder {
   color: var(--app-color-text-tertiary);
 }
-
-.uploadButton {
-  position: absolute;
-  bottom: 14px;
-  left: 16px;
-  width: 42px;
-  min-width: 42px;
+.writingMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 28px 18px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.writingMeta > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.writingMeta > span:last-child {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.composerDock {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin: 0 16px;
+  padding: 14px 4px;
+  border-top: 1px solid var(--app-color-border-secondary);
+}
+.dockControl,
+.styleTrigger {
+  display: inline-flex;
+  align-items: center;
   height: 42px;
-  padding: 0;
-  border-radius: 50%;
-  aspect-ratio: 1;
+  gap: 8px;
+  padding: 0 12px;
+  border-color: transparent;
+  border-radius: 10px;
   background: var(--app-color-fill-secondary);
   color: var(--app-color-text);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  overflow: hidden;
+  font-size: 13px;
+  box-shadow: none;
 }
-
-.scriptInputWrap :where(.uploadButton) {
-  border-radius: 50%;
+.dockControl {
+  flex-shrink: 0;
 }
-
-.scriptInputWrap :where(.uploadButton, .magicButton) :where(.ant-btn-icon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.magicButton {
-  position: absolute;
-  bottom: 14px;
-  height: 42px;
-  right: 16px;
-  width: auto;
-  min-width: 112px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 21px;
-  background: linear-gradient(
-    90deg,
-    var(--app-color-primary) 0%,
-    var(--app-color-primary-hover) 100%
-  );
-  box-shadow: 0 8px 20px rgb(82 82 255 / 20%);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.uploadHint {
-  margin-top: 14px;
-  color: var(--app-color-text-tertiary);
-  font-size: 14px;
-}
-
-.skipButton {
-  border: 0;
-  background: transparent;
+.dockControl :where(.anticon-down),
+.styleTrigger :where(.anticon-down) {
   color: var(--app-color-text-secondary);
-  font-size: 14px;
-  cursor: pointer;
+  font-size: 10px;
 }
-
-.readyText {
-  display: block;
-  margin: 10px auto 0;
+.styleTrigger {
+  min-width: 140px;
+  max-width: 240px;
+}
+.styleTrigger > span:not(:where(.anticon)) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.styleTrigger img {
+  border-radius: 5px;
+  object-fit: cover;
+}
+.ratioControl {
+  flex: 0 0 88px;
+  min-width: 88px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--app-color-fill-secondary);
+}
+.createAction {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+}
+.startButton {
+  min-width: 100px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 22px;
+  background: var(--app-color-primary);
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px
+    color-mix(in srgb, var(--app-color-primary) 18%, transparent);
+}
+.uploadHint {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  align-items: center;
+  margin: 14px auto 0;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.settingsPopover {
+  width: min(320px, calc(100vw - 56px));
+  padding: 8px;
+}
+.settingsPopover h3 {
+  margin: 0 0 20px;
+  color: var(--app-color-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+.popoverField {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+.popoverField :where(.ant-radio-group) {
+  display: flex;
+}
+.popoverField :where(.ant-radio-button-wrapper) {
+  flex: 1;
   text-align: center;
+  font-size: 13px;
 }
-
+.popoverRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  margin: 6px 0;
+  color: var(--app-color-text);
+  font-size: 13px;
+}
+.popoverRow :where(.ant-select) {
+  width: 150px;
+}
+.settingHelp {
+  margin: 6px 0 12px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.coverSetting {
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--app-color-border-secondary);
+  color: var(--app-color-text);
+  font-size: 13px;
+}
+.coverSettingContent {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+.coverPreview {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 72px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--app-color-fill-secondary);
+  color: var(--app-color-text-tertiary);
+  font-size: 24px;
+}
+.coverPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .inspirationSection {
-  width: min(100%, 1440px);
-  margin: 52px auto 0;
+  width: min(100%, 1320px);
+  margin: 40px auto 0;
   padding: 0 0 18px;
 }
-
 .sectionTitle {
   display: block;
   margin-bottom: 16px;
   color: var(--app-color-text);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
 }
-
 .inspirationGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -263,7 +374,7 @@
   background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
   color: #fff;
   text-align: left;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.18s ease;
 }
 
@@ -281,122 +392,9 @@
   -webkit-line-clamp: 2;
 }
 
-.inspirationCard:hover .inspirationOverlay {
+.inspirationCard:hover .inspirationOverlay,
+.inspirationCard:focus-visible .inspirationOverlay {
   opacity: 1;
-}
-
-.settingsPage {
-  min-height: calc(100vh - 56px);
-  background: var(--app-color-bg-container);
-}
-
-.settingsHeader {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 64px;
-  padding: 0 30px;
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.settingsHeader :where(.ant-btn-text) {
-  color: var(--app-color-text);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.costNote {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--app-color-text-secondary);
-  font-size: 14px;
-}
-
-.startButton {
-  height: 42px;
-  border: 0;
-  border-radius: 10px;
-  padding: 0 24px;
-  background: var(--app-color-primary);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  box-shadow: 0 10px 22px rgb(82 82 255 / 20%);
-}
-
-.settingsBody {
-  max-width: none;
-  padding: 38px 30px 78px;
-}
-
-.settingBlock {
-  margin-bottom: 40px;
-}
-
-.settingTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 18px;
-  color: var(--app-color-text);
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.settingTitle::before {
-  width: 4px;
-  height: 22px;
-  border-radius: 8px;
-  background: var(--app-color-primary);
-  content: "";
-}
-
-.strengthGroup :where(.ant-radio-button-wrapper) {
-  min-width: 112px;
-  height: 44px;
-  margin-right: 14px;
-  border: 0;
-  border-radius: 22px;
-  background: var(--app-color-fill-secondary);
-  color: var(--app-color-text-secondary);
-  font-size: 15px;
-  line-height: 44px;
-}
-
-.strengthGroup :where(.ant-radio-button-wrapper-checked) {
-  background: var(--app-color-primary);
-  color: #fff;
-}
-
-.formGrid {
-  display: grid;
-  max-width: 680px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.coverPreview {
-  display: flex;
-  width: 196px;
-  height: 110px;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--app-color-fill-secondary);
-  color: var(--app-color-text-tertiary);
-  font-size: 34px;
-}
-
-.coverPreview :where(.ant-image),
-.coverPreview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .selectedStyleText {
@@ -622,71 +620,98 @@
   cursor: grab;
 }
 
-@media (max-width: 1100px) {
-  .scriptPanel,
-  .inspirationSection {
-    width: 100%;
-    padding-right: 0;
-    padding-left: 0;
+@media (max-width: 1200px) {
+  .composerDock {
+    gap: 4px;
+    margin-inline: 12px;
   }
-
+  .dockControl,
+  .styleTrigger {
+    gap: 6px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .styleTrigger {
+    min-width: 100px;
+    max-width: 180px;
+  }
+  .startButton {
+    min-width: 80px;
+    padding-inline: 16px;
+  }
   .inspirationGrid {
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
-  }
-
-  .styleStrip {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
-@media (max-width: 720px) {
+@media (max-width: 960px) {
   .creationShell {
-    padding: 42px 18px 48px;
+    padding: 32px 24px 48px;
   }
-
-  .heroTitle {
-    margin-bottom: 24px;
-    font-size: 28px;
+  .creationBadge {
+    display: none;
   }
-
-  .regionTab,
-  .regionTabActive {
-    font-size: 14px;
+  .composerDock {
+    flex-wrap: wrap;
   }
-
-  .inspirationGrid,
-  .formGrid,
-  .styleStrip {
+  .createAction {
+    margin-left: auto;
+  }
+}
+@media (max-width: 600px) {
+  .creationShell {
+    padding: 28px 16px 40px;
+  }
+  .intro .heroTitle {
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+  .heroTitle span {
+    display: block;
+    margin-left: 0;
+  }
+  .composerHeading {
+    margin-inline: 16px;
+    padding-block: 12px;
+  }
+  .scriptPanel .scriptTextarea {
+    padding-inline: 16px;
+    font-size: 16px;
+  }
+  .writingMeta {
+    padding-inline: 16px;
+    gap: 8px;
+  }
+  .styleTrigger {
+    max-width: 165px;
+  }
+  .inspirationGrid {
     grid-template-columns: 1fr;
   }
-
-  .settingsHeader {
-    height: auto;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px 20px;
+  .styleStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-right: 0;
   }
-
-  .settingsBody {
-    padding: 28px 20px 58px;
-  }
-
   .detailInfoPanel {
     grid-template-columns: 72px minmax(0, 1fr);
     padding: 14px 16px 18px;
   }
-
   .detailThumb {
     width: 72px;
     height: 72px;
   }
-
   .managementItem {
     grid-template-columns: 20px 56px minmax(0, 1fr) 32px;
   }
   .managementItem img {
     width: 56px;
     height: 48px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scriptPanel,
+  .inspirationCard,
+  .inspirationCard img,
+  .inspirationOverlay {
+    transition: none;
   }
 }

@@ -1,3 +1,4 @@
+import { ReloadOutlined } from '@ant-design/icons';
 import { Button, type ButtonProps, Tooltip } from 'antd';
 import { useId } from 'react';
 import {
@@ -11,6 +12,7 @@ export type PointEstimateButtonProps = ButtonProps & {
   tenantId?: number;
   estimateEnabled?: boolean;
   showEstimate?: boolean;
+  displayMode?: 'label' | 'points';
 };
 
 export default function PointEstimateButton({
@@ -18,6 +20,7 @@ export default function PointEstimateButton({
   tenantId,
   estimateEnabled = true,
   showEstimate = true,
+  displayMode = 'label',
   children,
   disabled,
   loading,
@@ -36,6 +39,8 @@ export default function PointEstimateButton({
       onClick={onClick}
       quote={quote}
       showEstimate={showEstimate}
+      displayMode={displayMode}
+      free={operations?.length === 0}
     >
       {children}
     </PointEstimateButtonView>
@@ -48,22 +53,41 @@ export function PointEstimateButtonView({
   disabled,
   loading,
   showEstimate = true,
+  displayMode = 'label',
+  free = false,
   onClick,
   ...props
 }: ButtonProps & {
   quote: ReturnType<typeof usePointEstimate>;
   showEstimate?: boolean;
+  displayMode?: 'label' | 'points';
+  free?: boolean;
 }) {
   const descriptionId = useId();
+  const pointsOnly = displayMode === 'points';
+  const amount = quote.estimate
+    ? formatPoints(Math.ceil(quote.estimate.estimatedPoints))
+    : free
+      ? '0'
+      : '—';
   const suffix = quote.loading
     ? '预估中'
     : quote.error
       ? '预估失败'
       : quote.estimate
-        ? `预计 ${formatPoints(quote.estimate.estimatedPoints)} 积分${quote.estimate.sufficient ? '' : ' · 积分不足'}`
+        ? `${pointsOnly ? amount : `预计 ${formatPoints(quote.estimate.estimatedPoints)}`} 积分${quote.estimate.sufficient ? '' : ' · 积分不足'}`
         : undefined;
   return (
-    <Tooltip title={quote.reason || (!showEstimate ? suffix : undefined)}>
+    <Tooltip
+      title={
+        quote.reason ||
+        (pointsOnly
+          ? `${typeof children === 'string' ? children : '开始创作'} · ${quote.loading ? '积分计算中' : quote.error ? '积分获取失败' : `${amount} 积分`}`
+          : !showEstimate
+            ? suffix
+            : undefined)
+      }
+    >
       <span
         style={{
           display: props.block ? 'block' : 'inline-flex',
@@ -74,9 +98,9 @@ export function PointEstimateButtonView({
           {...props}
           style={{
             ...props.style,
-            flexWrap: 'wrap',
-            whiteSpace: 'normal',
-            height: 'auto',
+            flexWrap: pointsOnly ? 'nowrap' : 'wrap',
+            whiteSpace: pointsOnly ? 'nowrap' : 'normal',
+            ...(pointsOnly ? {} : { height: 'auto' }),
           }}
           disabled={disabled || quote.disabled || Boolean(loading)}
           loading={loading || quote.loading}
@@ -93,12 +117,12 @@ export function PointEstimateButtonView({
             if (!quote.disabled && !disabled && !loading) onClick?.(event);
           }}
         >
-          {children}
-          {suffix ? (
+          {pointsOnly ? amount : children}
+          {suffix && !pointsOnly ? (
             <span
               id={descriptionId}
               aria-live="polite"
-              hidden={!showEstimate}
+              hidden={pointsOnly || !showEstimate}
               style={{ fontSize: '0.9em' }}
             >
               {' '}
@@ -106,16 +130,22 @@ export function PointEstimateButtonView({
             </span>
           ) : null}
         </Button>
+        {pointsOnly && suffix ? (
+          <span id={descriptionId} hidden aria-live="polite">
+            {suffix}
+          </span>
+        ) : null}
         {(quote.error || quote.estimate?.sufficient === false) &&
         !disabled &&
         !loading ? (
           <Button
             type="link"
             size="small"
-            aria-label="重新预估积分"
+            aria-label={pointsOnly ? '刷新积分' : '重新预估积分'}
+            icon={pointsOnly ? <ReloadOutlined /> : undefined}
             onClick={quote.refresh}
           >
-            重新预估
+            {pointsOnly ? null : '重新预估'}
           </Button>
         ) : null}
       </span>

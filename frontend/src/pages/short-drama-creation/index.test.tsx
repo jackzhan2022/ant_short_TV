@@ -1,4 +1,4 @@
-import '@root/tests/mockPointEstimate';
+import { recordedPointEstimates } from '@root/tests/mockPointEstimate';
 import {
   act,
   fireEvent,
@@ -77,7 +77,9 @@ vi.mock('../style-library/service', () => ({
   queryStyleCategories: mocks.queryStyleCategories,
 }));
 
-vi.mock('@/components/ProjectArtStylePicker/service', () => ({ queryArtStyles: mocks.queryArtStyles }));
+vi.mock('@/components/ProjectArtStylePicker/service', () => ({
+  queryArtStyles: mocks.queryArtStyles,
+}));
 
 vi.mock('./service', () => ({
   createProject: mocks.createProject,
@@ -120,22 +122,35 @@ vi.mock('@ant-design/pro-components', () => ({
 }));
 
 const enterStyleFooter = async () => {
-  await waitFor(() => expect(observedTargets.some(
-    (observer) => observer.target.getAttribute('aria-label') === '风格加载状态',
-  )).toBe(true));
-  const observer = observedTargets.filter(
-    (item) => item.target.getAttribute('aria-label') === '风格加载状态',
-  ).at(-1);
+  await waitFor(() =>
+    expect(
+      observedTargets.some(
+        (observer) =>
+          observer.target.getAttribute('aria-label') === '风格加载状态',
+      ),
+    ).toBe(true),
+  );
+  const observer = observedTargets
+    .filter((item) => item.target.getAttribute('aria-label') === '风格加载状态')
+    .at(-1);
   if (!observer) throw new Error('风格加载观察器未注册');
-  act(() => observer.callback(
-    [{ target: observer.target, isIntersecting: true }] as IntersectionObserverEntry[],
-    {} as IntersectionObserver,
-  ));
+  act(() =>
+    observer.callback(
+      [
+        { target: observer.target, isIntersecting: true },
+      ] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    ),
+  );
 };
 
 const laterStyle = {
-  id: 13, externalId: '13', name: '后续页风格', category: '未分组',
-  description: '后续页', imageUrl: '/later-style.png',
+  id: 13,
+  externalId: '13',
+  name: '后续页风格',
+  category: '未分组',
+  description: '后续页',
+  imageUrl: '/later-style.png',
 };
 
 describe('ShortDramaCreationPage', () => {
@@ -149,7 +164,10 @@ describe('ShortDramaCreationPage', () => {
       data: ['3D风格', '未分组'],
     });
     mocks.startProjectCoverUpload.mockResolvedValue({
-      attempt: Promise.resolve({ sessionToken: 'cover-session', objectKey: 'uploads/cover.png' }),
+      attempt: Promise.resolve({
+        sessionToken: 'cover-session',
+        objectKey: 'uploads/cover.png',
+      }),
       cancel: vi.fn(),
     });
     mocks.bindProjectCover.mockResolvedValue({ data: { status: 'PENDING' } });
@@ -253,6 +271,61 @@ describe('ShortDramaCreationPage', () => {
     });
   });
 
+  it('edits the script and its grouped settings on one page without creating a project', async () => {
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    const editor = screen.getByRole('textbox', { name: '剧本内容' });
+    fireEvent.change(editor, { target: { value: '雨夜，女主带着证据归来。' } });
+    fireEvent.click(screen.getByRole('button', { name: '创作设定' }));
+    const settings = screen.getByRole('dialog', { name: '创作设定' });
+    fireEvent.click(within(settings).getByRole('radio', { name: '海外剧' }));
+    fireEvent.click(within(settings).getByRole('radio', { name: '小说格式' }));
+    fireEvent.click(within(settings).getByRole('radio', { name: '解说漫' }));
+    expect(screen.getByRole('button', { name: '创作设定' })).toHaveTextContent(
+      '海外剧 · 小说 · 解说漫',
+    );
+    expect(editor).toHaveValue('雨夜，女主带着证据归来。');
+    expect(mocks.createProject).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(recordedPointEstimates().at(-1)?.operations).toEqual([
+        {
+          url: '/api/projects',
+          data: expect.objectContaining({
+            initialScriptContent: '雨夜，女主带着证据归来。',
+            fileFormat: 'NOVEL',
+            scriptType: 'COMMENTARY_COMIC',
+          }),
+        },
+      ]),
+    );
+  });
+
+  it('opens advanced settings in a floating dialog and returns focus on Escape', async () => {
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    const trigger = screen.getByRole('button', { name: '更多设置' });
+    fireEvent.click(trigger);
+    const settings = screen.getByRole('dialog', { name: '更多设置' });
+    expect(
+      within(settings).getByRole('combobox', { name: '默认视频分辨率' }),
+    ).toBeInTheDocument();
+    expect(
+      within(settings).getByRole('switch', { name: '默认生成音频' }),
+    ).toBeChecked();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() =>
+      expect(trigger).toHaveAttribute('aria-expanded', 'false'),
+    );
+    expect(trigger).toHaveFocus();
+    expect(mocks.createProject).not.toHaveBeenCalled();
+  });
+
   it('shows the full online inspiration gallery on the first page', async () => {
     render(
       <App>
@@ -265,15 +338,19 @@ describe('ShortDramaCreationPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('灵感广场')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '跳过上传，创建空白剧本' }),
+      screen.getByRole('button', { name: '选择画风' }),
     ).toBeInTheDocument();
     expect(await screen.findByText('线上灵感 A')).toBeInTheDocument();
     expect(screen.getByText('线上灵感 B')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /海外剧/ }));
+    fireEvent.click(screen.getByRole('button', { name: '创作设定' }));
+    fireEvent.click(screen.getByRole('radio', { name: '海外剧' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByText('线上灵感 A')).toBeInTheDocument();
     expect(screen.getByText('线上灵感 B')).toBeInTheDocument();
     expect(screen.queryByText('豪门继承人归来')).not.toBeInTheDocument();
-    expect(screen.queryByText('3D风格-高清真实渲染')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '选择画风' })).toHaveTextContent(
+      '3D风格-高清真实渲染',
+    );
     expect(mocks.queryInspirationCreations).toHaveBeenCalledWith({
       page: 1,
       pageSize: 8,
@@ -415,63 +492,101 @@ describe('ShortDramaCreationPage', () => {
     expect(mocks.queryInspirationCreations).toHaveBeenCalledTimes(2);
   });
 
-  it('opens the settings page from the first page start button', async () => {
+  it('shows the script editor and creation controls together', async () => {
     render(
       <App>
         <ShortDramaCreationPage />
       </App>,
     );
-
-    await waitFor(() =>
-      expect(mocks.queryStyleLibrary).toHaveBeenCalledWith({
-        current: 1,
-        pageSize: 12,
-      }),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '开始创作' }));
-
     expect(
-      screen.getByRole('button', { name: /初始设定/ }),
+      screen.getByRole('textbox', { name: '剧本内容' }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: '剧本名称' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '创作设定' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '开始创作' }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
+    expect(mocks.createProject).not.toHaveBeenCalled();
   });
 
   it('appends every platform style batch without losing selection or loading offscreen images', async () => {
     const baseline = await mocks.queryStyleLibrary();
     mocks.queryStyleLibrary.mockClear();
-    mocks.queryStyleLibrary.mockImplementation((params) => Promise.resolve({ data: {
-      current: params.current, pageSize: 12, total: 25,
-      data: params.current === 1 ? baseline.data.data
-        : params.current === 2 ? [baseline.data.data[0], laterStyle]
-        : [{ ...laterStyle, id: 25, externalId: '25', name: '最后一批风格' }],
-    } }));
-    render(<App><ShortDramaCreationPage /></App>);
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    mocks.queryStyleLibrary.mockImplementation((params) =>
+      Promise.resolve({
+        data: {
+          current: params.current,
+          pageSize: 12,
+          total: 25,
+          data:
+            params.current === 1
+              ? baseline.data.data
+              : params.current === 2
+                ? [baseline.data.data[0], laterStyle]
+                : [
+                    {
+                      ...laterStyle,
+                      id: 25,
+                      externalId: '25',
+                      name: '最后一批风格',
+                    },
+                  ],
+        },
+      }),
+    );
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     expect(document.querySelector('.ant-pagination')).toBeNull();
     expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1);
 
     await enterStyleFooter();
     const card = await screen.findByRole('button', { name: '后续页风格' });
-    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({ current: 2, pageSize: 12 });
-    expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(2);
+    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({
+      current: 2,
+      pageSize: 12,
+    });
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+    ).toHaveLength(2);
     const image = within(card).getByAltText('后续页风格');
     expect(image).not.toHaveAttribute('src');
-    const imageObserver = observedTargets.find((item) => item.target.contains(image));
+    const imageObserver = observedTargets.find((item) =>
+      item.target.contains(image),
+    );
     if (!imageObserver) throw new Error('风格图片观察器未注册');
-    act(() => imageObserver.callback(
-      [{ target: imageObserver.target, isIntersecting: true }] as IntersectionObserverEntry[],
-      {} as IntersectionObserver,
-    ));
+    act(() =>
+      imageObserver.callback(
+        [
+          { target: imageObserver.target, isIntersecting: true },
+        ] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      ),
+    );
     expect(image).toHaveAttribute('src', '/later-style.png');
     fireEvent.click(card);
     expect(card).toHaveAttribute('aria-pressed', 'true');
 
     await enterStyleFooter();
     await screen.findByRole('button', { name: '最后一批风格' });
-    expect(screen.getAllByText('后续页风格')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('后续页风格'),
+    ).toHaveLength(2);
     expect(screen.getByText('已展示全部风格')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '加载更多风格' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '加载更多风格' }),
+    ).not.toBeInTheDocument();
     expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(3);
   });
 
@@ -480,82 +595,167 @@ describe('ShortDramaCreationPage', () => {
     let finishOldBatch: (value: unknown) => void = () => {};
     mocks.queryStyleLibrary.mockClear();
     mocks.queryStyleLibrary.mockImplementation((params) => {
-      if (params.category) return Promise.resolve({ data: {
-        current: 1, pageSize: 12, total: 1, data: [laterStyle],
-      } });
-      if (params.current === 2) return new Promise((resolve) => { finishOldBatch = resolve; });
+      if (params.category)
+        return Promise.resolve({
+          data: {
+            current: 1,
+            pageSize: 12,
+            total: 1,
+            data: [laterStyle],
+          },
+        });
+      if (params.current === 2)
+        return new Promise((resolve) => {
+          finishOldBatch = resolve;
+        });
       return Promise.resolve(baseline);
     });
-    render(<App><ShortDramaCreationPage /></App>);
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     await enterStyleFooter();
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(2),
+    );
     await enterStyleFooter();
     expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('tab', { name: '未分组' }));
     await screen.findByRole('button', { name: '后续页风格' });
-    await act(async () => finishOldBatch({ data: {
-      current: 2, pageSize: 12, total: 25,
-      data: [{ ...laterStyle, id: 99, externalId: '99', name: '过期分类风格' }],
-    } }));
-    expect(screen.queryByRole('button', { name: '过期分类风格' })).not.toBeInTheDocument();
-    expect(screen.getByText('3D风格-高清真实渲染')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '未分组' })).toHaveAttribute('aria-selected', 'true');
+    await act(async () =>
+      finishOldBatch({
+        data: {
+          current: 2,
+          pageSize: 12,
+          total: 25,
+          data: [
+            { ...laterStyle, id: 99, externalId: '99', name: '过期分类风格' },
+          ],
+        },
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: '过期分类风格' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('dialog')).getByText('3D风格-高清真实渲染'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '未分组' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
   it('retries a failed next batch without dropping existing cards or restarting page one', async () => {
     const baseline = await mocks.queryStyleLibrary();
     mocks.queryStyleLibrary.mockClear();
-    mocks.queryStyleLibrary.mockResolvedValueOnce(baseline)
+    mocks.queryStyleLibrary
+      .mockResolvedValueOnce(baseline)
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({ data: { current: 2, pageSize: 12, total: 13, data: [laterStyle] } });
-    render(<App><ShortDramaCreationPage /></App>);
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+      .mockResolvedValueOnce({
+        data: { current: 2, pageSize: 12, total: 13, data: [laterStyle] },
+      });
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     await enterStyleFooter();
     const retry = await screen.findByRole('button', { name: '重试加载风格' });
-    expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+    ).toHaveLength(2);
     await enterStyleFooter();
     expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(2);
     fireEvent.click(retry);
     await screen.findByRole('button', { name: '后续页风格' });
-    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({ current: 2, pageSize: 12 });
-    expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(2);
+    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({
+      current: 2,
+      pageSize: 12,
+    });
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+    ).toHaveLength(2);
     expect(screen.getByText('已展示全部风格')).toBeInTheDocument();
   });
 
   it('keeps the chosen style when a category is empty and when returning to all styles', async () => {
     const baseline = await mocks.queryStyleLibrary();
     mocks.queryStyleLibrary.mockClear();
-    mocks.queryStyleLibrary.mockImplementation((params) => Promise.resolve(params.category
-      ? { data: { current: 1, pageSize: 12, total: 0, data: [] } } : baseline));
-    render(<App><ShortDramaCreationPage /></App>);
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    mocks.queryStyleLibrary.mockImplementation((params) =>
+      Promise.resolve(
+        params.category
+          ? { data: { current: 1, pageSize: 12, total: 0, data: [] } }
+          : baseline,
+      ),
+    );
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     fireEvent.click(screen.getByRole('tab', { name: '未分组' }));
     expect(await screen.findByText('当前分类暂无平台风格')).toBeInTheDocument();
-    expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: '加载更多风格' })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole('button', { name: '加载更多风格' }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '全部' }));
-    await waitFor(() => expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(2));
-    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({ current: 1, pageSize: 12 });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+      ).toHaveLength(2),
+    );
+    expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({
+      current: 1,
+      pageSize: 12,
+    });
   });
 
   it('stops requesting more after an empty batch even when the total is out of date', async () => {
     const baseline = await mocks.queryStyleLibrary();
     mocks.queryStyleLibrary.mockClear();
-    mocks.queryStyleLibrary.mockResolvedValueOnce(baseline).mockResolvedValueOnce({ data: {
-      current: 2, pageSize: 12, total: 25, data: [],
-    } });
-    render(<App><ShortDramaCreationPage /></App>);
-    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    mocks.queryStyleLibrary
+      .mockResolvedValueOnce(baseline)
+      .mockResolvedValueOnce({
+        data: {
+          current: 2,
+          pageSize: 12,
+          total: 25,
+          data: [],
+        },
+      });
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() =>
+      expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     await enterStyleFooter();
     await screen.findByText('已展示全部风格');
     await enterStyleFooter();
     expect(mocks.queryStyleLibrary).toHaveBeenCalledTimes(2);
-    expect(screen.getAllByText('3D风格-高清真实渲染')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('dialog')).getAllByText('3D风格-高清真实渲染'),
+    ).toHaveLength(2);
   });
 
   it('opens video inspiration as a cover and only starts its source on play', async () => {
@@ -620,12 +820,15 @@ describe('ShortDramaCreationPage', () => {
       </App>,
     );
     await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
-    fireEvent.click(
-      screen.getByRole('button', { name: '跳过上传，创建空白剧本' }),
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
+    expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute(
+      'aria-selected',
+      'true',
     );
-    expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: '3D风格' })).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: '风格分类' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '风格分类' }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '未分组' }));
     await waitFor(() =>
       expect(mocks.queryStyleLibrary).toHaveBeenLastCalledWith({
@@ -652,14 +855,6 @@ describe('ShortDramaCreationPage', () => {
       }),
     );
 
-    fireEvent.click(
-      screen.getByRole('button', { name: '跳过上传，创建空白剧本' }),
-    );
-    const settingLabels = screen.getAllByText(
-      /剧本名称|画面比例|文件格式|剧本类型|剧本解析力度/,
-    );
-    expect(settingLabels[0]).toHaveTextContent('剧本名称');
-    expect(screen.getByRole('radio', { name: '原分镜' })).toBeChecked();
     fireEvent.change(screen.getByRole('textbox', { name: '剧本名称' }), {
       target: { value: '雨夜归来' },
     });
@@ -668,7 +863,7 @@ describe('ShortDramaCreationPage', () => {
     await waitFor(() => {
       expect(mocks.createProject).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: '未命名短剧',
+          name: '雨夜归来',
           scriptName: '雨夜归来',
           code: expect.stringMatching(/^SHORT_DRAMA_/),
           ownerId: 1,
@@ -706,7 +901,6 @@ describe('ShortDramaCreationPage', () => {
     expect(editor).toHaveValue('引用的版本内容');
     fireEvent.change(editor, { target: { value: '引用后继续编辑' } });
     fireEvent.click(screen.getByRole('button', { name: '开始创作' }));
-    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
 
     await waitFor(() =>
       expect(mocks.createProject).toHaveBeenCalledWith(
@@ -719,60 +913,117 @@ describe('ShortDramaCreationPage', () => {
   });
 
   it('creates a V2 art project independently of the storyboard version', async () => {
-    mocks.queryArtStyles.mockResolvedValue({ data: [{ code: 'realpeople_modern_city', name: '真人都市电影', category: '真人写实', description: '自然光与真实皮肤' }] });
+    mocks.queryArtStyles.mockResolvedValue({
+      data: [
+        {
+          code: 'realpeople_modern_city',
+          name: '真人都市电影',
+          category: '真人写实',
+          description: '自然光与真实皮肤',
+        },
+      ],
+    });
     mocks.createProject.mockResolvedValue({ data: { id: 9 } });
-    render(<App><ShortDramaCreationPage /></App>);
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
     await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择画风' }));
     expect(screen.getByRole('radio', { name: '画风 1.0' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: '画风 2.0' }));
-    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    expect(
+      screen.getByRole('button', { name: '开始创作', hidden: true }),
+    ).toBeDisabled();
     expect(mocks.createProject).not.toHaveBeenCalled();
     await waitFor(() => expect(mocks.queryArtStyles).toHaveBeenCalled());
-    fireEvent.click(await screen.findByRole('button', { name: '选择真人都市电影' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: '选择真人都市电影' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '完成选择' }));
     fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
-    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledWith(expect.objectContaining({
-      visualStyleVersion: 'V2', visualStyleCode: 'realpeople_modern_city', visualStyle: '真人都市电影', storyboardSkillVersion: 'V1',
-    })));
+    await waitFor(() =>
+      expect(mocks.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          visualStyleVersion: 'V2',
+          visualStyleCode: 'realpeople_modern_city',
+          visualStyle: '真人都市电影',
+          storyboardSkillVersion: 'V1',
+        }),
+      ),
+    );
     expect(mocks.createProject.mock.calls[0][0].coverUrl).toBeUndefined();
   });
 
   it('submits the chosen V2 storyboard skill when creating a project', async () => {
     mocks.createProject.mockResolvedValue({ data: { id: 9 } });
-    render(<App><ShortDramaCreationPage /></App>);
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
     await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
-    fireEvent.click(screen.getByRole('radio', { name: '分镜技能2.0' }));
-    expect(screen.getByRole('radio', { name: '分镜技能2.0' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '更多设置' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '分镜技能' }));
+    fireEvent.click(await screen.findByText('分镜技能2.0'));
+    fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
-    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledWith(
-      expect.objectContaining({ storyboardSkillVersion: 'V2' }),
-    ));
+    await waitFor(() =>
+      expect(mocks.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({ storyboardSkillVersion: 'V2' }),
+      ),
+    );
   });
 
   it('uploads a cover through a controlled session and never persists its data URL', async () => {
     mocks.createProject.mockResolvedValue({ data: { id: 9 } });
-    render(<App><ShortDramaCreationPage /></App>);
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
     await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: '跳过上传，创建空白剧本' }));
+    fireEvent.click(screen.getByRole('button', { name: '更多设置' }));
 
-    const file = new File([new Uint8Array(2048)], 'cover.png', { type: 'image/png' });
-    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
-      target: { files: [file] },
+    const file = new File([new Uint8Array(2048)], 'cover.png', {
+      type: 'image/png',
     });
-    await waitFor(() => expect(mocks.startProjectCoverUpload).toHaveBeenCalledWith(file));
-    act(() => intersectionObservers.at(-1)?.(
-      [{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver,
-    ));
-    await waitFor(() => expect(screen.getByAltText('封面预览')).toHaveAttribute('src', 'blob:cover-preview'));
+    fireEvent.change(
+      screen
+        .getByRole('dialog', { name: '更多设置' })
+        .querySelector('input[type="file"]') as HTMLInputElement,
+      {
+        target: { files: [file] },
+      },
+    );
+    await waitFor(() =>
+      expect(mocks.startProjectCoverUpload).toHaveBeenCalledWith(file),
+    );
+    act(() =>
+      intersectionObservers.at(-1)?.(
+        [{ isIntersecting: true }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByAltText('封面预览')).toHaveAttribute(
+        'src',
+        'blob:cover-preview',
+      ),
+    );
 
+    fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
-    await waitFor(() => expect(mocks.bindProjectCover).toHaveBeenCalledWith(9, 'cover-session'));
+    await waitFor(() =>
+      expect(mocks.bindProjectCover).toHaveBeenCalledWith(9, 'cover-session'),
+    );
     const payload = mocks.createProject.mock.calls[0][0];
     expect(payload.coverSource).toBe('UPLOAD');
     expect(payload.coverUrl).toBeUndefined();
     expect(JSON.stringify(payload)).not.toContain('data:image');
-    expect(mocks.bindProjectCover.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.historyPush.mock.invocationCallOrder[0]);
+    expect(mocks.bindProjectCover.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.historyPush.mock.invocationCallOrder[0],
+    );
   });
 });
