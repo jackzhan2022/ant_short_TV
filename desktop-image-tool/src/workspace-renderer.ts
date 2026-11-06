@@ -20,6 +20,7 @@ import {
   aiChoiceKey,
   groupProjects,
   initialAiChoices,
+  nextSourceProject,
   queueCategory,
   targetOptions,
 } from './workspace-view.js';
@@ -347,9 +348,15 @@ export function initializeWorkspace(hooks: Hooks) {
     return state?.projects.find((project) => project.id === projectId);
   }
   function scopeName(project: SourceProject) {
-    return project.sourceScriptId
-      ? `剧本 ${project.sourceScriptId}`
-      : '项目资产清单';
+    const count = state?.projects.filter(
+      (row) =>
+        row.active &&
+        row.sourceTeamId === project.sourceTeamId &&
+        row.sourceProjectId === project.sourceProjectId,
+    ).length;
+    return count === 1
+      ? '当前资产清单'
+      : `待更新清单 ${project.sourceScriptId}`;
   }
   function renderSourceOptions() {
     const groups = groupProjects(
@@ -509,18 +516,18 @@ export function initializeWorkspace(hooks: Hooks) {
   function renderProjects() {
     const groups = groupProjects(state?.projects ?? []);
     get('project-count').textContent =
-      `已同步 ${groups.length} 个项目 · ${groups.reduce((count, group) => count + group.scopes.length, 0)} 份剧本清单`;
+      `已同步 ${groups.length} 个项目 · 每次同步更新当前清单`;
     const project = currentProject();
     get('asset-project-name').textContent = project?.name ?? '选择来源项目';
     get('binding-label').textContent = project
       ? `${scopeName(project)} · 来源团队 ${project.sourceTeamId}`
-      : '选择已同步项目和剧本清单';
+      : '选择已同步项目';
     get('binding-summary').textContent =
       project?.targetProjectName ?? '选择对应项目';
     get('binding-help').textContent = project?.targetProjectId
       ? `${state?.teamName ?? ''} · 项目 #${project.targetProjectId}`
       : project
-        ? '当前剧本清单尚未绑定'
+        ? '当前项目尚未绑定'
         : '先选择来源项目';
     get<HTMLButtonElement>('match-assets').disabled =
       !project?.targetProjectId || bindingBusy || assetsLoading;
@@ -650,10 +657,11 @@ export function initializeWorkspace(hooks: Hooks) {
       } catch {
         /* Use first available project. */
       }
-      projectId =
-        next.projects.find(
-          (project) => project.active && project.id === remembered,
-        )?.id ?? next.projects.find((project) => project.active)?.id;
+      projectId = nextSourceProject(
+        next.projects,
+        changedTeam ? undefined : previousProject,
+        remembered,
+      );
       rememberSelection();
       get<HTMLDialogElement>('binding-dialog').close();
       get<HTMLDialogElement>('source-project-dialog').close();
@@ -682,6 +690,7 @@ export function initializeWorkspace(hooks: Hooks) {
     const status = get<HTMLSelectElement>('asset-status').value;
     return assets.filter(
       (asset) =>
+        asset.active &&
         (!search || asset.name.toLocaleLowerCase().includes(search)) &&
         (!type || asset.type === type) &&
         (!status || asset.matchStatus === status),

@@ -2,8 +2,10 @@ package com.antshorttv.desktop;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 import com.antshorttv.authsession.AuthenticatedUser;
 import com.antshorttv.common.BusinessException;
@@ -72,6 +74,18 @@ class DesktopSourceAuthorizationIntegrationTest {
         assertThatThrownBy(()->service.list(tenant)).isInstanceOf(BusinessException.class);
         SecurityContextHolder.clearContext();
         mvc.perform(get("/api/desktop/source-projects").with(anonymous()).header("X-Tenant-Id",tenant)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/desktop/source-projects/sync-current").with(anonymous()).with(csrf()).header("X-Tenant-Id",tenant)
+            .contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+    }
+
+    @Test void currentReplacementCannotRetireAnInaccessibleBoundInventory() {
+        var old=service.sync(tenant,new DesktopSourceModels.SyncRequest("connection","team","project","old","Source",true,List.of()));
+        service.bind(tenant,old.id(),project);
+        principal(other);
+        assertThatThrownBy(()->service.syncCurrent(tenant,new DesktopSourceModels.SyncRequest(
+            "connection","team","project","current","Source",true,List.of()))).isInstanceOf(BusinessException.class);
+        principal(user);
+        assertThat(service.list(tenant)).extracting(DesktopSourceModels.SourceProject::id).containsExactly(old.id());
     }
 
     @Test void inventorySchemaStoresOnlyNamesIdentifiersAndMappingMetadata() {

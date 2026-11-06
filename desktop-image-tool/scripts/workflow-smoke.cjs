@@ -85,14 +85,25 @@ const os = require('node:os');
           ...project(),
           id: 2,
           name: '测试项目 B',
+          sourceProjectId: 'source-project-b',
           sourceScriptId: 'source-script-b',
         },
       ];
-    else if (req.url === '/api/desktop/source-projects/sync') {
+    else if (req.url === '/api/desktop/source-projects/sync-current') {
       syncs.push(body);
       result = project();
     } else if (req.url === '/api/desktop/source-projects/1/assets')
-      result = assets();
+      result = [
+        ...assets(),
+        {
+          ...assets()[0],
+          id: 999,
+          name: '历史已删除资产',
+          active: false,
+          matchStatus: 'INACTIVE',
+          hasPrompt: false,
+        },
+      ];
     else if (req.url === '/api/desktop/source-projects/2/assets')
       result = [{ ...assets()[0], id: 101, name: '项目 B 专属角色' }];
     else if (req.url === '/api/desktop/source-projects/1/binding') {
@@ -244,7 +255,7 @@ const os = require('node:os');
     );
     assert.match(
       await page.locator('#project-count').textContent(),
-      /已同步 1 个项目 · 2 份剧本清单/,
+      /已同步 2 个项目 · 每次同步更新当前清单/,
     );
     assert.equal(JSON.stringify(syncs).includes('MUST_NOT_UPLOAD'), false);
     assert.deepEqual(Object.keys(syncs[0].assets[0]).sort(), [
@@ -302,6 +313,13 @@ const os = require('node:os');
     await page.locator('#asset-rows .matched').first().waitFor();
     await page.locator('#match-assets').click();
     await page.locator('#asset-rows .matched').first().waitFor();
+    assert.equal(await page.locator('#asset-rows tr').count(), 12);
+    assert.equal(
+      (await page.locator('#asset-rows').textContent()).includes(
+        '历史已删除资产',
+      ),
+      false,
+    );
     await page.locator('#asset-rows button').first().click();
     await page.locator('#prompt-dialog').waitFor();
     assert.match(

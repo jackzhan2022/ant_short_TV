@@ -93,6 +93,26 @@ test('script discovery returns identity fields without reading episodes or scrip
   });
 });
 
+test('project discovery retains the current script pointer without script content or project description', async () => {
+  const { result } = await read('ListProjects', {
+    Result: {
+      Items: [
+        {
+          ProjectId: 'p',
+          TeamId: 't',
+          ProjectName: 'P',
+          ScriptId: 'current',
+          ProjectDesc: 'SECRET',
+          ScriptContent: 'SECRET',
+        },
+      ],
+      Total: 1,
+    },
+  });
+  assert.equal(result.value.Result.Items[0].ScriptId, 'current');
+  assert.ok(!JSON.stringify(result).includes('SECRET'));
+});
+
 test('asset projections retain variant identities and names without prompts, images or descriptions', async () => {
   const { result } = await read('ListCharacters', {
     Result: {

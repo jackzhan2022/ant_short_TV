@@ -28,7 +28,7 @@ public class DesktopSourceService {
     public List<SourceProject> list(Long tenant) {
         tenants.requireActiveMember(tenant);
         List<SourceProject> result=new ArrayList<>();
-        for (ProjectRow row:jdbc.query("select * from desktop_source_project where tenant_id=? order by id desc",this::projectRow,tenant)) {
+        for (ProjectRow row:jdbc.query("select * from desktop_source_project where tenant_id=? and active=true order by id desc",this::projectRow,tenant)) {
             try { result.add(projectResponse(tenant,row)); }
             catch (BusinessException e) {
                 if (e.getErrorCode()!=ErrorCode.FORBIDDEN && e.getErrorCode()!=ErrorCode.PROJECT_ACCESS_DENIED
@@ -40,8 +40,13 @@ public class DesktopSourceService {
 
     @Transactional
     public SourceProject sync(Long tenant,SyncRequest body) {
+        return syncInventory(tenant,body,false);
+    }
+
+    private SourceProject syncInventory(Long tenant,SyncRequest body,boolean currentOnly) {
         tenants.requireActiveMember(tenant);
         if (body==null || body.assets()==null || body.assets().size()>5000) throw invalid("资产清单不能为空且不能超过 5000 条。");
+        if(currentOnly && !Boolean.TRUE.equals(body.complete())) throw invalid("更新当前清单必须提供完整快照，历史清单未停用。");
         String connection=text(body.connectionId(),80),team=text(body.sourceTeamId(),100),project=text(body.sourceProjectId(),100),
             script=text(body.sourceScriptId(),100),name=sourceName(body.name());
         Map<String,SyncAsset> normalized=new LinkedHashMap<>();
@@ -51,6 +56,13 @@ public class DesktopSourceService {
             SyncAsset value=new SyncAsset(id,parent,assetName(a.name()),type(a.type()));
             if (normalized.putIfAbsent(id,value)!=null) throw invalid("源资产标识重复。");
         }
+        // Lock the project identity range before its individual script rows so two
+        // replacements cannot each commit a different active script for one project.
+        List<ProjectRow> family=currentOnly?jdbc.query("""
+            select * from desktop_source_project where tenant_id=? and connection_id=? and source_team_id=?
+             and source_project_id=? order by id for update
+            """,this::projectRow,tenant,connection,team,project):List.of();
+        for(ProjectRow sibling:family) if(sibling.active()) checkTarget(tenant,sibling);
         // Claim the stable identity before reading or validating the merged inventory. Concurrent first
         // syncs serialize here rather than both validating an absent project and later exceeding limits.
         jdbc.update("""
@@ -62,6 +74,17 @@ public class DesktopSourceService {
              and source_project_id=? and source_script_id=? for update
             """,this::projectRow,tenant,connection,team,project,script).get(0);
         checkTarget(tenant,existing);
+        if(currentOnly && existing.target()==null) {
+            Set<Long> bindings=new HashSet<>();
+            for(ProjectRow sibling:family) if(sibling.active() && sibling.target()!=null) bindings.add(sibling.target());
+            if(bindings.size()==1) {
+                Long binding=bindings.iterator().next();
+                targetName(tenant,binding);
+                jdbc.update("update desktop_source_project set target_project_id=? where id=? and tenant_id=?",binding,existing.id(),tenant);
+                existing=new ProjectRow(existing.id(),existing.connection(),existing.team(),existing.sourceProject(),existing.script(),
+                    existing.name(),binding,existing.active(),existing.synced());
+            }
+        }
         List<AssetRow> previous=rows(tenant,existing.id(),true);
         Map<String,SyncAsset> full=new HashMap<>();
         if (!Boolean.TRUE.equals(body.complete())) for (AssetRow a:previous) if(a.active()) full.put(a.sourceId(),new SyncAsset(a.sourceId(),a.parent(),a.name(),a.type()));
@@ -89,7 +112,17 @@ public class DesktopSourceService {
         if(Boolean.TRUE.equals(body.complete())) for(AssetRow a:previous) if(!normalized.containsKey(a.sourceId()))
             jdbc.update("update desktop_source_asset set active=false where id=? and tenant_id=?",a.id(),tenant);
         jdbc.update("update desktop_source_project set name=?,active=true,synced_at=now() where id=? and tenant_id=?",name,existing.id(),tenant);
+        if(currentOnly) for(ProjectRow sibling:family) if(!sibling.id().equals(existing.id())) {
+            jdbc.update("update desktop_source_asset set active=false where tenant_id=? and source_project_row_id=?",tenant,sibling.id());
+            jdbc.update("update desktop_source_project set active=false where tenant_id=? and id=?",tenant,sibling.id());
+        }
         return projectResponse(tenant,requireProject(tenant,existing.id(),false));
+    }
+
+    @Transactional(isolation=Isolation.REPEATABLE_READ)
+    public SourceProject syncCurrent(Long tenant,SyncRequest body) {
+        try { return syncInventory(tenant,body,true); }
+        catch(PessimisticLockingFailureException e) { throw invalid("当前项目正在被更新，请重新同步；历史清单未清理。"); }
     }
 
     public List<SourceAsset> assets(Long tenant,Long id) {
@@ -326,6 +359,7 @@ public class DesktopSourceService {
     private ProjectRow requireProject(Long tenant,Long id,boolean lock) {
         List<ProjectRow> values=jdbc.query("select * from desktop_source_project where id=? and tenant_id=?"+(lock?" for update":""),this::projectRow,id,tenant);
         if(values.isEmpty()) throw new BusinessException(ErrorCode.NOT_FOUND,"源项目不存在。");
+        if(!values.get(0).active()) throw invalid("历史资产清单已停用，请刷新并选择项目当前清单。");
         checkTarget(tenant,values.get(0));
         return values.get(0);
     }

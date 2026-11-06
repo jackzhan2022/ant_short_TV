@@ -425,12 +425,16 @@ export class WorkspaceController {
       const projectKey = (value: {
         sourceTeamId: string;
         sourceProjectId: string;
-      }) => `${value.sourceTeamId}/${value.sourceProjectId}`;
+      }) => JSON.stringify([value.sourceTeamId, value.sourceProjectId]);
       const expected = new Map<string, number>();
       const uploaded = new Map<string, number>();
       for (const collection of collections) {
         const key = projectKey(collection);
-        expected.set(key, (expected.get(key) ?? 0) + 1);
+        if (expected.has(key))
+          throw new Error(
+            '同一个项目返回多个当前清单，已中止同步，请更新来源接口适配。',
+          );
+        expected.set(key, 1);
       }
       const failures: string[] = [];
       this.changed();
@@ -459,7 +463,7 @@ export class WorkspaceController {
         };
         try {
           await client.send(
-            '/api/desktop/source-projects/sync',
+            '/api/desktop/source-projects/sync-current',
             'POST',
             payload,
           );

@@ -61,6 +61,88 @@ class DesktopSourceServiceTest {
         assertThat(jdbc.queryForObject("select count(*) from desktop_source_project",Integer.class)).isEqualTo(1);
     }
 
+    @Test void currentSyncRetiresOnlyItsOwnProjectHistoryAndCarriesUniqueBinding() {
+        asset("character_asset",1,"Hero","prompt");
+        var old=sync(true,a("old","Hero"));
+        service.bind(1L,old.id(),10L);
+        Long oldAsset=service.match(1L,old.id()).get(0).id();
+        for(var identity:List.of(
+            new String[]{"other","team","project"},new String[]{"local-session","other","project"},
+            new String[]{"local-session","team","other"}))
+            service.sync(1L,new DesktopSourceModels.SyncRequest(identity[0],identity[1],identity[2],"script","Other",true,List.of()));
+        var current=service.syncCurrent(1L,currentRequest("current",true,a("new","Hero")));
+        assertThat(current.targetProjectId()).isEqualTo(10L);
+        assertThat(service.list(1L)).hasSize(4).extracting(DesktopSourceModels.SourceProject::id).doesNotContain(old.id());
+        assertThat(jdbc.queryForObject("select active from desktop_source_asset where id=?",Boolean.class,oldAsset)).isFalse();
+        assertThatThrownBy(()->service.assets(1L,old.id())).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->service.bind(1L,old.id(),10L)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->service.manualMatch(1L,oldAsset,1L,null)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->service.prompts(1L,List.of(oldAsset))).isInstanceOf(BusinessException.class);
+        assertThat(service.assets(1L,current.id())).extracting(DesktopSourceModels.SourceAsset::matchStatus).containsExactly("UNMATCHED");
+        assertThat(service.syncCurrent(1L,currentRequest("current",true,a("new","Hero"))).id()).isEqualTo(current.id());
+    }
+
+    @Test void currentSyncPreservesCurrentMappingsAndDoesNotGuessConflictingBindings() {
+        asset("character_asset",1,"Hero","prompt");
+        var first=sync(true,a("a","Hero")); service.bind(1L,first.id(),10L);
+        var second=service.sync(1L,currentRequest("second",true,a("b","Hero"))); service.bind(1L,second.id(),11L);
+        var current=service.syncCurrent(1L,currentRequest("current",true,a("c","Hero")));
+        assertThat(current.targetProjectId()).isNull();
+        service.bind(1L,current.id(),10L);
+        Long matched=service.match(1L,current.id()).get(0).targetAssetId();
+        service.syncCurrent(1L,currentRequest("current",true,a("c","Hero")));
+        assertThat(service.assets(1L,current.id()).get(0).targetAssetId()).isEqualTo(matched);
+        assertThat(service.list(1L)).extracting(DesktopSourceModels.SourceProject::id).containsExactly(current.id());
+    }
+
+    @Test void currentSyncRequiresCompleteAndRollsBackInvalidSnapshots() {
+        var old=sync(true,a("a","Hero"));
+        var proxy=new org.springframework.aop.framework.ProxyFactory(service);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+            new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),
+            new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var transactional=(DesktopSourceService)proxy.getProxy();
+        assertThatThrownBy(()->transactional.syncCurrent(1L,currentRequest("new",false,a("n","New")))).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->transactional.syncCurrent(1L,currentRequest("new",true,a("n","New","CHARACTER","missing")))).isInstanceOf(BusinessException.class);
+        assertThat(service.list(1L)).extracting(DesktopSourceModels.SourceProject::id).containsExactly(old.id());
+        assertThat(service.assets(1L,old.id()).get(0).active()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from desktop_source_project",Integer.class)).isEqualTo(1);
+    }
+
+    private DesktopSourceModels.SyncRequest currentRequest(String script,boolean complete,DesktopSourceModels.SyncAsset... assets) {
+        return new DesktopSourceModels.SyncRequest("local-session","team","project",script,"Source",complete,List.of(assets));
+    }
+
+    @Test void concurrentCurrentReplacementsLeaveExactlyOneActiveInventory() throws Exception {
+        sync(true,a("old","Hero"));
+        var proxy=new org.springframework.aop.framework.ProxyFactory(service);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+            new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),
+            new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var transactional=(DesktopSourceService)proxy.getProxy();
+        var start=new java.util.concurrent.CyclicBarrier(2);
+        var executor=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var futures=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(String script:List.of("first","second")) futures.add(executor.submit(()->{
+                start.await(10,java.util.concurrent.TimeUnit.SECONDS);
+                try { transactional.syncCurrent(1L,currentRequest(script,true,a(script,"Hero"))); return true; }
+                catch(BusinessException e) {
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_ERROR);
+                    return false;
+                }
+            }));
+            assertThat(List.of(futures.get(0).get(40,java.util.concurrent.TimeUnit.SECONDS),futures.get(1).get(40,java.util.concurrent.TimeUnit.SECONDS)))
+                .contains(true);
+            assertThat(service.list(1L)).hasSize(1);
+            var current=service.list(1L).get(0);
+            assertThat(current.sourceScriptId()).isIn("first","second");
+            assertThat(jdbc.queryForObject("select count(*) from desktop_source_asset where active=true",Integer.class)).isEqualTo(1);
+            assertThat(service.assets(1L,current.id())).filteredOn(DesktopSourceModels.SourceAsset::active)
+                .extracting(DesktopSourceModels.SourceAsset::sourceAssetId).containsExactly(current.sourceScriptId());
+        } finally { executor.shutdownNow(); }
+    }
+
     @Test void matchesOnlyExactTypeAndNameAndReportsAmbiguityOrMissingPrompt() {
         asset("character_asset",1,"Hero","base"); asset("character_asset",2,"Twin","one"); asset("character_asset",3,"Twin","two");
         asset("scene_asset",4,"Room",""); asset("prop_asset",5,"Hero","wrong type");

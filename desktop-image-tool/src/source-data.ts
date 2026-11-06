@@ -373,14 +373,21 @@ export async function collectAllProjects(
           throw new Error('剧本所属团队与列表范围不一致。');
         return requiredId(script, 'ScriptId');
       });
-      for (const sourceScriptId of scripts)
-        projects.push({
-          sourceTeamId,
-          sourceProjectId,
-          sourceScriptId,
-          name: projectName,
-          assets: [],
-        });
+      // The source project-list click handler opens row.ScriptId. Follow that
+      // explicit current pointer, never list order or historical record edits.
+      const sourceScriptId =
+        id(row.ScriptId) ?? (scripts.length === 1 ? scripts[0] : undefined);
+      if (!sourceScriptId || !scripts.includes(sourceScriptId))
+        throw new Error(
+          `“${projectName}”缺少可验证的当前 ScriptId，未同步历史清单。`,
+        );
+      projects.push({
+        sourceTeamId,
+        sourceProjectId,
+        sourceScriptId,
+        name: projectName,
+        assets: [],
+      });
       if (projects.length > 10000)
         throw new Error('源站项目超过安全上限，无法完成完整同步。');
       discovered(++projectCount);

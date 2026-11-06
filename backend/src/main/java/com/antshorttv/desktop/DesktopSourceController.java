@@ -23,6 +23,10 @@ public class DesktopSourceController {
     public ApiResponse<SourceProject> sync(HttpServletRequest request,@RequestBody SyncRequest body) {
         return ApiResponse.success(service.sync(TenantRequestSupport.tenantId(request),body));
     }
+    @PostMapping("/sync-current")
+    public ApiResponse<SourceProject> syncCurrent(HttpServletRequest request,@RequestBody SyncRequest body) {
+        return ApiResponse.success(service.syncCurrent(TenantRequestSupport.tenantId(request),body));
+    }
     @GetMapping("/{id}/assets")
     public ApiResponse<List<SourceAsset>> assets(HttpServletRequest request,@PathVariable Long id) {
         return ApiResponse.success(service.assets(TenantRequestSupport.tenantId(request),id));

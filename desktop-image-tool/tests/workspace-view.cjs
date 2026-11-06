@@ -6,6 +6,7 @@ const {
   queueCategory,
   initialAiChoices,
   aiChoiceKey,
+  nextSourceProject,
 } = require('../dist/workspace-view');
 
 const scope = (id, team, project, target = null) => ({
@@ -16,6 +17,27 @@ const scope = (id, team, project, target = null) => ({
   name: '同名项目',
   active: true,
   targetProjectId: target,
+});
+
+test('current scope replacement keeps the same source project selected and ignores retired history', () => {
+  const previous = { ...scope(1, 'a', 'p'), connectionId: 'c' };
+  const current = { ...previous, id: 2, sourceScriptId: 'current' };
+  const other = { ...scope(3, 'a', 'other'), connectionId: 'c' };
+  assert.equal(
+    nextSourceProject(
+      [other, { ...previous, active: false }, current],
+      previous,
+    ),
+    2,
+  );
+  assert.equal(
+    nextSourceProject(
+      [other, { ...current, connectionId: 'different' }],
+      previous,
+    ),
+    3,
+  );
+  assert.equal(nextSourceProject([other, current], undefined, 2), 2);
 });
 
 test('source project cards combine script scopes but preserve team and project identity', () => {

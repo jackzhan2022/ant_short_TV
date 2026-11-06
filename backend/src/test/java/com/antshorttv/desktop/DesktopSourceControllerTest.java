@@ -13,6 +13,19 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class DesktopSourceControllerTest {
+    @Test void exposesCompleteCurrentInventoryEndpoint() throws Exception {
+        var service=mock(DesktopSourceService.class);
+        var mvc=MockMvcBuilders.standaloneSetup(new DesktopSourceController(service)).build();
+        mvc.perform(post("/api/desktop/source-projects/sync-current").header("X-Tenant-Id","1")
+            .contentType(MediaType.APPLICATION_JSON).content("""
+            {"connectionId":"local","sourceTeamId":"team","sourceProjectId":"project","sourceScriptId":"current",
+             "name":"Source","complete":true,"assets":[]}
+            """))
+            .andExpect(status().isOk());
+        verify(service).syncCurrent(eq(1L),any());
+        verify(service,never()).sync(any(),any());
+    }
+
     @Test void exposesDedicatedAtomicAiConfirmationEndpoint() throws Exception {
         var service=mock(DesktopSourceService.class);
         var mvc=MockMvcBuilders.standaloneSetup(new DesktopSourceController(service)).build();

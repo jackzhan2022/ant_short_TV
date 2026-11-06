@@ -274,7 +274,7 @@ test('expired source sessions are recognized even when the server returns HTTP 2
   assert.equal(source.authenticationExpired(result([])), false);
 });
 
-test('script lists are fully enumerated per project and scopes never cross teams', async () => {
+test('script lists are fully enumerated but only the project current script is collected', async () => {
   const discovered = [];
   const templates = [
     template('ListTeams'),
@@ -292,7 +292,7 @@ test('script lists are fully enumerated per project and scopes never cross teams
       if (url.endsWith('DescribeUser')) return memberships('t');
       if (url.endsWith('ListProjects')) {
         assert.deepEqual(body.Filters, { TeamId: 't' });
-        return result([{ ProjectId: 'p', ScriptId: 'default', Name: 'P' }]);
+        return result([{ ProjectId: 'p', ScriptId: 's2', Name: 'P' }]);
       }
       if (url.endsWith('ListScripts')) {
         assert.equal(body.TeamId, 't');
@@ -304,13 +304,14 @@ test('script lists are fully enumerated per project and scopes never cross teams
           3,
         );
       }
+      assert.equal(body.Filters.ScriptId, 's2');
       return result([]);
     },
     (count) => discovered.push(count),
   );
   assert.deepEqual(
     projects.map((project) => project.sourceScriptId),
-    ['s1', 's2', 's3'],
+    ['s2'],
   );
   assert.deepEqual(discovered, [1]);
   await assert.rejects(
@@ -323,6 +324,25 @@ test('script lists are fully enumerated per project and scopes never cross teams
     ),
     /团队/,
   );
+});
+
+test('multiple scripts with no valid current pointer cannot guess from list order or IDs', async () => {
+  for (const pointer of [undefined, 'missing']) {
+    let assetCalls = 0;
+    await assert.rejects(
+      source.collectAllProjects([], async (url) => {
+        if (url.endsWith('DescribeUser')) return memberships('t');
+        if (url.endsWith('ListProjects'))
+          return result([{ ProjectId: 'p', Name: 'P', ScriptId: pointer }]);
+        if (url.endsWith('ListScripts'))
+          return result([{ ScriptId: 'old' }, { ScriptId: 'new' }]);
+        assetCalls++;
+        return result([]);
+      }),
+      /当前|ScriptId/,
+    );
+    assert.equal(assetCalls, 0);
+  }
 });
 
 test('changing totals and early termination cannot be mistaken for a complete snapshot', async () => {

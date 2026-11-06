@@ -122,6 +122,7 @@ export async function readSourcePage(
         const item = pick(input, [
           'ProjectId',
           'TeamId',
+          'ScriptId',
           'ProjectName',
           'Name',
         ]);

@@ -2,6 +2,26 @@ import type { AiMatchOption, AiSuggestion } from './ai-match-types';
 import type { Creation } from './shared';
 import type { SourceProject, TargetProject } from './workspace-shared';
 
+export function nextSourceProject(
+  rows: SourceProject[],
+  previous?: SourceProject,
+  remembered?: number,
+) {
+  const active = rows.filter((row) => row.active);
+  return (
+    active.find((row) => row.id === previous?.id)?.id ??
+    active.find(
+      (row) =>
+        previous &&
+        row.connectionId === previous.connectionId &&
+        row.sourceTeamId === previous.sourceTeamId &&
+        row.sourceProjectId === previous.sourceProjectId,
+    )?.id ??
+    active.find((row) => row.id === remembered)?.id ??
+    active[0]?.id
+  );
+}
+
 export function queueCategory(status: Creation['status']) {
   if (status === 'queued') return 'waiting';
   if (status === 'succeeded') return 'done';

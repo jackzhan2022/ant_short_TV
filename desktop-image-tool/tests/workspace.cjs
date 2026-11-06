@@ -205,7 +205,7 @@ test('background source sync permits batch creation in the same team while still
 test('one rejected project does not hide later projects and refresh cannot erase sync failure or claim success', async (t) => {
   const saved = [];
   const { workspace, source } = setup(t, async (url, init) => {
-    if (url.endsWith('/source-projects/sync')) {
+    if (url.endsWith('/source-projects/sync-current')) {
       const input = JSON.parse(init.body);
       if (input.sourceProjectId === 'bad')
         return new Response(
@@ -244,6 +244,37 @@ test('one rejected project does not hide later projects and refresh cannot erase
   await workspace.refresh();
   assert.equal(workspace.state().syncStatus.phase, 'failed');
   assert.match(workspace.state().syncStatus.error, /bad/);
+});
+
+test('sync uses only the current-inventory endpoint and never falls back when the backend is old', async (t) => {
+  const writes = [];
+  const { workspace, source } = setup(t, async (url, init) => {
+    if (init?.method === 'POST') {
+      writes.push(new URL(url).pathname);
+      return new Response('{}', { status: 404 });
+    }
+    return basicTransport(url);
+  });
+  source.collect = async () => [collection('p')];
+  await workspace.refresh();
+  await assert.rejects(workspace.sync(), /后端|部署|接口/);
+  assert.deepEqual(writes, ['/api/desktop/source-projects/sync-current']);
+  assert.equal(workspace.state().syncStatus.automaticPaused, true);
+});
+
+test('a collector returning multiple scopes for one project cannot retire history in arbitrary order', async (t) => {
+  let writes = 0;
+  const { workspace, source } = setup(t, async (url, init) => {
+    if (init?.method === 'POST') writes++;
+    return basicTransport(url);
+  });
+  source.collect = async () => [
+    collection('p'),
+    { ...collection('p'), sourceScriptId: 'other' },
+  ];
+  await workspace.refresh();
+  await assert.rejects(workspace.sync(), /多个|重复|当前/);
+  assert.equal(writes, 0);
 });
 
 test('automatic sync checks a restored source session and schedules from completion without blocking batches', async (t) => {
