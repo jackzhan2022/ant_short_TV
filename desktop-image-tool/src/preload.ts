@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AiMatchProgress } from './ai-match-types';
 import type { Creation, StudioAPI } from './shared';
 import type { WorkspaceAPI } from './workspace-shared';
 
@@ -25,6 +26,14 @@ const workspace: WorkspaceAPI = {
   configureAi: (input) =>
     ipcRenderer.invoke('studio:workspace-ai-configure', input),
   aiMatch: (id) => ipcRenderer.invoke('studio:workspace-ai-match', id),
+  onAiProgress: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      value: AiMatchProgress,
+    ) => callback(value);
+    ipcRenderer.on('workspace:ai-progress', listener);
+    return () => ipcRenderer.removeListener('workspace:ai-progress', listener);
+  },
   aiApply: (input) => ipcRenderer.invoke('studio:workspace-ai-apply', input),
   aiCancel: (reviewId) =>
     ipcRenderer.invoke('studio:workspace-ai-cancel', reviewId),

@@ -1013,6 +1013,18 @@ export function initializeWorkspace(hooks: Hooks) {
     hooks.openSettings();
     get<HTMLDetailsElement>('ai-settings-details').open = true;
   };
+  api.onAiProgress((progress) => {
+    if (
+      !aiBusy ||
+      progress.projectId !== projectId ||
+      aiContext !== projectContext()
+    )
+      return;
+    get('ai-progress').textContent =
+      progress.phase === 'preparing'
+        ? '正在读取资产与候选名称…'
+        : `正在分析名称 · 已完成 ${progress.completed} / ${progress.total} 项 · 最多 3 批并行`;
+  });
   get('ai-start').onclick = () => {
     if (!projectId || aiBusy || projectContext() !== aiContext) return;
     const sourceId = projectId;
@@ -1020,6 +1032,7 @@ export function initializeWorkspace(hooks: Hooks) {
     aiBusy = true;
     aiError();
     get<HTMLButtonElement>('ai-start').disabled = true;
+    get('ai-progress').textContent = '正在读取资产与候选名称…';
     get('ai-progress').hidden = false;
     void (async () => {
       try {

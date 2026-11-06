@@ -271,6 +271,11 @@ async function initialize() {
       identity: workspace.assetIdentity(),
     }),
     () => ({ settings: aiSettings.settings(), key: aiSettings.key() }),
+    undefined,
+    (progress) => {
+      if (window && !window.isDestroyed())
+        window.webContents.send('workspace:ai-progress', progress);
+    },
   );
   powerMonitor.on('resume', () => workspace.resumeSync());
   protocol.handle('antv-media', (request) => {

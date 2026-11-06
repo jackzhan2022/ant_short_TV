@@ -3,6 +3,7 @@ import { type MatchTask, matchAssetNames } from './ai-match';
 import type {
   AiApplyInput,
   AiApplyResult,
+  AiMatchProgress,
   AiMatchReview,
   AiModelSettings,
   AiSuggestion,
@@ -61,6 +62,7 @@ export class AiReviewManager {
     private connect: () => Connection,
     private model: () => { settings: AiModelSettings; key: string },
     private matchNames: typeof matchAssetNames = matchAssetNames,
+    private progress: (value: AiMatchProgress) => void = () => {},
   ) {}
   cancel(reviewId?: string) {
     if (
@@ -130,6 +132,7 @@ export class AiReviewManager {
     const controller = new AbortController();
     this.controller = controller;
     const connection = this.connect();
+    this.progress({ projectId, phase: 'preparing', completed: 0, total: 0 });
     const { project, assets } = await this.inventory(connection, projectId);
     const tasks: MatchTask[] = [];
     const skipped: AiSuggestion[] = [];
@@ -185,16 +188,53 @@ export class AiReviewManager {
     const nonempty = tasks.filter((t) => t.candidates.length);
     if (nonempty.length) {
       const model = this.model();
-      for (let start = 0; start < nonempty.length; start += 25) {
-        check();
-        suggestions.push(
-          ...(await this.matchNames(
-            nonempty.slice(start, start + 25),
-            model.settings,
-            model.key,
-            controller.signal,
-          )),
-        );
+      let next = 0;
+      let completed = 0;
+      let failure: unknown;
+      let failed = false;
+      const report = () =>
+        this.progress({
+          projectId,
+          phase: 'matching',
+          completed,
+          total: nonempty.length,
+        });
+      report();
+      const worker = async () => {
+        try {
+          while (next < nonempty.length) {
+            check();
+            const start = next;
+            next += 25;
+            const batch = nonempty.slice(start, start + 25);
+            const result = await this.matchNames(
+              batch,
+              model.settings,
+              model.key,
+              controller.signal,
+            );
+            check();
+            suggestions.push(...result);
+            completed += batch.length;
+            report();
+          }
+        } catch (error) {
+          if (!failed) {
+            failed = true;
+            failure = error;
+          }
+          controller.abort();
+        }
+      };
+      await Promise.all(
+        Array.from(
+          { length: Math.min(3, Math.ceil(nonempty.length / 25)) },
+          worker,
+        ),
+      );
+      if (failed) {
+        if (this.controller === controller) this.controller = undefined;
+        throw failure;
       }
     }
     for (const task of tasks.filter((t) => !t.candidates.length))
@@ -279,6 +319,7 @@ export class AiReviewManager {
       if (projectStamp(project) !== snapshot.project)
         throw new Error('项目绑定或资产清单已变化，请重新匹配。');
       // Check the entire selection before writing its first match.
+      const candidateGroups = new Map<string, Candidate[]>();
       for (const { task } of choices) {
         const current = assets.find((a) => a.id === task.source.id);
         if (!current || sourceStamp(current) !== sourceStamp(task.source))
@@ -290,12 +331,17 @@ export class AiReviewManager {
           : undefined;
         if (task.parentName !== parent?.name)
           throw new Error('主体名称已变化，请重新匹配。');
-        const now = await this.candidates(
-          snapshot.connection,
-          project.id,
-          current,
-          parent?.targetAssetId ?? undefined,
-        );
+        const group = `${current.type}:${current.sourceParentId ?? ''}:${parent?.targetAssetId ?? ''}`;
+        let now = candidateGroups.get(group);
+        if (!now) {
+          now = await this.candidates(
+            snapshot.connection,
+            project.id,
+            current,
+            parent?.targetAssetId ?? undefined,
+          );
+          candidateGroups.set(group, now);
+        }
         checkCancellation();
         if (candidateStamp(now) !== candidateStamp(task.candidates))
           throw new Error('候选名称、提示词状态或主体关系已变化，请重新匹配。');

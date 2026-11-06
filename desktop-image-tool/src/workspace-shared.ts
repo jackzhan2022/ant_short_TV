@@ -1,6 +1,7 @@
 import type {
   AiApplyInput,
   AiApplyResult,
+  AiMatchProgress,
   AiMatchReview,
   AiModelInput,
   AiModelSettings,
@@ -127,6 +128,7 @@ export interface WorkspaceAPI {
   aiSettings(): Promise<Result<AiModelSettings>>;
   configureAi(input: AiModelInput): Promise<Result<AiModelSettings>>;
   aiMatch(projectId: number): Promise<Result<AiMatchReview>>;
+  onAiProgress(callback: (progress: AiMatchProgress) => void): () => void;
   aiApply(input: AiApplyInput): Promise<Result<AiApplyResult>>;
   aiCancel(reviewId?: string): Promise<Result<void>>;
   state(refresh?: boolean): Promise<Result<WorkspaceState>>;

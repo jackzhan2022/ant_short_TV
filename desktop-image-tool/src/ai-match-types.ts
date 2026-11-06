@@ -35,6 +35,12 @@ export interface AiMatchReview {
   model: string;
   suggestions: AiSuggestion[];
 }
+export interface AiMatchProgress {
+  projectId: number;
+  phase: 'preparing' | 'matching';
+  completed: number;
+  total: number;
+}
 export interface AiApplyInput {
   reviewId: string;
   choices: {

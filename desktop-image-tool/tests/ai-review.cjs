@@ -4,7 +4,7 @@ let AiReviewManager;
 try {
   ({ AiReviewManager } = require('../dist/ai-review'));
 } catch {}
-function fixture(matcher) {
+function fixture(matcher, progress) {
   let identity = 'team-7-version-1';
   const project = {
     id: 8,
@@ -98,6 +98,7 @@ function fixture(matcher) {
           reason: '候选名称相近',
           status: 'suggested',
         }))),
+    progress,
   );
   return {
     manager,
@@ -135,6 +136,113 @@ test('AI review does not write; matched sources are preserved and variants requi
     }),
     /失效|重新/,
   );
+});
+
+function manyAssets(f, count) {
+  const source = f.assets[0];
+  f.assets.splice(
+    0,
+    f.assets.length,
+    ...Array.from({ length: count }, (_, index) => ({
+      ...source,
+      id: index + 1,
+      sourceAssetId: `role-${index + 1}`,
+      name: `角色${index + 1}`,
+    })),
+  );
+}
+
+test('model batches use three slots, refill as completed, and retain source order', async () => {
+  const calls = [];
+  const progress = [];
+  let active = 0;
+  let peak = 0;
+  const f = fixture(
+    (tasks) => {
+      active++;
+      peak = Math.max(peak, active);
+      return new Promise((resolve) => {
+        calls.push({
+          tasks,
+          finish() {
+            active--;
+            resolve(
+              tasks.map((t) => ({
+                sourceAssetId: t.source.id,
+                sourceName: t.source.name,
+                type: t.source.type,
+                options: t.candidates,
+                reason: '测试推荐',
+                status: 'suggested',
+              })),
+            );
+          },
+        });
+      });
+    },
+    (value) => progress.push(value),
+  );
+  manyAssets(f, 100);
+  const job = f.manager.match(8);
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((c) => c.tasks.length === 25));
+  calls[1].finish();
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 4);
+  calls[3].finish();
+  calls[2].finish();
+  calls[0].finish();
+  const review = await job;
+  assert.equal(peak, 3);
+  assert.deepEqual(
+    review.suggestions.map((s) => s.sourceAssetId),
+    f.assets.map((a) => a.id),
+  );
+  assert.equal(f.writes.length, 0);
+  assert.equal(progress.at(-1).completed, 100);
+  assert.equal(progress.at(-1).total, 100);
+});
+
+test('batch failure aborts peer requests without retrying or starting queued batches', async () => {
+  const calls = [];
+  const f = fixture(
+    (_tasks, _settings, _key, signal) =>
+      new Promise((_resolve, reject) => {
+        calls.push({ signal, reject });
+        signal.addEventListener('abort', () => reject(new Error('cancelled')), {
+          once: true,
+        });
+      }),
+  );
+  manyAssets(f, 100);
+  const job = f.manager.match(8);
+  const rejected = assert.rejects(job, /限流/);
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 3);
+  calls[0].reject(new Error('限流'));
+  await rejected;
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((c) => c.signal.aborted));
+  assert.equal(f.writes.length, 0);
+});
+
+test('confirmation fetches a shared candidate group once and still validates every source', async () => {
+  const f = fixture();
+  manyAssets(f, 30);
+  const review = await f.manager.match(8);
+  let reads = 0;
+  const get = f.client.get.bind(f.client);
+  f.client.get = (url) => {
+    if (url.includes('/candidates')) reads++;
+    return get(url);
+  };
+  const result = await f.manager.apply({
+    reviewId: review.reviewId,
+    choices: f.assets.map((a) => ({ sourceAssetId: a.id, assetId: 41 })),
+  });
+  assert.equal(result.applied, 30);
+  assert.equal(reads, 1);
 });
 test('stale team/project/source/candidate snapshots cannot be applied', async () => {
   assert.equal(typeof AiReviewManager, 'function');

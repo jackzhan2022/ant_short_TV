@@ -84,6 +84,10 @@ const http = require('node:http');
   const calls = [],
     textCalls = [],
     writes = [];
+  let releaseModel;
+  const modelReady = new Promise((resolve) => {
+    releaseModel = resolve;
+  });
   const server = http.createServer(async (req, res) => {
     let text = '';
     for await (const chunk of req) text += chunk;
@@ -95,6 +99,7 @@ const http = require('node:http');
       assert.equal(req.headers.authorization, 'Bearer ai-only-test-key');
       assert.equal(body.model, 'local-text-test');
       textCalls.push(body);
+      await modelReady;
       const payload = JSON.parse(body.messages.at(-1).content);
       assert.equal(
         JSON.stringify(payload).includes('existing-secret-prompt'),
@@ -274,6 +279,11 @@ const http = require('node:http');
     await page.locator('[data-close="source-project-dialog"]').last().click();
     await page.locator('#ai-match-open').click();
     await page.locator('#ai-start').click();
+    await page.waitForFunction(() =>
+      document.querySelector('#ai-progress').textContent.includes('已完成 0 /'),
+    );
+    assert.equal(await page.locator('#ai-progress').isVisible(), true);
+    releaseModel();
     await page.locator('#ai-apply:not([disabled])').waitFor();
     assert.equal(textCalls.length, 1);
     assert.equal(writes.length, 0);
