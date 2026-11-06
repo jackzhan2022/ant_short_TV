@@ -51,6 +51,7 @@ npm run smoke:ai
 node scripts/source-browser-smoke.cjs
 npm run pack
 node scripts/packaged-smoke.cjs
+node scripts/packaged-smoke.cjs --installed "C:/Users/<用户>/AppData/Local/Programs/antv-image-studio" --shortcut "C:/Users/<用户>/Desktop/ANTV生图.lnk"
 node scripts/source-browser-smoke.cjs --packaged
 ```
 
@@ -65,3 +66,5 @@ source-browser-smoke 使用全新临时会话直接启动 Electron，验证真�
 0.2.4 修复名称中的换行/制表符导致上传中断，以及自动同步阻塞批量创建；侧栏区分云端已保存项目数、上传进度、完整成功时间与失败暂停状态。单份清单被拒绝时继续上传其他合法清单，登录/权限/网络失败则停止本轮。详见 [修复验证记录](../docs/desktop-sync-batch-fix-2026-11-05.md)。
 
 0.2.5 落地项目选择弹窗、账号状态入口、紧凑任务队列和真实文本模型辅助匹配，资产图片以火山剧创原名保存。AI 确认需要配套后端的 `/api/desktop/source-projects/assets/{id}/ai-match`；旧后端会明确拒绝该操作。验证使用本地模拟文本/图片服务，没有调用真实付费模型。
+
+0.2.6 修复 ZIP 安装载荷将中文主程序名解码为乱码、导致快捷方式找不到程序的问题。内部程序名固定为 `ANTVImageStudio.exe`，产品与快捷方式继续显示「ANTV生图」，应用标识和用户数据目录不变。发布验证新增安装目录完整文件校验、快捷方式目标检查及已安装程序的隔离启动验证；仅从 `win-unpacked` 启动不能替代安装验证。

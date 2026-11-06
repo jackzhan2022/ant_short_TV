@@ -1,6 +1,6 @@
 {
   "name": "antv-image-studio",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "ANTV生图 · 个人图片创作桌面工具",
   "author": "Ant Short TV",
@@ -36,6 +36,7 @@
     ],
     "asar": true,
     "win": {
+      "executableName": "ANTVImageStudio",
       "target": [
         "nsis",
         "portable"

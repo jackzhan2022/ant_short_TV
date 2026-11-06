@@ -4,16 +4,56 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const asar = require('@electron/asar');
+const crypto = require('node:crypto');
 
 (async () => {
   const root = path.resolve(__dirname, '..');
-  const archive = path.join(
-    root,
-    'release-antv',
-    'win-unpacked',
-    'resources',
-    'app.asar',
+  const config = require('../package.json');
+  const packagedDirectory = path.join(root, 'release-antv', 'win-unpacked');
+  const installedIndex = process.argv.indexOf('--installed');
+  const appDirectory =
+    installedIndex < 0
+      ? packagedDirectory
+      : path.resolve(process.argv[installedIndex + 1]);
+  const executableName = `${config.build.win.executableName || config.build.productName}.exe`;
+  const executablePath = path.join(appDirectory, executableName);
+  assert.ok(
+    fs.existsSync(executablePath),
+    `Installed executable is missing: ${executablePath}`,
   );
+  if (installedIndex >= 0) {
+    for (const entry of fs.readdirSync(packagedDirectory, {
+      recursive: true,
+      withFileTypes: true,
+    })) {
+      if (!entry.isFile()) continue;
+      const source = path.join(entry.parentPath, entry.name);
+      const destination = path.join(
+        appDirectory,
+        path.relative(packagedDirectory, source),
+      );
+      assert.ok(
+        fs.existsSync(destination),
+        `Installed file is missing: ${destination}`,
+      );
+      const digest = (file) =>
+        crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+      assert.equal(
+        digest(destination),
+        digest(source),
+        `Installed file differs: ${destination}`,
+      );
+    }
+  }
+  const shortcutIndex = process.argv.indexOf('--shortcut');
+  if (shortcutIndex >= 0) {
+    const shortcut = fs.readFileSync(process.argv[shortcutIndex + 1]);
+    assert.ok(
+      shortcut.includes(Buffer.from(executablePath, 'utf16le')),
+      'Shortcut must reference the installed executable',
+    );
+  }
+  const archive = path.join(appDirectory, 'resources', 'app.asar');
   for (const name of [
     'main.js',
     'cloud.js',
@@ -41,22 +81,19 @@ const asar = require('@electron/asar');
   let application;
   try {
     application = await electron.launch({
-      executablePath: path.join(
-        root,
-        'release-antv',
-        'win-unpacked',
-        'ANTV生图.exe',
-      ),
+      executablePath,
       args: [`--user-data-dir=${data}`],
       env,
     });
     const runtime = await application.evaluate(({ app }) => ({
       version: app.getVersion(),
+      name: app.getName(),
       packaged: app.isPackaged,
       data: app.getPath('userData'),
     }));
     assert.equal(path.resolve(runtime.data), path.resolve(data));
     assert.equal(runtime.packaged, true);
+    assert.equal(runtime.name, config.name);
     assert.equal(runtime.version, require('../package.json').version);
     const page = await application.firstWindow();
     const errors = [];
@@ -93,7 +130,7 @@ const asar = require('@electron/asar');
     });
     assert.deepEqual(errors, []);
     console.log(
-      `PASS packaged ${runtime.version}: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.`,
+      `PASS ${installedIndex < 0 ? 'packaged' : 'installed'} ${runtime.version}: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.`,
     );
   } finally {
     if (application) await application.close().catch(() => {});
