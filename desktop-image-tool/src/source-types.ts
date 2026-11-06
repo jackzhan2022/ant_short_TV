@@ -1,9 +1,14 @@
-import type { SourceName, SourceProjectIdentity } from './workspace-shared';
+import type {
+  LoginStatus,
+  SourceName,
+  SourceProjectIdentity,
+} from './workspace-shared';
 
 export interface SourceCollection extends SourceProjectIdentity {
   assets: SourceName[];
 }
 export interface SourceStatus {
+  connection: LoginStatus;
   loggedIn: boolean;
   syncing: boolean;
   discoveredProjects: number;
@@ -14,6 +19,7 @@ export interface SourceStatus {
 export interface SourceCollector {
   state(): SourceStatus;
   login(): Promise<void>;
+  check(): Promise<void>;
   collect(): Promise<SourceCollection[]>;
   close(): void;
 }

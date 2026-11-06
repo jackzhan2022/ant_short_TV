@@ -3,12 +3,25 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const http = require('node:http');
 
 (async () => {
   const root = path.resolve(__dirname, '..');
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'antv-studio-smoke-'));
   const out = path.join(root, 'smoke-output');
   fs.mkdirSync(out, { recursive: true });
+  const cloud = http.createServer((_request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({ success: true, data: [] }));
+  });
+  await new Promise((resolve) => cloud.listen(0, '127.0.0.1', resolve));
+  fs.writeFileSync(
+    path.join(data, 'workspace.json'),
+    JSON.stringify({
+      cloudUrl: `http://127.0.0.1:${cloud.address().port}`,
+      autoSyncMinutes: 0,
+    }),
+  );
   const env = { ...process.env, ANTV_STUDIO_TEST_DATA: data };
   delete env.ELECTRON_RUN_AS_NODE;
   let application;
@@ -31,7 +44,11 @@ const os = require('node:os');
     assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
     await page.locator('#example').click();
     await page.screenshot({ path: path.join(out, 'workspace.png') });
+    await page.locator('#connection-open').click();
+    await page.locator('#connection-dialog').waitFor();
     await page.locator('#settings-open').click();
+    await page.locator('#connection-dialog').waitFor({ state: 'hidden' });
+    await page.locator('#settings-dialog').waitFor();
     assert.equal(
       await page.locator('#settings-dialog input[type=url]').count(),
       0,
@@ -249,6 +266,7 @@ const os = require('node:os');
     console.log(`Screenshots: ${out}`);
   } finally {
     if (application) await application.close().catch(() => {});
+    await new Promise((resolve) => cloud.close(resolve));
     if (
       path.dirname(data) === os.tmpdir() &&
       path.basename(data).startsWith('antv-studio-smoke-')

@@ -163,6 +163,19 @@ const collection = (id) => ({
   assets: [],
 });
 
+test('cloud state distinguishes a logged-out session from an unavailable server', async (t) => {
+  for (const [status, phase] of [
+    [401, 'signedOut'],
+    [503, 'error'],
+  ]) {
+    const { workspace } = setup(t, async () => new Response('{}', { status }));
+    const state = await workspace.refresh();
+    assert.equal(state.cloudConnection.phase, phase);
+    assert.ok(state.cloudConnection.checkedAt);
+    assert.equal(state.authenticated, false);
+  }
+});
+
 test('background source sync permits batch creation in the same team while still preventing team changes', async (t) => {
   const { workspace, source } = setup(t, basicTransport);
   await workspace.refresh();

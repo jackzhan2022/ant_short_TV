@@ -13,6 +13,23 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class DesktopSourceControllerTest {
+    @Test void exposesDedicatedAtomicAiConfirmationEndpoint() throws Exception {
+        var service=mock(DesktopSourceService.class);
+        var mvc=MockMvcBuilders.standaloneSetup(new DesktopSourceController(service)).build();
+        mvc.perform(put("/api/desktop/source-projects/assets/12/ai-match").header("X-Tenant-Id","1")
+            .contentType(MediaType.APPLICATION_JSON).content("""
+            {"assetId":22,"variantId":null,"expected":{"sourceName":"Hero","sourceParentId":null,
+             "sourceTargetAssetId":null,"sourceTargetVariantId":null,"sourceMatchStatus":"UNMATCHED","targetProjectId":10,
+             "candidates":[{"assetId":22,"variantId":null,"name":"Hero target","type":"CHARACTER","parentName":null,"hasPrompt":true}]}}
+            """))
+            .andExpect(status().isOk());
+        var body=org.mockito.ArgumentCaptor.forClass(AiMatchRequest.class);
+        verify(service).aiMatch(eq(1L),eq(12L),body.capture());
+        assertThat(body.getValue().expected().sourceName()).isEqualTo("Hero");
+        assertThat(body.getValue().expected().candidates()).containsExactly(new Candidate(22L,null,"Hero target","CHARACTER",null,true));
+        verify(service,never()).manualMatch(any(),any(),any(),any());
+    }
+
     @Test void exposesContractAndDropsUnrecognizedSourceSecrets() throws Exception {
         var service=mock(DesktopSourceService.class);
         when(service.sync(eq(1L),any())).thenReturn(new SourceProject(7L,"local","Source","team","project","script",null,null,true,LocalDateTime.now()));

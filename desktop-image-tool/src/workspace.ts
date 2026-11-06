@@ -7,6 +7,7 @@ import type { QueueState } from './shared';
 import type { SourceCollector } from './source-types';
 import type {
   BatchInput,
+  LoginStatus,
   SourceProject,
   SourceSnapshot,
   SyncStatus,
@@ -28,6 +29,7 @@ export class WorkspaceController {
   private projects: SourceProject[] = [];
   private targets: TargetProject[] = [];
   private authenticated = false;
+  private cloudConnection: LoginStatus = { phase: 'unknown' };
   private error?: string;
   private busy = false;
   private syncing = false;
@@ -81,6 +83,10 @@ export class WorkspaceController {
         (team) => team.id === this.client?.tenantId,
       )?.name,
       authenticated: this.authenticated,
+      cloudConnection: {
+        ...this.cloudConnection,
+        loginOpen: Boolean(this.loginWindow && !this.loginWindow.isDestroyed()),
+      },
       error: this.error,
       projects: this.projects,
       targets: this.targets,
@@ -156,6 +162,7 @@ export class WorkspaceController {
       this.projects = [];
       this.targets = [];
       this.authenticated = false;
+      this.cloudConnection = { phase: 'unknown' };
     }
     this.config = {
       ...this.config,
@@ -200,6 +207,7 @@ export class WorkspaceController {
       },
     });
     this.loginWindow = login;
+    this.changed();
     login.removeMenu();
     login.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     login.webContents.on('will-navigate', (event, url) => {
@@ -207,6 +215,11 @@ export class WorkspaceController {
     });
     login.webContents.on('will-redirect', (event, url) => {
       if (new URL(url).origin !== origin) event.preventDefault();
+    });
+    login.webContents.on('did-finish-load', () => {
+      const url = new URL(login.webContents.getURL());
+      if (url.origin === origin && !url.pathname.startsWith('/user/'))
+        void this.refresh();
     });
     login.on('closed', () => {
       this.loginWindow = undefined;
@@ -228,6 +241,12 @@ export class WorkspaceController {
   private async refreshNow(client: CloudClient, version: number) {
     const current = () =>
       this.client === client && this.version === version && !this.closed;
+    this.cloudConnection = {
+      ...this.cloudConnection,
+      phase: 'checking',
+      message: undefined,
+    };
+    this.changed();
     try {
       await client.refreshTeams();
       if (!current()) return this.state();
@@ -248,12 +267,24 @@ export class WorkspaceController {
         this.targets = [];
       }
       this.error = undefined;
+      this.cloudConnection = {
+        phase: 'connected',
+        checkedAt: new Date().toISOString(),
+      };
     } catch (error) {
       if (!current()) return this.state();
       this.error = error instanceof Error ? error.message : '平台连接失败。';
       this.authenticated = false;
       this.projects = [];
       this.targets = [];
+      this.cloudConnection = {
+        phase:
+          error instanceof CloudRequestError && error.status === 401
+            ? 'signedOut'
+            : 'error',
+        checkedAt: new Date().toISOString(),
+        message: this.error,
+      };
     }
     this.changed();
     return this.state();
@@ -340,12 +371,32 @@ export class WorkspaceController {
       throw new Error('请先登录并选择剧智创团队。');
     return client;
   }
+  assetIdentity() {
+    return `${this.version}:${this.config.cloudUrl}:${this.client?.tenantId ?? ''}`;
+  }
+  async withAssetOperation<T>(work: () => Promise<T>): Promise<T> {
+    this.idle();
+    this.busy = true;
+    this.changed();
+    try {
+      if (this.refreshJob) await this.refreshJob.promise;
+      this.requireClient();
+      return await work();
+    } finally {
+      this.busy = false;
+      this.changed();
+    }
+  }
   private idle() {
     if (this.busy || this.syncing)
       throw new Error('正在同步或创建批量任务，请完成后再切换团队。');
   }
   loginSource() {
     return this.source.login();
+  }
+  async checkSource() {
+    await this.source.check();
+    return this.state();
   }
   async sync() {
     this.idle();

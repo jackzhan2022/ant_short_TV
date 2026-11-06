@@ -156,7 +156,11 @@ function renderDirectory() {
 }
 function openSettings() {
   showError('settings-error', '');
+  get<HTMLDialogElement>('connection-dialog').close();
   get<HTMLDialogElement>('settings-dialog').showModal();
+  aiSettingsLoaded = false;
+  if (get<HTMLDetailsElement>('ai-settings-details').open)
+    void loadAiSettings();
 }
 get('settings-open').onclick = openSettings;
 get('save-path').onclick = openSettings;
@@ -173,7 +177,85 @@ get<HTMLDialogElement>('settings-dialog').addEventListener('close', () => {
   get<HTMLInputElement>('api-key').type = 'password';
   get('show-key').textContent = '显示';
   get('show-key').setAttribute('aria-pressed', 'false');
+  get<HTMLInputElement>('ai-key').value = '';
 });
+
+let aiSettingsLoaded = false;
+let aiSettingsLoading = false;
+async function loadAiSettings() {
+  if (aiSettingsLoaded || aiSettingsLoading) return;
+  aiSettingsLoading = true;
+  get<HTMLButtonElement>('ai-settings-save').disabled = true;
+  showError('ai-settings-error', '');
+  try {
+    const value = unwrap(await window.workspace.aiSettings());
+    get<HTMLInputElement>('ai-base-url').value = value.baseUrl;
+    get<HTMLInputElement>('ai-model').value = value.model;
+    get('ai-key-help').textContent = !value.hasKey
+      ? '尚未配置可用 Key；可填写独立 Key，或先保存图片模型 Key。'
+      : value.usingImageKey
+        ? '当前使用图片模型 Key；可单独配置文本模型 Key。'
+        : '已保存独立 Key；留空保留，输入可替换。';
+    get('ai-key-clear').hidden = value.usingImageKey || !value.hasKey;
+    aiSettingsLoaded = true;
+  } catch (failure) {
+    showError(
+      'ai-settings-error',
+      failure instanceof Error ? failure.message : '文本模型设置读取失败。',
+    );
+  } finally {
+    aiSettingsLoading = false;
+    get<HTMLButtonElement>('ai-settings-save').disabled = false;
+  }
+}
+get<HTMLDetailsElement>('ai-settings-details').ontoggle = () => {
+  if (get<HTMLDetailsElement>('ai-settings-details').open)
+    void loadAiSettings();
+};
+async function saveAiSettings(clearKey = false) {
+  const save = get<HTMLButtonElement>('ai-settings-save');
+  const clear = get<HTMLButtonElement>('ai-key-clear');
+  if (save.disabled || aiSettingsLoading) return;
+  save.disabled = true;
+  clear.disabled = true;
+  showError('ai-settings-error', '');
+  try {
+    unwrap(
+      await window.workspace.configureAi({
+        baseUrl: get<HTMLInputElement>('ai-base-url').value.trim(),
+        model: get<HTMLInputElement>('ai-model').value.trim(),
+        key: clearKey
+          ? undefined
+          : get<HTMLInputElement>('ai-key').value.trim() || undefined,
+        clearKey,
+      }),
+    );
+    get<HTMLInputElement>('ai-key').value = '';
+    aiSettingsLoaded = false;
+    await loadAiSettings();
+    notify('文本模型设置已保存。');
+  } catch (failure) {
+    showError(
+      'ai-settings-error',
+      failure instanceof Error ? failure.message : '文本模型设置保存失败。',
+    );
+  } finally {
+    save.disabled = false;
+    clear.disabled = false;
+  }
+}
+get('ai-settings-save').onclick = () => {
+  void saveAiSettings();
+};
+get('ai-key-clear').onclick = () => {
+  void saveAiSettings(true);
+};
+get('ai-settings-details').onkeydown = (event) => {
+  if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+    event.preventDefault();
+    void saveAiSettings();
+  }
+};
 get('show-key').onclick = () => {
   const input = get<HTMLInputElement>('api-key');
   input.type = input.type === 'password' ? 'text' : 'password';

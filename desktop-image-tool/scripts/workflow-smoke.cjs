@@ -21,6 +21,7 @@ const os = require('node:os');
   let matchStarted;
   const calls = [];
   const syncs = [];
+  const syncedAt = new Date().toISOString();
   const project = () => ({
     id: 1,
     connectionId: 'fixture',
@@ -31,7 +32,7 @@ const os = require('node:os');
     targetProjectId: bound ? 100 : null,
     targetProjectName: bound ? '测试远程项目' : null,
     active: true,
-    syncedAt: new Date().toISOString(),
+    syncedAt,
   });
   const assets = () =>
     Array.from({ length: 12 }, (_, index) => ({
@@ -78,7 +79,15 @@ const os = require('node:os');
     else if (req.url.startsWith('/api/projects?'))
       result = { data: [{ id: 100, name: '测试远程项目' }], total: 1 };
     else if (req.url === '/api/desktop/source-projects')
-      result = [project(), { ...project(), id: 2, name: '测试项目 B' }];
+      result = [
+        project(),
+        {
+          ...project(),
+          id: 2,
+          name: '测试项目 B',
+          sourceScriptId: 'source-script-b',
+        },
+      ];
     else if (req.url === '/api/desktop/source-projects/sync') {
       syncs.push(body);
       result = project();
@@ -201,7 +210,9 @@ const os = require('node:os');
           signal.addEventListener('abort', () => settle(true), { once: true });
         });
     }, root);
+    await page.locator('#connection-open').click();
     await page.locator('#settings-open').click();
+    await page.locator('#connection-dialog').waitFor({ state: 'hidden' });
     await page.locator('#api-key').fill('workflow-test-key');
     await page.locator('#save-settings').click();
     await page.locator('#settings-dialog').waitFor({ state: 'hidden' });
@@ -220,10 +231,8 @@ const os = require('node:os');
     );
     await page.locator('#team-select').selectOption('11');
     await page.waitForFunction(() =>
-      document.querySelector('#team-label').textContent.includes('测试团队 A'),
+      document.querySelector('#connection-open').title.includes('测试团队 A'),
     );
-    await page.locator('[data-close="connection-dialog"]').click();
-    await page.locator('.project-item').first().waitFor();
     await page.locator('#sync-source').click();
     await page.waitForFunction(() =>
       document.querySelector('#toast').textContent.includes('已同步'),
@@ -235,7 +244,7 @@ const os = require('node:os');
     );
     assert.match(
       await page.locator('#project-count').textContent(),
-      /云端已保存 1 个项目 · 2 份资产清单/,
+      /已同步 1 个项目 · 2 份剧本清单/,
     );
     assert.equal(JSON.stringify(syncs).includes('MUST_NOT_UPLOAD'), false);
     assert.deepEqual(Object.keys(syncs[0].assets[0]).sort(), [
@@ -243,8 +252,27 @@ const os = require('node:os');
       'sourceAssetId',
       'type',
     ]);
-    await page.locator('#target-project').selectOption('100');
+    await page.locator('[data-close="connection-dialog"]').click();
+    await page.locator('#source-project-open').click();
+    await page.locator('[data-source-project-id="2"]').click();
+    await page.locator('[data-close="source-project-dialog"]').first().click();
+    assert.equal(
+      await page.locator('#asset-project-name').textContent(),
+      '测试来源项目',
+      'cancelled source draft preserves the current scope',
+    );
+    await page.locator('#source-project-open').click();
+    assert.equal(
+      await page
+        .locator('[data-source-project-id="1"]')
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    await page.locator('#source-project-confirm').click();
     await page.locator('#bind-project').click();
+    await page.locator('[data-target-id="100"]').click();
+    await page.locator('#binding-submit').click();
+    await page.locator('#binding-dialog').waitFor({ state: 'hidden' });
     await page.locator('#match-assets:not([disabled])').waitFor();
     holdMatch = true;
     const requested = new Promise((resolve) => {
@@ -252,7 +280,9 @@ const os = require('node:os');
     });
     await page.locator('#match-assets').click();
     await requested;
-    await page.locator('.project-item').nth(1).click();
+    await page.locator('#source-project-open').click();
+    await page.locator('[data-source-project-id="2"]').click();
+    await page.locator('#source-project-confirm').click();
     await page.waitForFunction(() =>
       document
         .querySelector('#asset-rows')
@@ -266,7 +296,9 @@ const os = require('node:os');
       await page.locator('#asset-rows').textContent(),
       /项目 B 专属角色/,
     );
-    await page.locator('.project-item').first().click();
+    await page.locator('#source-project-open').click();
+    await page.locator('[data-source-project-id="1"]').click();
+    await page.locator('#source-project-confirm').click();
     await page.locator('#asset-rows .matched').first().waitFor();
     await page.locator('#match-assets').click();
     await page.locator('#asset-rows .matched').first().waitFor();
@@ -287,6 +319,16 @@ const os = require('node:os');
       () => document.querySelectorAll('.queue-row .running').length === 5,
     );
     assert.equal(await page.locator('.queue-row .queued').count(), 7);
+    await page.locator('[data-queue-filter="running"]').click();
+    assert.equal(await page.locator('.queue-row').count(), 5);
+    assert.equal(await page.locator('.queue-row .running').count(), 5);
+    await page.locator('[data-queue-filter="waiting"]').click();
+    assert.equal(await page.locator('.queue-row').count(), 7);
+    await page.locator('[data-queue-filter="done"]').click();
+    assert.equal(await page.locator('.queue-row').count(), 0);
+    assert.equal(await page.locator('#queue-empty').isVisible(), true);
+    await page.locator('[data-queue-filter="all"]').click();
+    assert.equal(await page.locator('.queue-row').count(), 12);
     const probe = await application.evaluate(() => ({
       active: globalThis.workflowProbe.active,
       peak: globalThis.workflowProbe.peak,
@@ -347,7 +389,9 @@ const os = require('node:os');
         ),
       )
       .find((record) => record.origin?.sourceAssetId === 1);
-    assert.match(firstTask.outputName, /测试主体_测试角色1/);
+    assert.equal(firstTask.outputName, '测试角色1');
+    assert.equal(path.basename(firstTask.savedFiles[0]), '测试角色1.png');
+    assert.match(firstTask.outputDirectory, /导入批次-/);
     assert.equal(firstTask.origin.targetAssetId, 101);
     assert.equal(firstTask.origin.sourceProjectId, 1);
     await page.locator('#queue-limit').selectOption('3');
@@ -364,21 +408,27 @@ const os = require('node:os');
     await page.locator('#connection-open').click();
     await page.locator('#team-select').selectOption('22');
     await page.waitForFunction(() =>
-      document.querySelector('#team-label').textContent.includes('测试团队 B'),
+      document.querySelector('#connection-open').title.includes('测试团队 B'),
     );
     await page.locator('[data-close="connection-dialog"]').click();
     members = members.filter((team) => team.id === 11);
     await page.locator('[data-view="assets"]').click();
     await page.locator('#refresh-cloud').click();
-    await page.waitForFunction(() =>
-      document.querySelector('#team-label').textContent.includes('请选择'),
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#team-select').value === '' &&
+        document.querySelector('#connection-open').title === '账号与同步',
     );
     await page.locator('#refresh-cloud').click();
-    assert.match(await page.locator('#team-label').textContent(), /请选择/);
+    assert.equal(await page.locator('#team-select').inputValue(), '');
+    assert.equal(
+      await page.locator('#connection-open').getAttribute('title'),
+      '账号与同步',
+    );
     await page.locator('#connection-open').click();
     await page.locator('#team-select').selectOption('11');
     await page.waitForFunction(() =>
-      document.querySelector('#team-label').textContent.includes('测试团队 A'),
+      document.querySelector('#connection-open').title.includes('测试团队 A'),
     );
     await page.locator('[data-close="connection-dialog"]').click();
     const persisted = fs.readFileSync(path.join(data, 'settings.json'), 'utf8');
@@ -404,6 +454,9 @@ const os = require('node:os');
     );
     assert.equal(await page.locator('.queue-row .queued').count(), 5);
     assert.match(await page.locator('#queue-summary').textContent(), /已暂停/);
+    await page.locator('[data-queue-filter="failed"]').click();
+    assert.equal(await page.locator('.queue-row .interrupted').count(), 3);
+    assert.equal(await page.locator('.queue-row').count(), 3);
     assert.deepEqual(errors, []);
     console.log(
       'PASS workflow: actual cookie/CSRF cloud transport, explicit team and stale membership, names-only sync, bind/match/prompt, 12 batch + free task <=5 slots, pause/limit, local grouped save, restart recovery. All model responses are local fixtures.',

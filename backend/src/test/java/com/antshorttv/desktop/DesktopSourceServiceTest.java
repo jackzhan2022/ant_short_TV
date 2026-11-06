@@ -83,7 +83,19 @@ class DesktopSourceServiceTest {
         assertThat(matched.name()).isEqualTo(" Hero ");
     }
 
-    @Test void variantsAreScopedToMatchedParentAndComposeCanonicalBase() {
+    @Test void syncPreservesLiteralAssetLineBreaksAndTabsButKeepsProjectValidationUnchanged() {
+        String literal="  Hero\tlook\r\nWinter ";
+        var p=sync(true,a("raw",literal));
+        assertThat(service.assets(1L,p.id()).get(0).name()).isEqualTo(literal);
+        for(char control:new char[]{'\u0000','\u000b','\u007f','\u0085'})
+            assertThatThrownBy(()->sync(false,a("invalid","Hero"+control))).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->sync(false,a("blank","\r\n\t "))).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->service.sync(1L,new DesktopSourceModels.SyncRequest("local-session","team","project","script",
+            "Invalid\nproject",true,List.of(a("valid","Hero"))))).isInstanceOf(BusinessException.class);
+        assertThat(service.assets(1L,p.id()).get(0).name()).isEqualTo(literal);
+    }
+
+    @Test void variantsAreScopedToMatchedParentAndUseTheirPersistedPromptSource() {
         asset("character_asset",1,"Hero","canonical base"); asset("character_asset",2,"Other","other base");
         variant(101,1,"Default","stale primary",true); variant(102,1,"Winter","wear coat",false); variant(103,2,"Winter","wrong",false);
         var p=sync(true,a("p","Hero"),a("v","Winter","CHARACTER","p"),a("main","Default","CHARACTER","p"));
@@ -91,7 +103,7 @@ class DesktopSourceServiceTest {
         var matched=service.match(1L,p.id());
         assertThat(matched.get(1).targetVariantId()).isEqualTo(102L);
         assertThat(service.prompts(1L,List.of(matched.get(1).id(),matched.get(2).id())))
-            .extracting(DesktopSourceModels.Prompt::prompt).containsExactly("canonical base\nwear coat","canonical base");
+            .extracting(DesktopSourceModels.Prompt::prompt).containsExactly("wear coat","canonical base");
         assertThat(service.candidates(1L,p.id(),"CHARACTER","p")).extracting(DesktopSourceModels.Candidate::variantId).containsExactly(101L,102L);
         assertThatThrownBy(() -> service.manualMatch(1L,matched.get(1).id(),2L,103L)).isInstanceOf(BusinessException.class);
     }
@@ -187,7 +199,7 @@ class DesktopSourceServiceTest {
         jdbc.update("update character_asset set prompt='new base' where id=1");
         clearInvocations(jdbc);
         assertThat(service.prompts(1L,matched.stream().map(DesktopSourceModels.SourceAsset::id).toList()))
-            .extracting(DesktopSourceModels.Prompt::prompt).containsOnly("new base","new base\ncoat");
+            .extracting(DesktopSourceModels.Prompt::prompt).containsOnly("new base","coat");
         assertThat(targetCatalogReads()).as("prompt reads are bounded by target scopes and reloaded for the new operation").isEqualTo(2);
     }
 
@@ -278,6 +290,138 @@ class DesktopSourceServiceTest {
         assertThatThrownBy(() -> sync(true,a("a","Hero","CHARACTER","unknown"))).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> sync(true,a("a","X".repeat(201)))).isInstanceOf(BusinessException.class);
         assertThat(jdbc.queryForObject("select count(*) from desktop_source_asset",Integer.class)).isZero();
+    }
+
+    @Test void aiConfirmationRequiresAnUnchangedSnapshotAndComparesCandidatesWithoutOrdering() {
+        asset("character_asset",1,"Hero A","base"); asset("character_asset",2,"Hero B","base"); asset("character_asset",3,"No prompt","");
+        var p=sync(true,a("a","Source hero")); service.bind(1L,p.id(),10L);
+        var source=service.assets(1L,p.id()).get(0);
+        var candidates=new java.util.ArrayList<>(service.candidates(1L,p.id(),"CHARACTER",null).stream().filter(DesktopSourceModels.Candidate::hasPrompt).toList());
+        java.util.Collections.reverse(candidates);
+        var saved=service.aiMatch(1L,source.id(),aiRequest(source,10L,candidates,2L,null));
+        assertThat(saved.targetAssetId()).isEqualTo(2L);
+        assertThat(saved.matchStatus()).isEqualTo("MATCHED");
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),aiRequest(source,10L,candidates,1L,null)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),aiRequest(saved,10L,candidates,1L,null)))
+            .isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        assertThat(service.assets(1L,p.id()).get(0).targetAssetId()).isEqualTo(2L);
+    }
+
+    @Test void aiConfirmationRejectsRenamedReparentedOrInactiveSourcesAndChangedBinding() {
+        asset("character_asset",1,"Hero","base");
+        var p=sync(true,a("a","Source hero")); service.bind(1L,p.id(),10L);
+        var source=service.assets(1L,p.id()).get(0);
+        var request=aiRequest(source,10L,service.candidates(1L,p.id(),"CHARACTER",null),1L,null);
+        for(String change:List.of("name='Renamed'","source_parent_id='another'","active=false")) {
+            jdbc.update("update desktop_source_asset set "+change+" where id=?",source.id());
+            assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+            jdbc.update("update desktop_source_asset set name=?,source_parent_id=null,active=true where id=?",source.name(),source.id());
+        }
+        service.bind(1L,p.id(),11L);
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        assertThat(service.assets(1L,p.id()).get(0).targetAssetId()).isNull();
+    }
+
+    @Test void aiConfirmationRejectsAnySelectableCandidateChangeOrMissingPrompt() {
+        asset("character_asset",1,"Hero A","base"); asset("character_asset",2,"Hero B","base");
+        var p=sync(true,a("a","Source hero")); service.bind(1L,p.id(),10L);
+        var source=service.assets(1L,p.id()).get(0);
+        var request=aiRequest(source,10L,service.candidates(1L,p.id(),"CHARACTER",null),1L,null);
+        for(String change:List.of("name='Renamed'","prompt=''","deleted_at=now()")) {
+            jdbc.update("update character_asset set "+change+" where id=2");
+            assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+            jdbc.update("update character_asset set name='Hero B',prompt='base',deleted_at=null where id=2");
+        }
+        asset("character_asset",3,"New candidate","base");
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        jdbc.update("update character_asset set prompt='' where id=1");
+        var refreshed=service.candidates(1L,p.id(),"CHARACTER",null).stream().filter(DesktopSourceModels.Candidate::hasPrompt).toList();
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),aiRequest(source,10L,refreshed,1L,null))).isInstanceOf(BusinessException.class);
+        assertThat(service.assets(1L,p.id()).get(0).targetAssetId()).isNull();
+    }
+
+    @Test void aiConfirmationUsesTheSourceMatchCommittedBeforeAcquiringTheProjectLock() {
+        asset("character_asset",1,"Hero A","base"); asset("character_asset",2,"Hero B","base");
+        var p=sync(true,a("a","Source hero")); service.bind(1L,p.id(),10L);
+        var source=service.assets(1L,p.id()).get(0);
+        var request=aiRequest(source,10L,service.candidates(1L,p.id(),"CHARACTER",null),1L,null);
+        doAnswer(invocation->{
+            jdbc.update("update desktop_source_asset set target_asset_id=2,target_name='Hero B',match_status='MATCHED' where id=?",source.id());
+            return invocation.callRealMethod();
+        }).when(jdbc).query(eq("select * from desktop_source_project where id=? and tenant_id=? for update"),
+            org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<Object>>any(),any(Object[].class));
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        assertThat(jdbc.queryForObject("select target_asset_id from desktop_source_asset where id=?",Long.class,source.id())).isEqualTo(2L);
+    }
+
+    @Test void aiVariantConfirmationRemainsScopedToTheCurrentMatchedParent() {
+        asset("character_asset",1,"Hero","base"); asset("character_asset",2,"Other","base");
+        variant(101,1,"Winter","coat",false); variant(102,2,"Winter","other coat",false);
+        var p=sync(true,a("p","Hero"),a("v","Source winter","CHARACTER","p")); service.bind(1L,p.id(),10L);
+        var sources=service.match(1L,p.id()); var source=sources.get(1);
+        var request=aiRequest(source,10L,service.candidates(1L,p.id(),"CHARACTER","p"),1L,101L);
+        service.manualMatch(1L,sources.get(0).id(),2L,null);
+        assertThatThrownBy(()->service.aiMatch(1L,source.id(),request)).isInstanceOf(BusinessException.class).hasMessageContaining("重新匹配");
+        assertThat(service.assets(1L,p.id()).get(1).targetAssetId()).isNull();
+    }
+
+    @Test void nonPrimaryVariantPromptIsIndependentOfMissingCanonicalPromptAndNeverFallsBack() {
+        asset("character_asset",1,"Hero","  ");
+        variant(101,1,"Default","ignored historical primary prompt",true);
+        variant(102,1,"Winter","wear coat",false); variant(103,1,"Empty","",false);
+        var p=sync(true,a("p","Hero"),a("v","Source winter","CHARACTER","p"),
+            a("primary","Default","CHARACTER","p"),a("empty","Empty","CHARACTER","p"));
+        service.bind(1L,p.id(),10L);
+        var sources=service.match(1L,p.id());
+        assertThat(sources).extracting(DesktopSourceModels.SourceAsset::matchStatus)
+            .containsExactly("NO_PROMPT","UNMATCHED","NO_PROMPT","NO_PROMPT");
+        var candidates=service.candidates(1L,p.id(),"CHARACTER","p");
+        assertThat(candidates).extracting(DesktopSourceModels.Candidate::hasPrompt).containsExactly(false,true,false);
+        var saved=service.aiMatch(1L,sources.get(1).id(),aiRequest(sources.get(1),10L,
+            candidates.stream().filter(DesktopSourceModels.Candidate::hasPrompt).toList(),1L,102L));
+        assertThat(saved.matchStatus()).isEqualTo("MATCHED");
+        assertThat(service.prompts(1L,List.of(saved.id())).get(0).prompt()).isEqualTo("wear coat");
+        assertThatThrownBy(()->service.prompts(1L,List.of(sources.get(2).id()))).isInstanceOf(BusinessException.class);
+        jdbc.update("update character_asset set prompt='new canonical prompt' where id=1");
+        assertThat(service.prompts(1L,List.of(saved.id())).get(0).prompt()).isEqualTo("wear coat");
+        assertThat(service.assets(1L,p.id()).get(3).matchStatus()).isEqualTo("NO_PROMPT");
+    }
+
+    @Test void simultaneousAiConfirmationsCannotOverwriteTheFirstCommittedMatch() throws Exception {
+        asset("character_asset",1,"Hero A","base"); asset("character_asset",2,"Hero B","base");
+        var p=sync(true,a("a","Source hero")); service.bind(1L,p.id(),10L);
+        var source=service.assets(1L,p.id()).get(0);
+        var candidates=service.candidates(1L,p.id(),"CHARACTER",null);
+        var proxy=new org.springframework.aop.framework.ProxyFactory(service);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(
+            new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource),
+            new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var transactional=(DesktopSourceService)proxy.getProxy();
+        var initialReads=new java.util.concurrent.CyclicBarrier(2);
+        doAnswer(invocation->{
+            Object result=invocation.callRealMethod();
+            initialReads.await(10,java.util.concurrent.TimeUnit.SECONDS);
+            return result;
+        }).when(jdbc).query(eq("select * from desktop_source_asset where id=? and tenant_id=?"),
+            org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<Object>>any(),any(Object[].class));
+        var executor=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var futures=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(Long target:List.of(1L,2L)) futures.add(executor.submit(()->{
+                try { transactional.aiMatch(1L,source.id(),aiRequest(source,10L,candidates,target,null)); return true; }
+                catch(BusinessException e) { assertThat(e.getMessage()).contains("重新匹配"); return false; }
+            }));
+            assertThat(List.of(futures.get(0).get(30,java.util.concurrent.TimeUnit.SECONDS),futures.get(1).get(30,java.util.concurrent.TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder(true,false);
+            assertThat(jdbc.queryForObject("select target_asset_id from desktop_source_asset where id=?",Long.class,source.id())).isIn(1L,2L);
+        } finally { executor.shutdownNow(); }
+    }
+
+    private DesktopSourceModels.AiMatchRequest aiRequest(DesktopSourceModels.SourceAsset source,Long project,
+            List<DesktopSourceModels.Candidate> candidates,Long asset,Long variant) {
+        return new DesktopSourceModels.AiMatchRequest(asset,variant,new DesktopSourceModels.AiMatchExpected(
+            source.name(),source.sourceParentId(),source.targetAssetId(),source.targetVariantId(),source.matchStatus(),project,candidates));
     }
 
     private DesktopSourceModels.SourceProject sync(boolean complete,DesktopSourceModels.SyncAsset... assets) {

@@ -44,6 +44,10 @@ public class DesktopSourceController {
     public ApiResponse<SourceAsset> manualMatch(HttpServletRequest request,@PathVariable Long id,@RequestBody MatchRequest body) {
         return ApiResponse.success(service.manualMatch(TenantRequestSupport.tenantId(request),id,body.assetId(),body.variantId()));
     }
+    @PutMapping("/assets/{id}/ai-match")
+    public ApiResponse<SourceAsset> aiMatch(HttpServletRequest request,@PathVariable Long id,@RequestBody AiMatchRequest body) {
+        return ApiResponse.success(service.aiMatch(TenantRequestSupport.tenantId(request),id,body));
+    }
     @PostMapping("/prompts")
     public ResponseEntity<ApiResponse<List<Prompt>>> prompts(HttpServletRequest request,@RequestBody PromptRequest body) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())

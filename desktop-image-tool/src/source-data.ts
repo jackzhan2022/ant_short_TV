@@ -273,10 +273,25 @@ export function projectAssetNames(
       skippedUnnamedVariant();
       return;
     }
+    // Asset names become import filenames. Keep their literal spelling; Windows
+    // filename validation runs before generation instead of silently renaming.
+    if (
+      typeof rawName !== 'string' ||
+      !rawName.trim() ||
+      rawName.length > 200 ||
+      [...rawName].some((char) => {
+        const code = char.charCodeAt(0);
+        return (
+          (code < 32 && !['\t', '\r', '\n'].includes(char)) ||
+          (code >= 127 && code <= 159)
+        );
+      })
+    )
+      throw new Error('源站资产名称结构不受支持，未同步任何部分结果。');
     const value: SourceName = {
       sourceAssetId,
       ...(sourceParentId ? { sourceParentId } : {}),
-      name: name(row),
+      name: rawName,
       type,
     };
     const existing = names.get(sourceAssetId);

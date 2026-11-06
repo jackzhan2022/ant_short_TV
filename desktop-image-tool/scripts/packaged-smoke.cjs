@@ -23,9 +23,12 @@ const asar = require('@electron/asar');
     'dramart.js',
     'source-data.js',
     'source-page.js',
+    'ai-match.js',
+    'ai-review.js',
     'index.html',
     'renderer/renderer.js',
     'renderer/workspace-renderer.js',
+    'renderer/workspace-view.js',
   ])
     assert.deepEqual(
       asar.extractFile(archive, path.join('dist', ...name.split('/'))),
@@ -54,7 +57,7 @@ const asar = require('@electron/asar');
     }));
     assert.equal(path.resolve(runtime.data), path.resolve(data));
     assert.equal(runtime.packaged, true);
-    assert.equal(runtime.version, '0.2.4');
+    assert.equal(runtime.version, require('../package.json').version);
     const page = await application.firstWindow();
     const errors = [];
     page.on('pageerror', (failure) => errors.push(failure.message));
@@ -80,6 +83,7 @@ const asar = require('@electron/asar');
     assert.equal(state.ok, true);
     assert.equal(state.value.settings.hasKey, false);
     assert.equal(state.value.records.length, 0);
+    await page.locator('#connection-open').click();
     await page.locator('#settings-open').click();
     await page.locator('#settings-dialog').waitFor();
     await page.locator('#settings-close').click();
@@ -89,7 +93,7 @@ const asar = require('@electron/asar');
     });
     assert.deepEqual(errors, []);
     console.log(
-      'PASS packaged 0.2.4: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.',
+      `PASS packaged ${runtime.version}: compiled files match ASAR, isolated fresh profile, independent launch, renderer/preload, asset/create/queue views and settings. No credentials or model calls used.`,
     );
   } finally {
     if (application) await application.close().catch(() => {});

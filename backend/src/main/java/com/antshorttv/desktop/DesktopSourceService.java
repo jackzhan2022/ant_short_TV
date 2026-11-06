@@ -8,9 +8,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import static com.antshorttv.desktop.DesktopSourceModels.*;
 
 @Service
@@ -46,7 +48,7 @@ public class DesktopSourceService {
         for (SyncAsset a:body.assets()) {
             if (a==null) throw invalid("资产条目不能为空。");
             String id=text(a.sourceAssetId(),100),parent=optional(a.sourceParentId(),100);
-            SyncAsset value=new SyncAsset(id,parent,sourceName(a.name()),type(a.type()));
+            SyncAsset value=new SyncAsset(id,parent,assetName(a.name()),type(a.type()));
             if (normalized.putIfAbsent(id,value)!=null) throw invalid("源资产标识重复。");
         }
         // Claim the stable identity before reading or validating the merged inventory. Concurrent first
@@ -166,6 +168,57 @@ public class DesktopSourceService {
         return inventory.response(matched);
     }
 
+    @Transactional(isolation=Isolation.REPEATABLE_READ)
+    public SourceAsset aiMatch(Long tenant,Long id,AiMatchRequest body) {
+        try { return confirmAiMatch(tenant,id,body); }
+        catch(PessimisticLockingFailureException e) {
+            // Concurrent writes may invalidate a database snapshot or deadlock a candidate
+            // range. Roll back and require a new human review; never retry the write.
+            throw staleAiMatch();
+        }
+    }
+
+    private SourceAsset confirmAiMatch(Long tenant,Long id,AiMatchRequest body) {
+        tenants.requireActiveMember(tenant);
+        if(body==null || body.expected()==null || body.assetId()==null || body.assetId()<=0
+            || body.expected().candidates()==null || body.expected().candidates().size()>2000
+            || body.expected().candidates().stream().anyMatch(Objects::isNull)
+            || new HashSet<>(body.expected().candidates()).size()!=body.expected().candidates().size()) throw staleAiMatch();
+        AiMatchExpected expected=body.expected();
+        AssetRow a=requireAsset(tenant,id);
+        ProjectRow p=requireProject(tenant,a.project(),true);
+        // Use current reads after acquiring the shared desktop project lock. A repeatable-read
+        // snapshot established by requireAsset may predate a competing confirmation or sync.
+        a=requireAsset(tenant,id,true);
+        if(!p.active() || !a.active() || p.target()==null || !Objects.equals(p.target(),expected.targetProjectId())
+            || !Objects.equals(a.name(),expected.sourceName()) || !Objects.equals(a.parent(),expected.sourceParentId())
+            || !Objects.equals(a.targetAsset(),expected.sourceTargetAssetId())
+            || !Objects.equals(a.targetVariant(),expected.sourceTargetVariantId())) throw staleAiMatch();
+        Inventory inventory=new Inventory(tenant,p,new TargetCatalog(tenant,true),true);
+        String status=inventory.response(a).matchStatus();
+        if(!Set.of("UNMATCHED","CONFLICT","REVIEW").contains(status)
+            || !Objects.equals(status,expected.sourceMatchStatus())) throw staleAiMatch();
+        if(a.parent()!=null) {
+            AssetRow parent=inventory.sources.get(a.parent());
+            if(parent==null || !Set.of("MATCHED","NO_PROMPT").contains(inventory.response(parent).matchStatus())) throw staleAiMatch();
+        }
+        List<Target> legal=inventory.candidates(a.type(),a.parent()).stream().filter(t->t.prompt()!=null).toList();
+        Set<Candidate> actual=new HashSet<>(legal.stream()
+            .map(t->new Candidate(t.asset(),t.variant(),t.name(),t.type(),t.parentName(),true)).toList());
+        if(!actual.equals(new HashSet<>(expected.candidates()))) throw staleAiMatch();
+        Target selected=legal.stream().filter(t->Objects.equals(t.asset(),body.assetId())
+            && Objects.equals(t.variant(),body.variantId())).findFirst().orElseThrow(this::staleAiMatch);
+        AssetRow matched=saveMatch(tenant,a,selected);
+        inventory.sources.put(a.sourceId(),matched);
+        if(a.parent()==null && !Objects.equals(a.targetAsset(),selected.asset())) jdbc.update("""
+            update desktop_source_asset set match_status='REVIEW' where tenant_id=? and source_project_row_id=?
+             and source_parent_id=? and target_asset_id is not null
+            """,tenant,p.id(),a.sourceId());
+        return inventory.response(matched);
+    }
+
+    private BusinessException staleAiMatch() { return invalid("AI 推荐已失效，资产、项目或候选已变化，请刷新资产并重新匹配。"); }
+
     public List<Prompt> prompts(Long tenant,List<Long> ids) {
         tenants.requireActiveMember(tenant);
         if(ids==null || ids.isEmpty() || ids.size()>500 || ids.stream().anyMatch(id->id==null || id<=0)
@@ -237,21 +290,25 @@ public class DesktopSourceService {
 
     private final class TargetCatalog {
         private final Long tenant;
+        private final boolean currentRead;
         private final Map<TargetScope,List<Target>> scopes=new HashMap<>();
-        private TargetCatalog(Long tenant) { this.tenant=tenant; }
+        private TargetCatalog(Long tenant) { this(tenant,false); }
+        private TargetCatalog(Long tenant,boolean currentRead) { this.tenant=tenant; this.currentRead=currentRead; }
         private List<Target> get(Long project,String type,Long parent) {
             return scopes.computeIfAbsent(new TargetScope(project,type,parent),scope->{
                 String table=table(type);
-                if(parent==null) return jdbc.query("select id,name,prompt from "+table+" where tenant_id=? and project_id=? and deleted_at is null order by id",
+                // Lock rows and candidate ranges for AI confirmation, including currently empty
+                // prompts. REPEATABLE_READ next-key locks prevent candidate inserts during save.
+                if(parent==null) return jdbc.query("select id,name,prompt from "+table+" where tenant_id=? and project_id=? and deleted_at is null order by id"+(currentRead?" for update":""),
                     (rs,n)->new Target(rs.getLong("id"),null,rs.getString("name"),type,null,nonblank(rs.getString("prompt"))),tenant,project);
                 return jdbc.query("""
             select v.id,v.asset_id,v.name,v.prompt,v.is_primary,a.name parent_name,a.prompt base_prompt
              from asset_visual_variant v join %s a on a.id=v.asset_id and a.tenant_id=v.tenant_id and a.project_id=v.project_id
              where v.tenant_id=? and v.project_id=? and v.asset_type=? and v.asset_id=? and v.deleted_at is null
               and a.deleted_at is null order by v.id
-            """.formatted(table),(rs,n)->{
+            """.formatted(table)+(currentRead?" for update":""),(rs,n)->{
                 String base=nonblank(rs.getString("base_prompt")),delta=nonblank(rs.getString("prompt"));
-                String prompt=rs.getBoolean("is_primary")?base:base==null || delta==null?null:base+"\n"+delta;
+                String prompt=rs.getBoolean("is_primary")?base:delta;
                 return new Target(rs.getLong("asset_id"),rs.getLong("id"),rs.getString("name"),type,rs.getString("parent_name"),prompt);
             },tenant,project,type,parent);
             });
@@ -307,6 +364,12 @@ public class DesktopSourceService {
     private String table(String type) { return switch(type(type)) { case "CHARACTER"->"character_asset";case "SCENE"->"scene_asset";default->"prop_asset"; }; }
     private String text(String value,int max) { if(value==null || value.isBlank() || value.length()>max || value.chars().anyMatch(Character::isISOControl)) throw invalid("字段为空、过长或包含控制字符。"); return value.trim(); }
     private String sourceName(String value) { text(value,200); return value; }
+    private String assetName(String value) {
+        if(value==null || value.isBlank() || value.length()>200
+            || value.chars().anyMatch(c->Character.isISOControl(c) && c!='\r' && c!='\n' && c!='\t'))
+            throw invalid("资产名称必须为 1～200 个字符且不能全为空白；控制字符仅允许换行、回车和制表符。");
+        return value;
+    }
     private String optional(String value,int max) { return value==null || value.isBlank()?null:text(value,max); }
     private String nonblank(String value) { return value==null || value.isBlank()?null:value.trim(); }
     private BusinessException invalid(String message) { return new BusinessException(ErrorCode.VALIDATION_ERROR,message); }

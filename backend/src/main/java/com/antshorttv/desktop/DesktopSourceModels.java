@@ -18,5 +18,8 @@ public final class DesktopSourceModels {
                          String sourceProjectName,String sourceParentName) {}
     public record BindingRequest(Long projectId) {}
     public record MatchRequest(Long assetId,Long variantId) {}
+    public record AiMatchExpected(String sourceName,String sourceParentId,Long sourceTargetAssetId,Long sourceTargetVariantId,
+                                  String sourceMatchStatus,Long targetProjectId,List<Candidate> candidates) {}
+    public record AiMatchRequest(Long assetId,Long variantId,AiMatchExpected expected) {}
     public record PromptRequest(List<Long> assetIds) {}
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +14,11 @@ import {
   session,
   shell,
 } from 'electron';
+import { AiSettingsStore } from './ai-match';
+import type { AiApplyInput, AiModelInput } from './ai-match-types';
+import { AiReviewManager } from './ai-review';
 import { DramartCollector } from './dramart';
-import { automaticName } from './output';
+import { automaticName, validateAssetOutputName } from './output';
 import { generateImage, validateDraft } from './provider';
 import { ImageQueue } from './queue';
 import type { Creation, Draft, Result } from './shared';
@@ -48,6 +52,8 @@ interface ActiveTask {
 const active = new Map<string, ActiveTask>();
 let queue: ImageQueue;
 let workspace: WorkspaceController;
+let aiSettings: AiSettingsStore;
+let aiReviews: AiReviewManager;
 let quitting = false;
 const indexPath = path.join(__dirname, 'index.html');
 
@@ -165,7 +171,13 @@ async function run(
 async function dispatch(id: string) {
   try {
     const key = store.key();
-    const draft = validateDraft(store.reuse(id));
+    const restored = store.reuse(id);
+    const original = store.get(id);
+    if (original.origin) validateAssetOutputName(original.origin.assetName);
+    const draft = validateDraft({
+      ...restored,
+      outputName: original.origin ? '' : restored.outputName,
+    });
     const record = store.start(id);
     const task: ActiveTask = {
       id,
@@ -237,6 +249,29 @@ async function initialize() {
     () => queue.state(),
     changed,
   );
+  aiSettings = new AiSettingsStore(
+    app.getPath('userData'),
+    {
+      encrypt(value) {
+        if (!safeStorage.isEncryptionAvailable())
+          throw new Error('系统凭据加密不可用，无法保存文本模型 Key。');
+        return safeStorage.encryptString(value);
+      },
+      decrypt: (value) => safeStorage.decryptString(value),
+    },
+    () => ({
+      model: store.settings().responseModel,
+      hasKey: store.settings().hasKey,
+      key: () => store.key(),
+    }),
+  );
+  aiReviews = new AiReviewManager(
+    () => ({
+      client: workspace.requireClient(),
+      identity: workspace.assetIdentity(),
+    }),
+    () => ({ settings: aiSettings.settings(), key: aiSettings.key() }),
+  );
   powerMonitor.on('resume', () => workspace.resumeSync());
   protocol.handle('antv-media', (request) => {
     try {
@@ -297,18 +332,35 @@ async function initialize() {
   handle<boolean>('workspace-state', (refresh) =>
     refresh ? workspace.refresh() : workspace.state(),
   );
+  handle('workspace-ai-settings', () => aiSettings.settings());
+  handle<AiModelInput>('workspace-ai-configure', (input) => {
+    aiReviews.cancel();
+    return aiSettings.update(input);
+  });
+  handle<number>('workspace-ai-match', (id) => aiReviews.match(positiveId(id)));
+  handle<AiApplyInput>('workspace-ai-apply', (input) =>
+    workspace.withAssetOperation(() => aiReviews.apply(input)),
+  );
+  handle<string | undefined>('workspace-ai-cancel', (id) =>
+    aiReviews.cancel(id),
+  );
   handle<Parameters<WorkspaceAPI['configure']>[0]>(
     'workspace-configure',
-    (input) => workspace.configure(input),
+    (input) => {
+      aiReviews.cancel();
+      return workspace.configure(input);
+    },
   );
   handle('workspace-login-cloud', () => workspace.loginCloud());
   handle<number>('workspace-open-project', (id) =>
     workspace.loginCloud(positiveId(id)),
   );
-  handle<number>('workspace-team', (id) =>
-    workspace.selectTeam(positiveId(id)),
-  );
+  handle<number>('workspace-team', (id) => {
+    aiReviews.cancel();
+    return workspace.selectTeam(positiveId(id));
+  });
   handle('workspace-login-source', () => workspace.loginSource());
+  handle('workspace-check-source', () => workspace.checkSource());
   handle('workspace-sync', () => workspace.sync());
   handle<number>('workspace-assets', (id) =>
     workspace
@@ -316,24 +368,30 @@ async function initialize() {
       .get(`/api/desktop/source-projects/${positiveId(id)}/assets`),
   );
   handle<{ id: number; projectId: number }>('workspace-bind', async (input) => {
-    await workspace
-      .requireClient()
-      .send<SourceProject>(
-        `/api/desktop/source-projects/${positiveId(input.id)}/binding`,
-        'PUT',
-        { projectId: positiveId(input.projectId) },
-      );
+    aiReviews.cancel();
+    await workspace.withAssetOperation(() =>
+      workspace
+        .requireClient()
+        .send<SourceProject>(
+          `/api/desktop/source-projects/${positiveId(input.id)}/binding`,
+          'PUT',
+          { projectId: positiveId(input.projectId) },
+        ),
+    );
     return workspace.refresh();
   });
-  handle<number>('workspace-match', (id) =>
-    workspace
-      .requireClient()
-      .send<SourceAsset[]>(
-        `/api/desktop/source-projects/${positiveId(id)}/match`,
-        'POST',
-        {},
-      ),
-  );
+  handle<number>('workspace-match', (id) => {
+    aiReviews.cancel();
+    return workspace.withAssetOperation(() =>
+      workspace
+        .requireClient()
+        .send<SourceAsset[]>(
+          `/api/desktop/source-projects/${positiveId(id)}/match`,
+          'POST',
+          {},
+        ),
+    );
+  });
   handle<Parameters<WorkspaceAPI['candidates']>[0]>(
     'workspace-candidates',
     (input) => {
@@ -346,18 +404,26 @@ async function initialize() {
         );
     },
   );
-  handle<Parameters<WorkspaceAPI['resolve']>[0]>('workspace-resolve', (input) =>
-    workspace
-      .requireClient()
-      .send(
-        `/api/desktop/source-projects/assets/${positiveId(input.id)}/match`,
-        'PUT',
-        {
-          assetId: positiveId(input.assetId),
-          variantId:
-            input.variantId === undefined ? null : positiveId(input.variantId),
-        },
-      ),
+  handle<Parameters<WorkspaceAPI['resolve']>[0]>(
+    'workspace-resolve',
+    (input) => {
+      aiReviews.cancel();
+      return workspace.withAssetOperation(() =>
+        workspace
+          .requireClient()
+          .send(
+            `/api/desktop/source-projects/assets/${positiveId(input.id)}/match`,
+            'PUT',
+            {
+              assetId: positiveId(input.assetId),
+              variantId:
+                input.variantId === undefined
+                  ? null
+                  : positiveId(input.variantId),
+            },
+          ),
+      );
+    },
   );
   function validateIds(ids: number[]) {
     if (
@@ -397,16 +463,14 @@ async function initialize() {
         const drafts = prompts.map((item) =>
           validateDraft({
             ...parameters,
-            outputName: safeComponent(
-              item.sourceParentName
-                ? `${item.sourceParentName.slice(0, 20)}_${item.name.slice(0, 20)}`
-                : item.name,
-              item.sourceAssetId,
-            ),
+            // Naming is validated for the full batch before any image request.
+            outputName: '',
             prompt: item.prompt,
             references: [],
           }),
         );
+        for (const item of prompts) validateAssetOutputName(item.name);
+        const importBatch = `导入批次-${randomUUID()}`;
         const created: Creation[] = [];
         try {
           prompts.forEach((item, index) => {
@@ -420,7 +484,9 @@ async function initialize() {
                     positiveId(item.sourceProjectId),
                   ),
                   item.type,
+                  importBatch,
                 ],
+                exactAssetName: item.name,
                 origin: {
                   tenantId,
                   teamName,
@@ -558,6 +624,7 @@ else {
   app.on('second-instance', () => {
     if (!window || window.isDestroyed()) return;
     if (window.isMinimized()) window.restore();
+    window.show();
     window?.focus();
   });
   app
@@ -573,6 +640,7 @@ else {
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => {
     quitting = true;
+    aiReviews?.cancel();
     queue?.pause();
     for (const task of active.values()) task.controller.abort();
     workspace?.close();

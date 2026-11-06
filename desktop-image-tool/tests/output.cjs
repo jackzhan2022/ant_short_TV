@@ -5,7 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   validateOutputName,
+  validateAssetOutputName,
   copyWithoutOverwrite,
+  copyAssetWithoutOverwrite,
   automaticName,
 } = require('../dist/output');
 const { StudioStore } = require('../dist/store');
@@ -46,6 +48,103 @@ test('exclusive saves append a suffix without overwriting existing files', (t) =
   assert.equal(path.basename(second), '角色_2.png');
   assert.equal(fs.readFileSync(first, 'utf8'), 'original');
   assert.equal(fs.readFileSync(second, 'utf8'), 'second');
+});
+
+test('asset names preserve the literal source stem and reject names Windows cannot save', () => {
+  assert.equal(typeof validateAssetOutputName, 'function');
+  for (const name of ['  角色.png', '角色'.repeat(100), 'a'.repeat(240)])
+    assert.equal(validateAssetOutputName(name), name);
+  for (const name of [
+    undefined,
+    '',
+    'bad/name',
+    'bad\\name',
+    'name.',
+    'name ',
+    'CON',
+    'nul.png',
+    'COM¹',
+    'x\u0000y',
+    'a'.repeat(241),
+  ])
+    assert.throws(() => validateAssetOutputName(name), /资产名称/);
+});
+
+test('asset exports keep the exact basename by moving collisions into a new batch folder', (t) => {
+  assert.equal(typeof copyAssetWithoutOverwrite, 'function');
+  const root = folder(t);
+  const source = path.join(root, 'source');
+  const directory = path.join(root, 'batch');
+  fs.writeFileSync(source, 'first');
+  const first = copyAssetWithoutOverwrite(
+    source,
+    directory,
+    '  角色.png',
+    'png',
+  );
+  fs.writeFileSync(source, 'second');
+  const second = copyAssetWithoutOverwrite(
+    source,
+    directory,
+    '  角色.png',
+    'png',
+  );
+  assert.equal(path.basename(first), '  角色.png.png');
+  assert.equal(path.basename(second), '  角色.png.png');
+  assert.equal(path.dirname(first), directory);
+  assert.notEqual(path.dirname(second), directory);
+  assert.match(path.basename(path.dirname(second)), /^导入批次-/);
+  assert.equal(fs.readFileSync(first, 'utf8'), 'first');
+  assert.equal(fs.readFileSync(second, 'utf8'), 'second');
+});
+
+test('asset collisions are case insensitive even on a case sensitive filesystem', (t) => {
+  assert.equal(typeof copyAssetWithoutOverwrite, 'function');
+  const root = folder(t);
+  const source = path.join(root, 'source');
+  const directory = path.join(root, 'batch');
+  fs.writeFileSync(source, 'bytes');
+  const first = copyAssetWithoutOverwrite(source, directory, 'Name', 'png');
+  const second = copyAssetWithoutOverwrite(source, directory, 'name', 'png');
+  assert.notEqual(path.dirname(first), path.dirname(second));
+  assert.equal(path.basename(second), 'name.png');
+});
+
+test('concurrent asset exports reserve separate folders without changing names', async (t) => {
+  assert.equal(typeof copyAssetWithoutOverwrite, 'function');
+  const root = folder(t);
+  const source = path.join(root, 'source');
+  const directory = path.join(root, 'batch');
+  fs.writeFileSync(source, 'bytes');
+  const { execFile } = require('node:child_process');
+  const outputModule = require.resolve('../dist/output');
+  const results = await Promise.all(
+    ['Name', 'name', 'Name', 'name'].map(
+      (name) =>
+        new Promise((resolve, reject) =>
+          execFile(
+            process.execPath,
+            [
+              '-e',
+              'const [modulePath, source, directory, name] = process.argv.slice(1); process.stdout.write(require(modulePath).copyAssetWithoutOverwrite(source, directory, name, "png"));',
+              outputModule,
+              source,
+              directory,
+              name,
+            ],
+            (error, stdout) => (error ? reject(error) : resolve(stdout)),
+          ),
+        ),
+    ),
+  );
+  assert.equal(
+    new Set(results.map((file) => path.dirname(file).toLowerCase())).size,
+    4,
+  );
+  for (const [index, file] of results.entries()) {
+    assert.equal(path.basename(file), `${index % 2 ? 'name' : 'Name'}.png`);
+    assert.equal(fs.readFileSync(file, 'utf8'), 'bytes');
+  }
 });
 test('configured directory persists, each generation retains its chosen location, failed export preserves history', (t) => {
   const root = folder(t);

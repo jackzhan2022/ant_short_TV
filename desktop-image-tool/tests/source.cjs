@@ -407,6 +407,28 @@ test('independent secure browser login and session expiry update collector state
   }
   const collector = new DramartCollector(() => {});
   await collector.login();
+  assert.equal(collector.state().connection.phase, 'unknown');
+  await assert.rejects(collector.check(), /登录已失效/);
+  assert.equal(collector.state().connection.phase, 'signedOut');
+  browser.webContents.executeJavaScript = async (script) => {
+    assert.match(script, /\)\("DescribeUser",/);
+    return { failed: true };
+  };
+  await assert.rejects(collector.check(), /请求失败/);
+  assert.equal(collector.state().connection.phase, 'error');
+  browser.webContents.executeJavaScript = async (script) => {
+    assert.match(script, /\)\("DescribeUser",/);
+    return { status: 200, value: memberships() };
+  };
+  await collector.check();
+  assert.equal(collector.state().connection.phase, 'connected');
+  assert.ok(collector.state().connection.checkedAt);
+  assert.equal(
+    collector.state().lastSync,
+    undefined,
+    'checking login never synchronizes assets',
+  );
+  browser.webContents.executeJavaScript = async () => ({ status: 401 });
   assert.equal(browser.permissionCheck(), false);
   let permissionAllowed;
   browser.permissionRequest({}, 'camera', (allowed) => {
@@ -567,7 +589,7 @@ test('source navigation starts without waiting for the renderer-dependent networ
   collector.close();
 });
 
-test('source display names normalize line breaks and tabs before cloud validation without changing asset identity', () => {
+test('source asset names retain literal whitespace so exports can reject unwritable names without silently renaming', () => {
   const items = source.projectAssetNames('SCENE', [
     { SceneId: 'a', Meta: { Name: ' 王家客厅\n' } },
     { SceneId: 'b', Meta: { Name: '客厅\t夜' } },
@@ -575,7 +597,7 @@ test('source display names normalize line breaks and tabs before cloud validatio
   ]);
   assert.deepEqual(
     items.map((item) => item.name),
-    ['王家客厅', '客厅 夜', '走廊 转角'],
+    [' 王家客厅\n', '客厅\t夜', '走廊\r\n转角'],
   );
   assert.deepEqual(
     items.map((item) => item.sourceAssetId),

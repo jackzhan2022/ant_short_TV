@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   automaticName,
+  copyAssetWithoutOverwrite,
   copyWithoutOverwrite,
+  validateAssetOutputName,
   validateOutputName,
 } from './output';
 import { decodeImage } from './provider';
@@ -176,8 +178,14 @@ export class StudioStore {
       queued?: boolean;
       outputGroup?: string[];
       origin?: AssetOrigin;
+      exactAssetName?: string;
     } = {},
   ): Creation {
+    const exactName = options.exactAssetName ?? options.origin?.assetName;
+    const outputName =
+      exactName === undefined
+        ? draft.outputName
+        : validateAssetOutputName(exactName);
     const group = (options.outputGroup ?? []).map((name) => {
       const valid = validateOutputName(name);
       if (!valid || valid !== name) throw new Error('资产保存分组名称无效。');
@@ -187,6 +195,7 @@ export class StudioStore {
     const { references, ...parameters } = draft;
     const record: Stored = {
       ...parameters,
+      ...(outputName !== undefined ? { outputName } : {}),
       responseModel: this.settings().responseModel,
       outputDirectory: path.join(this.settings().outputDirectory, ...group),
       ...(options.origin ? { origin: options.origin } : {}),
@@ -277,6 +286,7 @@ export class StudioStore {
   }
 
   exportImages(id: string): Creation {
+    const previousFiles = this.get(id).savedFiles ?? [];
     const record = {
       ...this.get(id),
       savedFiles: [] as string[],
@@ -284,18 +294,44 @@ export class StudioStore {
     };
     const directory = record.outputDirectory || this.settings().outputDirectory;
     try {
+      const assetName = record.origin
+        ? validateAssetOutputName(record.origin.assetName)
+        : undefined;
       for (let index = 0; index < record.imageCount; index++) {
-        const file = copyWithoutOverwrite(
+        const previous = previousFiles[index];
+        if (assetName !== undefined && previous) {
+          const relative = path.relative(directory, previous);
+          if (
+            relative &&
+            relative !== '..' &&
+            !relative.startsWith(`..${path.sep}`) &&
+            !path.isAbsolute(relative) &&
+            path.basename(previous) ===
+              `${assetName}.${record.outputFormats[index]}` &&
+            fs.existsSync(previous) &&
+            fs.statSync(previous).isFile()
+          ) {
+            record.savedFiles.push(previous);
+            continue;
+          }
+        }
+        const copy =
+          assetName === undefined
+            ? copyWithoutOverwrite
+            : copyAssetWithoutOverwrite;
+        const file = copy(
           this.imagePath(id, index),
           directory,
-          record.outputName || automaticName(record.createdAt),
+          assetName ?? (record.outputName || automaticName(record.createdAt)),
           record.outputFormats[index],
         );
         record.savedFiles.push(file);
       }
-    } catch {
+    } catch (error) {
       record.saveError =
-        '图片已保留在本机创作记录，但默认保存目录写入失败。请检查目录或使用「另存原图」。';
+        error instanceof Error && error.message.startsWith('资产名称')
+          ? error.message
+          : '图片已保留在本机创作记录，但默认保存目录写入失败。请检查目录或使用「另存原图」。';
     }
     atomicJson(path.join(this.library, id, 'record.json'), record);
     this.records.set(id, record);

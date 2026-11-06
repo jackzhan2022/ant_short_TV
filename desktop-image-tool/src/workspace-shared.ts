@@ -1,3 +1,10 @@
+import type {
+  AiApplyInput,
+  AiApplyResult,
+  AiMatchReview,
+  AiModelInput,
+  AiModelSettings,
+} from './ai-match-types';
 import type { Creation, Format, Quality, QueueState, Result } from './shared';
 
 export interface Team {
@@ -80,18 +87,26 @@ export interface SyncStatus {
   nextRunAt?: string;
   error?: string;
 }
+export interface LoginStatus {
+  phase: 'unknown' | 'checking' | 'connected' | 'signedOut' | 'error';
+  checkedAt?: string;
+  message?: string;
+  loginOpen?: boolean;
+}
 export interface WorkspaceState {
   cloudUrl: string;
   teams: Team[];
   tenantId?: number;
   teamName?: string;
   authenticated: boolean;
+  cloudConnection: LoginStatus;
   error?: string;
   projects: SourceProject[];
   targets: TargetProject[];
   autoSyncMinutes: number;
   syncStatus: SyncStatus;
   source: {
+    connection: LoginStatus;
     loggedIn: boolean;
     syncing: boolean;
     discoveredProjects: number;
@@ -109,6 +124,11 @@ export interface BatchInput {
   format: Format;
 }
 export interface WorkspaceAPI {
+  aiSettings(): Promise<Result<AiModelSettings>>;
+  configureAi(input: AiModelInput): Promise<Result<AiModelSettings>>;
+  aiMatch(projectId: number): Promise<Result<AiMatchReview>>;
+  aiApply(input: AiApplyInput): Promise<Result<AiApplyResult>>;
+  aiCancel(reviewId?: string): Promise<Result<void>>;
   state(refresh?: boolean): Promise<Result<WorkspaceState>>;
   configure(input: {
     cloudUrl?: string;
@@ -118,6 +138,7 @@ export interface WorkspaceAPI {
   openProject(id: number): Promise<Result<void>>;
   selectTeam(id: number): Promise<Result<WorkspaceState>>;
   loginSource(): Promise<Result<void>>;
+  checkSource(): Promise<Result<WorkspaceState>>;
   sync(): Promise<Result<WorkspaceState>>;
   assets(id: number): Promise<Result<SourceAsset[]>>;
   bind(input: {

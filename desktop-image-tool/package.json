@@ -1,6 +1,6 @@
 {
   "name": "antv-image-studio",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "ANTV生图 · 个人图片创作桌面工具",
   "author": "Ant Short TV",
@@ -12,7 +12,8 @@
     "test": "npm run build && node --test tests/*.cjs",
     "pack": "npm run build && electron-builder --win nsis portable --x64",
     "smoke": "npm run build && node scripts/smoke.cjs",
-    "smoke:workflow": "npm run build && node scripts/workflow-smoke.cjs"
+    "smoke:workflow": "npm run build && node scripts/workflow-smoke.cjs",
+    "smoke:ai": "npm run build && node scripts/ai-workflow-smoke.cjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
@@ -42,6 +43,8 @@
       "icon": "assets/icon.ico"
     },
     "nsis": {
+      "useZip": true,
+      "differentialPackage": false,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
@@ -58,6 +61,7 @@
       "language": "2052"
     },
     "portable": {
+      "useZip": true,
       "artifactName": "ANTV生图-${version}-Portable.exe"
     }
   }

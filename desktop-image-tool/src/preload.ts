@@ -21,12 +21,20 @@ const api: StudioAPI = {
 };
 contextBridge.exposeInMainWorld('studio', api);
 const workspace: WorkspaceAPI = {
+  aiSettings: () => ipcRenderer.invoke('studio:workspace-ai-settings'),
+  configureAi: (input) =>
+    ipcRenderer.invoke('studio:workspace-ai-configure', input),
+  aiMatch: (id) => ipcRenderer.invoke('studio:workspace-ai-match', id),
+  aiApply: (input) => ipcRenderer.invoke('studio:workspace-ai-apply', input),
+  aiCancel: (reviewId) =>
+    ipcRenderer.invoke('studio:workspace-ai-cancel', reviewId),
   state: (refresh) => ipcRenderer.invoke('studio:workspace-state', refresh),
   configure: (input) => ipcRenderer.invoke('studio:workspace-configure', input),
   loginCloud: () => ipcRenderer.invoke('studio:workspace-login-cloud'),
   openProject: (id) => ipcRenderer.invoke('studio:workspace-open-project', id),
   selectTeam: (id) => ipcRenderer.invoke('studio:workspace-team', id),
   loginSource: () => ipcRenderer.invoke('studio:workspace-login-source'),
+  checkSource: () => ipcRenderer.invoke('studio:workspace-check-source'),
   sync: () => ipcRenderer.invoke('studio:workspace-sync'),
   assets: (id) => ipcRenderer.invoke('studio:workspace-assets', id),
   bind: (input) => ipcRenderer.invoke('studio:workspace-bind', input),

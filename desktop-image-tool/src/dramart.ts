@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import {
+  accessibleTeamIds,
   authenticationExpired,
   collectAllProjects,
   type ListTemplate,
@@ -21,9 +22,12 @@ const RESPONSE_LIMIT = 8 * 1024 * 1024;
 export class DramartCollector implements SourceCollector {
   private window?: BrowserWindow;
   private initializing?: Promise<unknown>;
+  private checking?: Promise<void>;
+  private loginOpen = false;
   private templates = new Map<string, ListTemplate>();
   private pending = new Map<string, ListTemplate>();
   private status: SourceStatus = {
+    connection: { phase: 'unknown' },
     loggedIn: false,
     syncing: false,
     discoveredProjects: 0,
@@ -32,7 +36,10 @@ export class DramartCollector implements SourceCollector {
   constructor(private readonly changed: () => void) {}
 
   state(): SourceStatus {
-    return { ...this.status };
+    return {
+      ...this.status,
+      connection: { ...this.status.connection, loginOpen: this.loginOpen },
+    };
   }
 
   private update(value: Partial<SourceStatus>): void {
@@ -82,12 +89,23 @@ export class DramartCollector implements SourceCollector {
     window.webContents.on('did-navigate', (_event, url) => {
       const parsed = new URL(url);
       if (/login|passport|signin/i.test(parsed.hostname + parsed.pathname))
-        this.update({ loggedIn: false });
+        this.connection('signedOut', '请在火山剧创窗口完成登录。');
+    });
+    window.webContents.on('did-finish-load', () => {
+      if (
+        this.loginOpen &&
+        !this.status.syncing &&
+        window.webContents.getURL().startsWith(`${SOURCE_ORIGIN}/dramart/`)
+      )
+        void this.check().catch(() => {});
     });
     window.on('close', (event) => {
       // A manual close keeps the independently authenticated browser available for scheduled syncs.
       event.preventDefault();
       window.hide();
+      this.loginOpen = false;
+      this.changed();
+      if (!this.status.syncing) void this.check().catch(() => {});
     });
     window.on('closed', () => {
       if (this.window === window) this.window = undefined;
@@ -193,11 +211,72 @@ export class DramartCollector implements SourceCollector {
     if (window.isDestroyed()) return;
     // Learn only request shape. Source response bodies (especially scripts) stay in-page.
     this.templates.set(template.action, template);
-    this.update({ loggedIn: true, error: undefined });
+    if (!this.status.syncing && this.status.connection.phase !== 'connected')
+      void this.check().catch(() => {});
   }
 
   async login(): Promise<void> {
-    await this.open(true);
+    this.loginOpen = true;
+    this.changed();
+    try {
+      await this.open(true);
+    } catch (error) {
+      this.loginOpen = false;
+      this.connection('error', '无法打开火山剧创，请检查网络后重试。');
+      throw error;
+    }
+  }
+
+  private connection(
+    phase: SourceStatus['connection']['phase'],
+    message?: string,
+  ) {
+    this.update({
+      loggedIn: phase === 'connected',
+      connection: {
+        phase,
+        message,
+        checkedAt:
+          phase === 'checking'
+            ? this.status.connection.checkedAt
+            : new Date().toISOString(),
+      },
+    });
+  }
+
+  check(): Promise<void> {
+    if (this.status.syncing) return Promise.resolve();
+    if (this.checking) return this.checking;
+    const job = this.checkNow().finally(() => {
+      if (this.checking === job) this.checking = undefined;
+    });
+    this.checking = job;
+    return job;
+  }
+
+  private async checkNow() {
+    this.connection('checking');
+    try {
+      const window = await this.open(false);
+      accessibleTeamIds(
+        await this.fetchList(
+          window,
+          `${SOURCE_ORIGIN}/api/top/dramart/cn-beijing/2026-01-12/DescribeUser`,
+          {},
+        ),
+      );
+      this.connection('connected');
+      this.update({ error: undefined });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '火山剧创连接失败。';
+      this.connection(
+        this.status.connection.phase === 'signedOut' ? 'signedOut' : 'error',
+        message,
+      );
+      this.update({ error: message });
+      throw new Error(message);
+    }
   }
 
   private async fetchList(
@@ -208,8 +287,10 @@ export class DramartCollector implements SourceCollector {
     if (
       window.isDestroyed() ||
       !window.webContents.getURL().startsWith(`${SOURCE_ORIGIN}/`)
-    )
+    ) {
+      this.connection('signedOut', '请在火山剧创窗口完成登录。');
       throw new Error('请先在源站窗口完成登录并返回项目列表。');
+    }
     const endpoint = new URL(url);
     const match =
       /^\/api\/top\/dramart\/cn-beijing\/2026-01-12\/(DescribeUser|ListProjects|ListScripts|ListCharacters|ListScenes|ListProps)$/.exec(
@@ -233,7 +314,7 @@ export class DramartCollector implements SourceCollector {
       authenticationExpired(result?.value)
     ) {
       this.templates.clear();
-      this.update({ loggedIn: false });
+      this.connection('signedOut', '源站登录已失效或权限不足，请重新登录。');
       throw new Error('源站登录已失效或权限不足，请重新登录后重试完整同步。');
     }
     if (result?.oversized)
@@ -259,6 +340,7 @@ export class DramartCollector implements SourceCollector {
       error: undefined,
     });
     try {
+      if (this.checking) await this.checking.catch(() => {});
       const window = await this.open(false);
       const projects = await collectAllProjects(
         [...this.templates.values()],
@@ -275,6 +357,7 @@ export class DramartCollector implements SourceCollector {
         lastSync: new Date().toISOString(),
         error: undefined,
       });
+      this.connection('connected');
       return projects;
     } catch (error) {
       const message =

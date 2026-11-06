@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,6 +19,77 @@ export function validateOutputName(value: unknown): string {
     );
   }
   return name;
+}
+
+/** Asset names are literal source identifiers: reject unwriteable names, never rewrite them. */
+export function validateAssetOutputName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > 240 ||
+    /[<>:"/\\|?*]/.test(value) ||
+    [...value].some((char) => char.charCodeAt(0) < 32) ||
+    /[. ]$/.test(value) ||
+    /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(value)
+  ) {
+    throw new Error(
+      '资产名称无法原样保存：请先在 Dramart 中修改名称，使用 1～240 个字符，不能含 Windows 无效字符、保留名称或以空格、句点结尾。',
+    );
+  }
+  return value;
+}
+
+/** A per-name directory lock also handles case collisions on case-sensitive volumes. */
+export function copyAssetWithoutOverwrite(
+  source: string,
+  directory: string,
+  name: string,
+  extension: string,
+): string {
+  if (!['png', 'jpeg', 'webp'].includes(extension))
+    throw new Error('输出格式无效。');
+  const filename = `${validateAssetOutputName(name)}.${extension}`;
+  fs.mkdirSync(directory, { recursive: true });
+  const lockName = `.asset-export-${createHash('sha256').update(filename.toLowerCase()).digest('hex')}`;
+  let target = directory;
+  for (;;) {
+    const lock = path.join(target, lockName);
+    let reserved = false;
+    try {
+      try {
+        fs.mkdirSync(lock);
+        reserved = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+      if (
+        reserved &&
+        !fs
+          .readdirSync(target)
+          .some((entry) => entry.toLowerCase() === filename.toLowerCase())
+      ) {
+        const destination = path.join(target, filename);
+        try {
+          fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+          return destination;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        }
+      }
+    } finally {
+      if (reserved) fs.rmdirSync(lock);
+    }
+    // The folder allocation is exclusive; no other export can claim this fallback.
+    for (;;) {
+      target = path.join(directory, `导入批次-${randomUUID()}`);
+      try {
+        fs.mkdirSync(target);
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+    }
+  }
 }
 
 export function automaticName(date: string): string {
