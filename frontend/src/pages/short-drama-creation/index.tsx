@@ -1,12 +1,12 @@
 import {
+  ArrowLeftOutlined,
   CameraOutlined,
   CloseOutlined,
   CopyOutlined,
-  DownOutlined,
-  FileTextOutlined,
   GlobalOutlined,
   InfoCircleOutlined,
-  PictureOutlined,
+  MobileOutlined,
+  PlayCircleOutlined,
   SettingOutlined,
   UploadOutlined,
   VideoCameraOutlined,
@@ -20,7 +20,6 @@ import {
   Flex,
   Input,
   Modal,
-  Popover,
   Radio,
   Select,
   Spin,
@@ -35,13 +34,13 @@ import ClickToPlayVideo, {
   stopActiveVideo,
 } from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
-import PointEstimateButton from '@/components/PointEstimateButton';
 import ProjectArtStylePicker from '@/components/ProjectArtStylePicker';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import type { ProjectFormValues } from '@/services/account-team/project';
 import type { TenantMember } from '@/services/account-team/types';
 import type { MediaUploadHandle } from '@/services/mediaUpload';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   type PublicStyle,
   queryStyleCategories,
@@ -69,6 +68,7 @@ import {
 } from './service';
 import usePlatformStyleGallery from './usePlatformStyleGallery';
 
+type CreationStep = 1 | 2;
 type DramaRegion = 'domestic' | 'overseas';
 
 const inspirationTabs = [
@@ -110,43 +110,21 @@ const ShortDramaCreationPage = () => {
   const { initialState } = useModel('@@initialState');
   const isAdmin = initialState?.currentUser?.access === 'admin';
   const tenantId = getCurrentTenantId();
-  const [styleOpen, setStyleOpen] = useState(false);
-  const [openPanel, setOpenPanel] = useState<'creation' | 'more'>();
-  const creationTriggerRef = useRef<HTMLButtonElement>(null);
-  const moreTriggerRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!openPanel) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      setOpenPanel(undefined);
-      (openPanel === 'creation'
-        ? creationTriggerRef
-        : moreTriggerRef
-      ).current?.focus();
-    };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [openPanel]);
+  const [step, setStep] = useState<CreationStep>(1);
   const [activeTab, setActiveTab] = useState<DramaRegion>('domestic');
   const [scriptDraft, setScriptDraft] = useState('');
   const [scriptSourceLabel, setScriptSourceLabel] = useState<string>();
   const [coverFileName, setCoverFileName] = useState<string>();
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>();
-  const [coverUploadSessionToken, setCoverUploadSessionToken] =
-    useState<string>();
+  const [coverUploadSessionToken, setCoverUploadSessionToken] = useState<string>();
   const coverUploadHandleRef = useRef<MediaUploadHandle | undefined>(undefined);
   const [selectedStyle, setSelectedStyle] = useState<PublicStyle>();
   const {
-    category: styleCategory,
-    changeCategory: changeStyleCategory,
-    gallery: styleGallery,
-    loading: galleryLoading,
-    error: styleError,
-    hasMore: stylesHaveMore,
-    bottomRef: styleBottomRef,
-    loadMore: loadMoreStyles,
-    retry: retryStyles,
-  } = usePlatformStyleGallery(styleOpen);
+    category: styleCategory, changeCategory: changeStyleCategory,
+    gallery: styleGallery, loading: galleryLoading, error: styleError,
+    hasMore: stylesHaveMore, bottomRef: styleBottomRef,
+    loadMore: loadMoreStyles, retry: retryStyles,
+  } = usePlatformStyleGallery(step === 2);
   const [styleCategories, setStyleCategories] = useState<string[]>([]);
   const [inspirationGallery, setInspirationGallery] = useState<
     InspirationCreation[]
@@ -358,8 +336,7 @@ const ShortDramaCreationPage = () => {
     coverUploadHandleRef.current = undefined;
     setCoverUploadSessionToken(undefined);
     setCoverFileName(file.name);
-    if (coverPreviewUrl?.startsWith('blob:'))
-      URL.revokeObjectURL(coverPreviewUrl);
+    if (coverPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(coverPreviewUrl);
     const preview = URL.createObjectURL(file);
     setCoverPreviewUrl(preview);
     updateForm({ coverUrl: undefined, coverSource: 'UPLOAD' });
@@ -371,27 +348,24 @@ const ShortDramaCreationPage = () => {
         setCoverUploadSessionToken(uploaded.sessionToken);
       }
     } catch {
-      if (coverUploadHandleRef.current)
-        coverUploadHandleRef.current = undefined;
+      if (coverUploadHandleRef.current) coverUploadHandleRef.current = undefined;
       message.error('封面上传失败，请重试');
     }
     return false;
   };
 
-  useEffect(
-    () => () => {
-      coverUploadHandleRef.current?.cancel();
-      if (coverPreviewUrl?.startsWith('blob:'))
-        URL.revokeObjectURL(coverPreviewUrl);
-    },
-    [coverPreviewUrl],
-  );
+  useEffect(() => () => {
+    coverUploadHandleRef.current?.cancel();
+    if (coverPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(coverPreviewUrl);
+  }, [coverPreviewUrl]);
+
+  const goNext = () => {
+    updateForm({ initialScriptContent: scriptDraft.trim() || undefined });
+    setStep(2);
+  };
 
   const submitProject = async () => {
-    if (
-      projectForm.visualStyleVersion === 'V2' &&
-      !projectForm.visualStyleCode
-    ) {
+    if (projectForm.visualStyleVersion === 'V2' && !projectForm.visualStyleCode) {
       message.warning('请选择画风 2.0 风格');
       return;
     }
@@ -413,13 +387,9 @@ const ShortDramaCreationPage = () => {
         name: projectName,
         code: projectCode,
         description: projectForm.description?.trim(),
-        coverUrl:
-          projectForm.coverSource === 'UPLOAD'
-            ? undefined
-            : projectForm.coverUrl ||
-              (projectForm.visualStyleVersion !== 'V2'
-                ? selectedStyle?.imageUrl
-                : undefined),
+        coverUrl: projectForm.coverSource === 'UPLOAD'
+          ? undefined
+          : projectForm.coverUrl || (projectForm.visualStyleVersion !== 'V2' ? selectedStyle?.imageUrl : undefined),
         coverSource: projectForm.coverSource || 'FIRST_FRAME',
         ownerId,
         startDate: projectForm.startDate,
@@ -434,11 +404,7 @@ const ShortDramaCreationPage = () => {
         storyboardSkillVersion: projectForm.storyboardSkillVersion,
         visualStyleVersion: projectForm.visualStyleVersion || 'V1',
         visualStyleCode: projectForm.visualStyleCode,
-        visualStyle:
-          projectForm.visualStyle ||
-          (projectForm.visualStyleVersion !== 'V2'
-            ? selectedStyle?.name
-            : undefined),
+        visualStyle: projectForm.visualStyle || (projectForm.visualStyleVersion !== 'V2' ? selectedStyle?.name : undefined),
         scriptName: projectForm.scriptName?.trim() || undefined,
         initialScriptContent: scriptDraft.trim() || undefined,
       };
@@ -470,381 +436,81 @@ const ShortDramaCreationPage = () => {
     );
   }
 
-  const platformStyleGallery = (
-    <>
-      <div className={styles.styleStrip} aria-busy={galleryLoading}>
-        {styleGallery.map((style) => {
-          const active = selectedStyle?.id === style.id;
-          return (
+  const firstStep = (
+    <div className={styles.creationShell}>
+      <Typography.Title className={styles.heroTitle} level={1}>
+        今天想创作<span>什么样的故事?</span>
+      </Typography.Title>
+
+      <section className={styles.scriptPanel}>
+        <div className={styles.regionTabs}>
+          {inspirationTabs.map((item) => (
             <button
-              className={active ? styles.styleCardActive : styles.styleCard}
-              aria-label={style.name}
-              aria-pressed={active}
-              key={style.id}
-              onClick={() => applyStyleSelection(style)}
+              className={
+                activeTab === item.key
+                  ? styles.regionTabActive
+                  : styles.regionTab
+              }
+              key={item.key}
+              onClick={() => setActiveTab(item.key)}
               type="button"
             >
-              <LazyMediaImage
-                native
-                height="100%"
-                alt={style.name}
-                src={style.imageUrl}
-              />
-              <span>{style.name}</span>
+              {item.icon}
+              {item.label}
             </button>
-          );
-        })}
-      </div>
-      <section
-        ref={styleBottomRef}
-        className={styles.styleLoadMore}
-        aria-label="风格加载状态"
-        aria-live="polite"
-      >
-        {galleryLoading ? (
-          <>
-            <Spin size="small" /> 正在加载风格...
-          </>
-        ) : styleError ? (
-          <div role="alert">
-            风格加载失败 <Button onClick={retryStyles}>重试加载风格</Button>
-          </div>
-        ) : stylesHaveMore ? (
-          <Button onClick={loadMoreStyles}>加载更多风格</Button>
-        ) : styleGallery.length ? (
-          '已展示全部风格'
-        ) : (
-          <Empty
-            description="当前分类暂无平台风格"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        )}
-      </section>
-    </>
-  );
-
-  const creationSettings = (
-    <section
-      className={styles.settingsPopover}
-      role="dialog"
-      aria-label="创作设定"
-    >
-      <h3>创作设定</h3>
-      <div className={styles.popoverField}>
-        <span>创作地区</span>
-        <Radio.Group
-          aria-label="创作地区"
-          optionType="button"
-          buttonStyle="solid"
-          value={activeTab}
-          onChange={(event) => setActiveTab(event.target.value)}
-          options={inspirationTabs.map((item) => ({
-            label: item.label,
-            value: item.key,
-          }))}
-        />
-      </div>
-      <div className={styles.popoverField}>
-        <span>文件格式</span>
-        <Radio.Group
-          aria-label="文件格式"
-          optionType="button"
-          buttonStyle="solid"
-          options={fileFormatOptions}
-          value={projectForm.fileFormat}
-          onChange={(event) => updateForm({ fileFormat: event.target.value })}
-        />
-      </div>
-      <div className={styles.popoverField}>
-        <span>剧本类型</span>
-        <Radio.Group
-          aria-label="剧本类型"
-          optionType="button"
-          buttonStyle="solid"
-          options={scriptTypeOptions}
-          value={projectForm.scriptType}
-          onChange={(event) => updateForm({ scriptType: event.target.value })}
-        />
-      </div>
-    </section>
-  );
-  const moreSettings = (
-    <section
-      className={styles.settingsPopover}
-      role="dialog"
-      aria-label="更多设置"
-    >
-      <h3>更多设置</h3>
-      <div className={styles.popoverRow}>
-        <span>视频分辨率</span>
-        <Select
-          aria-label="默认视频分辨率"
-          value={projectForm.videoResolution}
-          onChange={(value) => updateForm({ videoResolution: value })}
-          options={['480p', '720p', '1080p', '4k'].map((value) => ({
-            label: value,
-            value,
-          }))}
-        />
-      </div>
-      <div className={styles.popoverRow}>
-        <span>场景解析力度</span>
-        <Select
-          aria-label="场景解析力度"
-          value={projectForm.breakdownStrength}
-          options={breakdownStrengthOptions}
-          onChange={(value) => updateForm({ breakdownStrength: value })}
-        />
-      </div>
-      <div className={styles.popoverRow}>
-        <span>分镜技能</span>
-        <Select
-          aria-label="分镜技能"
-          value={projectForm.storyboardSkillVersion}
-          options={storyboardSkillOptions}
-          onChange={(value) => updateForm({ storyboardSkillVersion: value })}
-        />
-      </div>
-      <p className={styles.settingHelp}>
-        {projectForm.storyboardSkillVersion === 'V2'
-          ? '按完整叙事片段拆分，支持 4–15 秒片段，镜头数量随剧情调整。'
-          : '沿用现有分镜方式，以中近景和特写推进剧情。'}
-      </p>
-      <div className={styles.popoverRow}>
-        <span>生成音频</span>
-        <Switch
-          aria-label="默认生成音频"
-          checked={projectForm.videoGenerateAudio !== false}
-          onChange={(checked) => updateForm({ videoGenerateAudio: checked })}
-        />
-      </div>
-      <div className={styles.popoverRow}>
-        <span>视频水印</span>
-        <Switch
-          aria-label="默认视频水印"
-          checked={projectForm.videoWatermark === true}
-          onChange={(checked) => updateForm({ videoWatermark: checked })}
-        />
-      </div>
-      <div className={styles.coverSetting}>
-        <span>剧本封面</span>
-        <div className={styles.coverSettingContent}>
-          <div className={styles.coverPreview}>
-            {coverPreviewUrl ? (
-              <LazyMediaImage
-                alt="封面预览"
-                height={72}
-                preview={false}
-                src={coverPreviewUrl}
-                width={112}
-              />
-            ) : (
-              <CameraOutlined />
-            )}
-          </div>
-          <div>
-            <Upload
-              accept="image/*"
-              beforeUpload={(file) => {
-                void handleCoverUpload(file as File);
-                return false;
-              }}
-              showUploadList={false}
-            >
-              <Button icon={<UploadOutlined />}>
-                {coverFileName || '上传图片'}
-              </Button>
-            </Upload>
-            <p className={styles.settingHelp}>默认使用分镜首图</p>
-          </div>
+          ))}
         </div>
-      </div>
-    </section>
-  );
-  const composer = (
-    <div className={styles.creationShell}>
-      <header className={styles.intro}>
-        <div>
-          <div className={styles.eyebrow}>A NEW STORY STARTS HERE</div>
-          <Typography.Title className={styles.heroTitle} level={1}>
-            今天想创作<span>什么样的故事?</span>
-          </Typography.Title>
-          <p>写下故事，选好画风。你的下一部短剧，从这里开始。</p>
-        </div>
-        <span className={styles.creationBadge}>
-          <VideoCameraOutlined /> AI 短剧创作
-        </span>
-      </header>
-      <section className={styles.scriptPanel} aria-label="剧本输入与创作配置">
-        <div className={styles.composerHeading}>
-          <FileTextOutlined />
-          <Input
-            aria-label="剧本名称"
-            variant="borderless"
-            maxLength={200}
-            placeholder="为故事起个名字"
-            value={projectForm.scriptName || ''}
-            onChange={(event) =>
-              updateForm({
-                name: event.target.value,
-                scriptName: event.target.value,
-              })
-            }
+        <div className={styles.scriptInputWrap}>
+          <Input.TextArea
+            autoSize={false}
+            className={styles.scriptTextarea}
+            maxLength={50000}
+            onChange={(event) => {
+              setScriptDraft(event.target.value);
+              updateForm({ initialScriptContent: event.target.value });
+            }}
+            placeholder="复制粘贴剧本，或导入文件（支持 txt、md、docx）"
+            value={scriptDraft}
           />
           <ScriptContentImport
             className={styles.uploadButton}
             currentContent={scriptDraft}
-            label="导入剧本"
             onImport={(content, sourceLabel) => {
               setScriptDraft(content);
               setScriptSourceLabel(sourceLabel);
               updateForm({ initialScriptContent: content });
             }}
           />
-        </div>
-        <Input.TextArea
-          aria-label="剧本内容"
-          autoSize={false}
-          className={styles.scriptTextarea}
-          maxLength={50000}
-          onChange={(event) => {
-            setScriptDraft(event.target.value);
-            updateForm({ initialScriptContent: event.target.value });
-          }}
-          placeholder="复制粘贴剧本，或导入文件（支持 txt、md、docx）"
-          value={scriptDraft}
-        />
-        <div className={styles.writingMeta}>
-          <span>{scriptSourceLabel || '支持剧本 / 小说内容'}</span>
-          <span>{scriptDraft.length.toLocaleString()} / 50,000 字</span>
-        </div>
-        <div className={styles.composerDock}>
-          <Popover
-            trigger="click"
-            placement="bottomLeft"
-            arrow={false}
-            open={openPanel === 'creation'}
-            onOpenChange={(open) => setOpenPanel(open ? 'creation' : undefined)}
-            content={creationSettings}
-          >
+          <Tooltip title="进入创作设置">
             <Button
-              ref={creationTriggerRef}
-              className={styles.dockControl}
-              aria-label="创作设定"
-              aria-haspopup="dialog"
-              aria-expanded={openPanel === 'creation'}
-            >
-              <GlobalOutlined />
-              <span>
-                {activeTab === 'domestic' ? '国内剧' : '海外剧'} ·{' '}
-                {projectForm.fileFormat === 'NOVEL' ? '小说' : '剧本'} ·{' '}
-                {projectForm.scriptType === 'COMMENTARY_COMIC'
-                  ? '解说漫'
-                  : '精品剧'}
-              </span>
-              <DownOutlined />
-            </Button>
-          </Popover>
-          <Button
-            className={styles.styleTrigger}
-            aria-label="选择画风"
-            onClick={() => {
-              setOpenPanel(undefined);
-              setStyleOpen(true);
-            }}
-          >
-            {projectForm.visualStyleVersion !== 'V2' &&
-            selectedStyle?.imageUrl ? (
-              <LazyMediaImage
-                native
-                src={selectedStyle.imageUrl}
-                alt=""
-                height={28}
-                width={40}
-              />
-            ) : (
-              <PictureOutlined />
-            )}
-            <span>{projectForm.visualStyle || '选择画风'}</span>
-            <DownOutlined />
-          </Button>
-          <Select
-            className={styles.ratioControl}
-            aria-label="画面比例"
-            variant="borderless"
-            value={projectForm.aspectRatio}
-            options={aspectRatioOptions}
-            onChange={(value) => updateForm({ aspectRatio: value })}
-          />
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            arrow={false}
-            open={openPanel === 'more'}
-            onOpenChange={(open) => setOpenPanel(open ? 'more' : undefined)}
-            content={moreSettings}
-          >
-            <Button
-              ref={moreTriggerRef}
-              className={styles.dockControl}
-              aria-label="更多设置"
-              aria-haspopup="dialog"
-              aria-expanded={openPanel === 'more'}
-            >
-              <SettingOutlined />
-              <span>更多设置</span>
-              <DownOutlined />
-            </Button>
-          </Popover>
-          <div className={styles.createAction}>
-            <PointEstimateButton
-              tenantId={tenantId}
-              displayMode="points"
-              operations={
-                scriptDraft.trim()
-                  ? [
-                      {
-                        url: '/api/projects',
-                        data: {
-                          ...projectForm,
-                          initialScriptContent: scriptDraft.trim(),
-                        },
-                      },
-                    ]
-                  : []
-              }
-              className={styles.startButton}
-              loading={submitting}
-              onClick={submitProject}
+              aria-label="开始创作"
+              className={styles.magicButton}
+              icon={<PlayCircleOutlined />}
+              onClick={goNext}
+              shape="round"
               type="primary"
-              disabled={
-                projectForm.visualStyleVersion === 'V2' &&
-                !projectForm.visualStyleCode
-              }
-              icon={
-                <svg
-                  aria-hidden="true"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="m12 3 2.7 6.3L21 12l-6.3 2.7L12 21l-2.7-6.3L3 12l6.3-2.7zM20 2v4m-2-2h4" />
-                </svg>
-              }
             >
               开始创作
-            </PointEstimateButton>
-          </div>
+            </Button>
+          </Tooltip>
         </div>
       </section>
-      <div className={styles.uploadHint}>
-        <InfoCircleOutlined /> 请确认你拥有所导入剧本的合法版权
-      </div>
+
+      <Flex className={styles.uploadHint} gap={14} justify="center" wrap>
+        <Typography.Text type="secondary">
+          <InfoCircleOutlined /> 请确认上传的剧本有合法版权
+        </Typography.Text>
+        <button className={styles.skipButton} onClick={goNext} type="button">
+          跳过上传，创建空白剧本
+        </button>
+      </Flex>
+
+      {(scriptSourceLabel || scriptDraft.trim()) && (
+        <Typography.Text className={styles.readyText} type="secondary">
+          {scriptSourceLabel || '剧本内容已就绪'}
+        </Typography.Text>
+      )}
+
       <section className={styles.inspirationSection}>
         <Flex align="center" justify="space-between">
           <Typography.Text className={styles.sectionTitle}>
@@ -884,95 +550,317 @@ const ShortDramaCreationPage = () => {
       </section>
     </div>
   );
-  const styleModal = (
-    <Modal
-      title="选择画风"
-      forceRender
-      open={styleOpen}
-      onCancel={() => setStyleOpen(false)}
-      footer={
-        <Button type="primary" onClick={() => setStyleOpen(false)}>
-          完成选择
+
+  const platformStyleGallery = (
+    <>
+      <div className={styles.styleStrip} aria-busy={galleryLoading}>
+        {styleGallery.map((style) => {
+          const active = selectedStyle?.id === style.id;
+          return (
+            <button
+              className={active ? styles.styleCardActive : styles.styleCard}
+              aria-label={style.name}
+              aria-pressed={active}
+              key={style.id}
+              onClick={() => applyStyleSelection(style)}
+              type="button"
+            >
+              <LazyMediaImage native height="100%" alt={style.name} src={style.imageUrl} />
+              <span>{style.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <section ref={styleBottomRef} className={styles.styleLoadMore} aria-label="风格加载状态" aria-live="polite">
+        {galleryLoading ? <><Spin size="small" /> 正在加载风格...</>
+          : styleError ? <div role="alert">风格加载失败 <Button onClick={retryStyles}>重试加载风格</Button></div>
+          : stylesHaveMore ? <Button onClick={loadMoreStyles}>加载更多风格</Button>
+          : styleGallery.length ? '已展示全部风格'
+          : <Empty description="当前分类暂无平台风格" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+      </section>
+    </>
+  );
+
+  const secondStep = (
+    <div className={styles.settingsPage}>
+      <header className={styles.settingsHeader}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => setStep(1)}
+          type="text"
+        >
+          初始设定
         </Button>
-      }
-      width={1040}
-      styles={{ body: { maxHeight: '68vh', overflowY: 'auto' } }}
-    >
-      <ProjectArtStylePicker
-        value={projectForm}
-        onChange={(selection) => {
-          setProjectForm((current) => ({
-            ...current,
-            ...selection,
-            ...(current.coverSource !== 'UPLOAD'
-              ? {
-                  coverUrl:
-                    selection.visualStyleVersion === 'V2'
-                      ? undefined
-                      : selectedStyle?.imageUrl,
-                }
-              : {}),
-          }));
-          if (projectForm.coverSource !== 'UPLOAD')
-            setCoverPreviewUrl(
-              selection.visualStyleVersion === 'V2'
-                ? undefined
-                : selectedStyle?.imageUrl,
-            );
-        }}
-        legacyPicker={
-          <>
-            <Typography.Text
-              className={styles.selectedStyleText}
-              type="secondary"
-            >
-              已选风格
-            </Typography.Text>
-            {selectedStyle && (
-              <button
-                className={styles.selectedStyleCard}
-                aria-label={selectedStyle.name}
-                onClick={() => applyStyleSelection(selectedStyle)}
-                type="button"
-              >
-                <LazyMediaImage
-                  native
-                  height="100%"
-                  alt={selectedStyle.name}
-                  src={selectedStyle.imageUrl}
-                />
-                <span>{selectedStyle.name}</span>
-              </button>
-            )}
-            <Typography.Text
-              className={styles.selectedStyleText}
-              type="secondary"
-            >
-              平台风格
-            </Typography.Text>
-            <Tabs
-              className={styles.styleTabs}
-              activeKey={styleCategory}
-              onChange={changeStyleCategory}
-              destroyOnHidden
-              animated={false}
-              items={['全部', ...styleCategories].map((category) => ({
-                key: category,
-                label: category,
-                children:
-                  category === styleCategory ? platformStyleGallery : undefined,
+        <div className={styles.costNote}>
+          预计积分包含自动分析及分镜，实际按模型用量结算
+          <InfoCircleOutlined />
+          <PointEstimateButton
+            tenantId={tenantId}
+            operations={scriptDraft.trim() ? [{ url: '/api/projects', data: { ...projectForm, initialScriptContent: scriptDraft.trim() } }] : []}
+            estimateEnabled={step === 2}
+            className={styles.startButton}
+            icon={<PlayCircleOutlined />}
+            loading={submitting}
+            onClick={submitProject}
+            type="primary"
+          >
+            开始创作
+          </PointEstimateButton>
+        </div>
+      </header>
+
+      <main className={styles.settingsBody}>
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            剧本名称
+          </Typography.Text>
+          <Input
+            aria-label="剧本名称"
+            maxLength={200}
+            onChange={(event) => updateForm({ scriptName: event.target.value })}
+            placeholder="请输入剧本名称"
+            value={projectForm.scriptName || ''}
+          />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            视频生成 <InfoCircleOutlined />
+          </Typography.Text>
+          <Flex gap={16} align="center" wrap>
+            <Select
+              aria-label="默认视频分辨率"
+              value={projectForm.videoResolution}
+              onChange={(value) => updateForm({ videoResolution: value })}
+              options={['480p', '720p', '1080p', '4k'].map((value) => ({
+                label: value,
+                value,
               }))}
+              style={{ width: 132 }}
             />
-          </>
-        }
-      />
-    </Modal>
+            <Flex gap={8} align="center">
+              <Typography.Text>生成音频</Typography.Text>
+              <Switch
+                aria-label="默认生成音频"
+                checked={projectForm.videoGenerateAudio !== false}
+                onChange={(checked) =>
+                  updateForm({ videoGenerateAudio: checked })
+                }
+              />
+            </Flex>
+            <Flex gap={8} align="center">
+              <Typography.Text>视频水印</Typography.Text>
+              <Switch
+                aria-label="默认视频水印"
+                checked={projectForm.videoWatermark === true}
+                onChange={(checked) => updateForm({ videoWatermark: checked })}
+              />
+            </Flex>
+          </Flex>
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            画面比例 <InfoCircleOutlined />
+          </Typography.Text>
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
+            options={aspectRatioOptions.map((item) => ({
+              ...item,
+              label: (
+                <>
+                  {item.value === '16:9' ? (
+                    <VideoCameraOutlined />
+                  ) : (
+                    <MobileOutlined />
+                  )}{' '}
+                  {item.label}
+                </>
+              ),
+            }))}
+            onChange={(event) =>
+              updateForm({ aspectRatio: String(event.target.value) })
+            }
+            optionType="button"
+            value={projectForm.aspectRatio}
+          />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            文件格式 <InfoCircleOutlined />
+          </Typography.Text>
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
+            onChange={(event) =>
+              updateForm({ fileFormat: String(event.target.value) })
+            }
+            optionType="button"
+            options={fileFormatOptions}
+            value={projectForm.fileFormat}
+          />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            剧本类型 <InfoCircleOutlined />
+          </Typography.Text>
+          <Radio.Group
+            buttonStyle="solid"
+            className={styles.strengthGroup}
+            onChange={(event) =>
+              updateForm({ scriptType: String(event.target.value) })
+            }
+            optionType="button"
+            options={scriptTypeOptions}
+            value={projectForm.scriptType}
+          />
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            剧本解析力度 <InfoCircleOutlined />
+          </Typography.Text>
+          <Flex align="center" gap={14} wrap>
+            <Typography.Text type="secondary">场景解析力度</Typography.Text>
+            <Radio.Group
+              buttonStyle="solid"
+              className={styles.strengthGroup}
+              onChange={(event) =>
+                updateForm({ breakdownStrength: event.target.value })
+              }
+              optionType="button"
+              options={breakdownStrengthOptions}
+              value={projectForm.breakdownStrength}
+            />
+          </Flex>
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            分镜技能
+          </Typography.Text>
+          <Flex vertical gap={10}>
+            <Radio.Group
+              aria-label="分镜技能"
+              buttonStyle="solid"
+              optionType="button"
+              options={storyboardSkillOptions}
+              value={projectForm.storyboardSkillVersion}
+              onChange={(event) =>
+                updateForm({ storyboardSkillVersion: event.target.value })
+              }
+            />
+            <Typography.Text type="secondary">
+              {projectForm.storyboardSkillVersion === 'V2'
+                ? '按完整叙事片段拆分，通常每条3–4镜，支持4–15秒片段，细化光影与站位。镜头数量随剧情调整。'
+                : '沿用现有分镜方式，以中近景和特写推进剧情。'}
+              创建后，该项目的分镜生成将使用所选技能。
+            </Typography.Text>
+          </Flex>
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            剧本封面
+          </Typography.Text>
+          <Flex align="center" gap={10} wrap>
+            <div className={styles.coverPreview}>
+              {coverPreviewUrl ? (
+                <LazyMediaImage
+                  alt="封面预览"
+                  height={110}
+                  preview={false}
+                  src={coverPreviewUrl}
+                  width={180}
+                />
+              ) : (
+                <CameraOutlined />
+              )}
+            </div>
+            <Typography.Text type="secondary">
+              *默认分镜的第一张图，也可上传图片
+            </Typography.Text>
+            <Upload
+              accept="image/*"
+              beforeUpload={(file) => {
+                void handleCoverUpload(file as File);
+                return false;
+              }}
+              showUploadList={false}
+            >
+              <Button icon={<UploadOutlined />}>
+                {coverFileName || '上传图片'}
+              </Button>
+            </Upload>
+          </Flex>
+        </section>
+
+        <section className={styles.settingBlock}>
+          <Typography.Text className={styles.settingTitle}>
+            画面风格
+          </Typography.Text>
+          <ProjectArtStylePicker
+            value={projectForm}
+            onChange={(selection) => {
+              setProjectForm((current) => ({ ...current, ...selection,
+                ...(current.coverSource !== 'UPLOAD' ? { coverUrl: selection.visualStyleVersion === 'V2' ? undefined : selectedStyle?.imageUrl } : {}),
+              }));
+              if (projectForm.coverSource !== 'UPLOAD') setCoverPreviewUrl(selection.visualStyleVersion === 'V2' ? undefined : selectedStyle?.imageUrl);
+            }}
+            legacyPicker={<>
+          <Typography.Text
+            className={styles.selectedStyleText}
+            type="secondary"
+          >
+            已选风格
+          </Typography.Text>
+          {selectedStyle && (
+            <button
+              className={styles.selectedStyleCard}
+              aria-label={selectedStyle.name}
+              onClick={() => applyStyleSelection(selectedStyle)}
+              type="button"
+            >
+              <LazyMediaImage
+                native
+                height="100%"
+                alt={selectedStyle.name}
+                src={selectedStyle.imageUrl}
+              />
+              <span>{selectedStyle.name}</span>
+            </button>
+          )}
+          <Typography.Text
+            className={styles.selectedStyleText}
+            type="secondary"
+          >
+            平台风格
+          </Typography.Text>
+          <Tabs
+            className={styles.styleTabs}
+            activeKey={styleCategory}
+            onChange={changeStyleCategory}
+            destroyOnHidden
+            animated={false}
+            items={['全部', ...styleCategories].map((category) => ({
+              key: category,
+              label: category,
+              children: category === styleCategory ? platformStyleGallery : undefined,
+            }))}
+          />
+            </>}
+          />
+        </section>
+      </main>
+    </div>
   );
 
   return (
     <PageContainer className={styles.pageContainer} title={false}>
-      {composer}
-      {styleModal}
+      {step === 1 ? firstStep : secondStep}
       {isAdmin && (
         <InspirationManagementDrawer
           open={managementOpen}

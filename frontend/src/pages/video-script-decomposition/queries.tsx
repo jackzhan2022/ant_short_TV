@@ -9,6 +9,7 @@ import { getCurrentTenantId } from '@/services/account-team/auth';
 
 const terminal = new Set([
   'SUCCEEDED',
+  'ANALYSIS_SUCCEEDED',
   'FAILED',
   'PARTIAL_FAILED',
   'PENDING_REVIEW',

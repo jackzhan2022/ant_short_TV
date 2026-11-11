@@ -60,11 +60,25 @@ vi.mock('antd', () => ({
   Radio: { Group: ({ options, value, onChange, 'aria-label': label }: any) => <fieldset aria-label={label ?? "会员周期"}>{options.map((item: any) => <button type="button" aria-pressed={value === item.value} key={item.value} onClick={() => onChange({ target: { value: item.value } })}>{item.label}</button>)}</fieldset> },
   Typography: { Text: ({ children }: any) => <span>{children}</span>, Title: ({ children }: any) => <h1>{children}</h1>, Paragraph: ({ children }: any) => <p>{children}</p> },
 }));
-vi.mock('@ant-design/icons', () => ({ CheckOutlined: () => null, LeftOutlined: () => null, LockOutlined: () => null, WalletOutlined: () => null, CreditCardOutlined: () => null, SafetyCertificateOutlined: () => null }));
+vi.mock('@ant-design/icons', () => ({ CheckOutlined: () => null, LeftOutlined: () => null, LockOutlined: () => null, WalletOutlined: () => null, CreditCardOutlined: () => null, SafetyCertificateOutlined: () => null, TeamOutlined: () => null, CrownOutlined: () => null, CalendarOutlined: () => null, FileTextOutlined: () => null, ClockCircleOutlined: () => null, WechatOutlined: () => null }));
 
 import CommercialPage from './index';
 
 describe('CommercialPage', () => {
+  it('switches account records without losing the current point filter or creating an order', async () => {
+    render(<CommercialPage />);
+    await screen.findByText('会员周期积分发放');
+    fireEvent.change(screen.getByRole('combobox', { name: '变化类型' }), { target: { value: 'RELEASE' } });
+    await waitFor(() => expect(mocks.pointTransactions).toHaveBeenLastCalledWith(10, { current: 1, pageSize: 20, transactionType: 'RELEASE' }));
+    fireEvent.click(screen.getByRole('tab', { name: '订阅与订单' }));
+    expect(screen.getByRole('region', { name: '订阅与订单' })).toBeVisible();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '变化类型' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '积分明细' }));
+    expect(screen.getByRole('table')).toBeVisible();
+    expect(screen.getByRole('combobox', { name: '变化类型' })).toHaveValue('RELEASE');
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.tenantId = 10;
@@ -161,7 +175,7 @@ describe('CommercialPage', () => {
 
   it('uses the workbench logo in its brand entry and keeps home navigation', async () => {
     render(<CommercialPage />);
-    await screen.findByText('2,140');
+    await screen.findAllByText('2,140');
 
     const brand = screen.getByRole('button', { name: '剧智创' });
     expect(within(brand).getByAltText('剧智创 Logo')).toHaveAttribute(
@@ -181,7 +195,7 @@ describe('CommercialPage', () => {
     expect(mocks.grants).not.toHaveBeenCalled();
     expect(await screen.findAllByText('专业版月卡')).not.toHaveLength(0);
     expect(screen.getByText('专业版季卡', { exact: false })).toBeInTheDocument();
-    expect(screen.getByText('2,140')).toBeInTheDocument();
+    expect(screen.getAllByText('2,140').length).toBeGreaterThan(0);
     expect(screen.getByText('积分明细')).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('权益发放')).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('手动增加')).toBeInTheDocument();
@@ -267,6 +281,7 @@ describe('CommercialPage', () => {
 
     render(<CommercialPage />);
 
+    fireEvent.click(screen.getByRole('tab', { name: '订阅与订单' }));
     const continuePayment = await screen.findByRole('button', { name: '继续支付' });
     expect(screen.queryByTestId('qr-code')).toBeNull();
 
@@ -287,6 +302,7 @@ describe('CommercialPage', () => {
       expiresAt: '2020-01-01T00:00:00',
     }] });
     render(<CommercialPage />);
+    fireEvent.click(screen.getByRole('tab', { name: '订阅与订单' }));
     await screen.findByText('COM-42');
     expect(screen.queryByRole('button', { name: '继续支付' })).not.toBeInTheDocument();
   });
@@ -298,6 +314,7 @@ describe('CommercialPage', () => {
       amount: 59, currency: 'CNY', codeUrl: 'weixin://expired', expiresAt,
     }] });
     render(<CommercialPage />);
+    fireEvent.click(screen.getByRole('tab', { name: '订阅与订单' }));
     const continuePayment = await screen.findByRole('button', { name: '继续支付' });
     vi.useFakeTimers();
     vi.advanceTimersByTime(2000);

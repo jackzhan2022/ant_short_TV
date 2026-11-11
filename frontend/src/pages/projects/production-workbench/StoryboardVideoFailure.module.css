@@ -4,15 +4,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   height: 100%;
   min-height: 220px;
   padding: 44px 20px 24px;
   box-sizing: border-box;
-  background: var(--app-color-error-bg, #fff2f0);
-  border: 1px solid var(--app-color-error-border, #ffccc7);
-  border-radius: 12px;
+  background: var(--app-color-bg-layout, #f7f8fc);
+  border-radius: 8px;
 }
 
 .container .close {
@@ -26,7 +25,7 @@
 
 .icon {
   flex-shrink: 0;
-  color: var(--app-color-error, #ff4d4f);
+  color: #c26767;
 }
 
 .message {
@@ -38,10 +37,10 @@
 }
 
 .title {
-  margin: 0 0 14px;
-  color: var(--app-color-error-text, #cf1322);
-  font-size: 16px;
-  font-weight: 600;
+  margin: 8px 0 0;
+  color: var(--app-color-text-secondary, #6e718c);
+  font-size: 14px;
+  font-weight: 400;
   line-height: 24px;
   text-align: center;
 }
@@ -57,4 +56,9 @@
 
 .retry {
   flex-shrink: 0;
+}
+
+.detailsButton {
+  color: var(--app-color-text-secondary, #6e718c);
+  font-size: 12px;
 }

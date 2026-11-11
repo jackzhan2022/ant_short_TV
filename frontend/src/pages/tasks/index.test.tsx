@@ -170,6 +170,48 @@ it('submits filters only after the query command', async () => {
   fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
   await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ projectId: '7', page: 1 }), expect.anything()));
 });
+it('reveals advanced filters without applying drafts until Query', async () => {
+  render(<Tasks />);
+  await screen.findByText('审核任务一');
+  expect(screen.queryByLabelText('开始时间')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '更多' }));
+  expect(screen.getByRole('button', { name: '更多' })).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-11-01T09:00' } });
+  expect(mocks.list).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ createdFrom: '2026-11-01T09:00', page: 1 }), expect.anything()));
+  expect(screen.getAllByRole('button', { name: /刷\s*新/ })).toHaveLength(1);
+});
+it('restores advanced filters from the URL and summarizes across statuses', async () => {
+  window.history.replaceState({}, '', '/tasks?scope=mine&page=2&pageSize=50&statusGroup=PARTIAL&createdFrom=2026-11-01T09%3A00');
+  render(<Tasks />);
+  await screen.findByText('审核任务一');
+  expect(screen.getByRole('button', { name: '更多' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByLabelText('开始时间')).toHaveValue('2026-11-01T09:00');
+  expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ statusGroup: 'PARTIAL', page: 2, pageSize: 50 }), expect.anything());
+  expect(mocks.summary).toHaveBeenLastCalledWith(1, expect.objectContaining({ statusGroup: undefined, createdFrom: '2026-11-01T09:00' }), expect.anything());
+});
+it('filters by status while retaining applied filters and deferring unrelated drafts', async () => {
+  window.history.replaceState({}, '', '/tasks?scope=team&page=3&pageSize=50&projectId=7');
+  mocks.list.mockResolvedValue({ items: [], total: 8, page: 3, pageSize: 50, canViewTeamTasks: true });
+  mocks.summary.mockResolvedValue({ total: 8, counts: { SUCCEEDED: 5, FAILED: 3 } });
+  render(<Tasks />);
+  await screen.findByRole('tab', { name: '团队任务' });
+  fireEvent.change(screen.getByLabelText('项目编号'), { target: { value: '9' } });
+  fireEvent.click(await screen.findByRole('button', { name: '失败 3' }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ scope: 'team', statusGroup: 'FAILED', projectId: '7', page: 1, pageSize: 50 }), expect.anything()));
+  fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(1, expect.objectContaining({ statusGroup: 'FAILED', projectId: '9' }), expect.anything()));
+});
+it('keeps existing task actions in the drawer footer', async () => {
+  mocks.detail.mockResolvedValue({ taskKey: 'REVIEW:1', type: 'REVIEW', title: '任务详情内容', statusGroup: 'QUEUED', childCounts: { total: 0 }, allowedActions: ['CANCEL'], destination: '/script-review-library' });
+  render(<Tasks />);
+  fireEvent.click(await screen.findByText('审核任务一'));
+  const cancel = await screen.findByRole('button', { name: '取消任务' });
+  expect(cancel.closest('.ant-drawer-footer')).not.toBeNull();
+  expect(screen.getByRole('button', { name: '返回业务' }).closest('.ant-drawer-footer')).not.toBeNull();
+  expect(mocks.control).not.toHaveBeenCalled();
+});
 it('loads content only for the open task and renders its saved sections', async () => {
   mocks.detail.mockResolvedValue({
     taskKey: 'REVIEW:1', title: '任务详情内容', childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED',
@@ -405,7 +447,7 @@ it('shows subtitle erasure content and retries the same task from the task cente
   await waitFor(() => expect(mocks.control).toHaveBeenCalledWith(1, 'SUBTITLE_ERASE:4', 'RETRY', expect.any(String)));
 });
 
-it('shows every saved reference, translates enums, and groups drawer fields in bordered descriptions', async () => {
+it('shows saved references, translated settings and the task overview', async () => {
   mocks.detail.mockResolvedValue({
     taskKey: 'VIDEO:46', type: 'VIDEO', title: '视频生成 #46', projectName: '测试项目', creatorName: '张三',
     childCounts: { total: 0 }, allowedActions: [], statusGroup: 'SUCCEEDED', phase: 'SUCCEEDED',
@@ -436,7 +478,9 @@ it('shows every saved reference, translates enums, and groups drawer fields in b
   expect(screen.getByText('是')).toBeInTheDocument();
   expect(screen.getByText('参考图片')).toBeInTheDocument();
   expect(screen.getByText('来源版本：视频生成 #46 · 2026-10-26 16:48:05')).toBeInTheDocument();
-  expect(document.querySelectorAll('.ant-descriptions-bordered').length).toBeGreaterThanOrEqual(2);
+  expect(document.querySelector('.ant-descriptions-bordered')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '任务信息' })).toHaveTextContent('测试项目');
+  expect(screen.getByRole('region', { name: '任务信息' })).toHaveTextContent('张三');
   for (const value of ['VOLCENGINE_ARK', 'MEDIUM', 'PAN', 'SUCCEEDED', 'reference_image']) {
     expect(screen.queryByText(value)).not.toBeInTheDocument();
   }

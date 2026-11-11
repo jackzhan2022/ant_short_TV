@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import VideoScriptDecompositionPage, {
   buildCopyAllScreenplays,
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   retry: vi.fn(),
   writeText: vi.fn(),
   upload: vi.fn(),
+  uploadUnmount: vi.fn(),
   uploadProps: undefined as any,
 }));
 
@@ -35,10 +37,16 @@ vi.mock('@ant-design/icons', () => ({
   ArrowUpOutlined: () => null,
   CloudUploadOutlined: () => null,
   CopyOutlined: () => null,
+  CheckOutlined: () => null,
   DeleteOutlined: () => null,
   EyeOutlined: () => null,
+  FileTextOutlined: () => null,
+  HistoryOutlined: () => null,
   PlayCircleOutlined: () => null,
+  PlusOutlined: () => null,
   ReloadOutlined: () => null,
+  RightOutlined: () => null,
+  VideoCameraOutlined: () => null,
 }));
 vi.mock('@ant-design/x-markdown', () => ({
   default: ({ children }: any) => <article>{children}</article>,
@@ -97,10 +105,19 @@ vi.mock('antd', () => ({
       </div>
     ),
   }),
-  Input: ({ value, onChange }: any) => (
-    <input value={value} onChange={onChange} />
+  Input: ({ value, onChange, 'aria-label': label }: any) => (
+    <input aria-label={label} value={value} onChange={onChange} />
   ),
-  Progress: ({ percent }: any) => <span>进度 {percent}%</span>,
+  Progress: ({ percent, format }: any) => (
+    <span role="progressbar" aria-valuenow={percent}>
+      {format ? format(percent) : `进度 ${percent}%`}
+    </span>
+  ),
+  Pagination: ({ current, onChange }: any) => (
+    <button type="button" onClick={() => onChange(current + 1, 20)}>
+      下一页记录
+    </button>
+  ),
   Row: ({ children }: any) => <div>{children}</div>,
   Select: ({ value, onChange, options = [] }: any) => (
     <select
@@ -125,6 +142,7 @@ vi.mock('antd', () => ({
     LIST_IGNORE: 'LIST_IGNORE',
     Dragger: (props: any) => {
       mocks.uploadProps = props;
+      useEffect(() => () => mocks.uploadUnmount(), []);
       return <div>{props.children}</div>;
     },
   },
@@ -237,6 +255,8 @@ const screenplayBatch = {
 describe('VideoScriptDecompositionPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:episode-preview');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     focusManager.setFocused(true);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -286,6 +306,7 @@ describe('VideoScriptDecompositionPage', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     focusManager.setFocused(undefined);
   });
@@ -334,26 +355,262 @@ describe('VideoScriptDecompositionPage', () => {
     view.unmount();
   });
 
+  it('starts with video intake and keeps history in a separate view', async () => {
+    render(<VideoScriptDecompositionPage />);
+    expect(
+      screen.getByRole('heading', { name: '先选视频，再开始拆剧' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('第一季拆剧')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成剧本' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
+    expect(await screen.findByText('第一季拆剧')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '生成记录' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /新建拆剧/ }));
+    expect(
+      screen.getByRole('heading', { name: '先选视频，再开始拆剧' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps user episode order across upload progress and submits the selected model', async () => {
+    mocks.create.mockResolvedValue({
+      data: { ...screenplayBatch, id: 9, name: '新批次', episodes: [] },
+    });
+    render(<VideoScriptDecompositionPage />);
+    await screen.findByRole('option', { name: /千问视频理解/ });
+    const fileList = [
+      {
+        uid: 'a',
+        name: 'a.mp4',
+        size: 1,
+        status: 'done',
+        response: { storagePath: '/a', uploadSessionToken: 'session-a' },
+      },
+      { uid: 'b', name: 'b.mp4', size: 2, status: 'uploading', percent: 20 },
+    ];
+    act(() => mocks.uploadProps.onChange({ fileList }));
+    expect(
+      screen.getByRole('region', { name: '视频预览' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下移第 1 集' }));
+    act(() =>
+      mocks.uploadProps.onChange({
+        fileList: [
+          fileList[0],
+          {
+            ...fileList[1],
+            status: 'done',
+            percent: 100,
+            response: { storagePath: '/b', uploadSessionToken: 'session-b' },
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /生成 2 集剧本/ }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    expect(mocks.create.mock.calls[0][0]).toMatchObject({
+      modelId: 42,
+      videos: [
+        { fileName: 'b.mp4', uploadSessionToken: 'session-b' },
+        { fileName: 'a.mp4', uploadSessionToken: 'session-a' },
+      ],
+    });
+    expect(
+      await screen.findByRole('region', { name: '剧本工作区' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('retains a draft queue when opening history and returning to new decomposition', async () => {
+    render(<VideoScriptDecompositionPage />);
+    act(() =>
+      mocks.uploadProps.onChange({
+        fileList: [
+          {
+            uid: 'a',
+            name: 'retained.mp4',
+            size: 1,
+            status: 'uploading',
+            percent: 40,
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
+    await screen.findByText('第一季拆剧');
+    fireEvent.click(screen.getByRole('button', { name: /继续整理/ }));
+    expect(
+      screen.getByRole('region', { name: '视频预览' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /第 1 集.*retained.mp4/ }),
+    ).toBeInTheDocument();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same uploader mounted when intake becomes an episode workspace', async () => {
+    const view = render(<VideoScriptDecompositionPage />);
+    await screen.findByRole('option', { name: /千问视频理解/ });
+    act(() =>
+      mocks.uploadProps.onChange({
+        fileList: [
+          {
+            uid: 'live',
+            name: 'uploading.mp4',
+            size: 1,
+            status: 'uploading',
+            percent: 10,
+          },
+        ],
+      }),
+    );
+    expect(
+      screen.getByRole('region', { name: '视频预览' }),
+    ).toBeInTheDocument();
+    expect(mocks.uploadUnmount).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
+    fireEvent.click(screen.getByRole('button', { name: /继续整理/ }));
+    expect(mocks.uploadUnmount).not.toHaveBeenCalled();
+    view.unmount();
+    expect(mocks.uploadUnmount).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases local preview URLs when selecting another file and unmounting', async () => {
+    vi.mocked(URL.createObjectURL)
+      .mockReturnValueOnce('blob:first')
+      .mockReturnValueOnce('blob:second');
+    const view = render(<VideoScriptDecompositionPage />);
+    await screen.findByRole('option', { name: /千问视频理解/ });
+    const fileList = ['first', 'second'].map((name) => ({
+      uid: name,
+      name: `${name}.mp4`,
+      status: 'uploading',
+      originFileObj: new File(['video'], `${name}.mp4`, { type: 'video/mp4' }),
+    }));
+    act(() => mocks.uploadProps.onChange({ fileList }));
+    expect(await screen.findByLabelText('first.mp4')).toHaveAttribute(
+      'src',
+      'blob:first',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集 second.mp4' }));
+    expect(await screen.findByLabelText('second.mp4')).toHaveAttribute(
+      'src',
+      'blob:second',
+    );
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:first');
+    view.unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:second');
+  });
+
+  it('does not restore a removed file when a late upload event arrives', async () => {
+    render(<VideoScriptDecompositionPage />);
+    await screen.findByRole('option', { name: /千问视频理解/ });
+    const file = {
+      uid: 'removed',
+      name: 'removed.mp4',
+      size: 1,
+      status: 'uploading',
+      percent: 20,
+    };
+    act(() => mocks.uploadProps.onChange({ fileList: [file] }));
+    fireEvent.click(screen.getByRole('button', { name: '移除第 1 集' }));
+    act(() =>
+      mocks.uploadProps.onChange({
+        file: { ...file, percent: 90 },
+        fileList: [{ ...file, percent: 90 }],
+      }),
+    );
+    expect(
+      screen.getByRole('heading', { name: '先选视频，再开始拆剧' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: '视频预览' }),
+    ).not.toBeInTheDocument();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('copies the current screenplay without fetching all batch screenplays', async () => {
+    render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
+    );
+    await screen.findByText('# 第1集：真相');
+    fireEvent.click(screen.getByRole('button', { name: '复制本集' }));
+    await waitFor(() =>
+      expect(mocks.writeText).toHaveBeenCalledWith('# 第1集：真相'),
+    );
+    expect(mocks.queryScreenplays).not.toHaveBeenCalled();
+  });
+
+  it('uses API percentages in circles and retains reader scroll across episode switches', async () => {
+    mocks.queryBatch.mockResolvedValue({
+      data: {
+        ...screenplayBatch,
+        id: 9,
+        name: '生成中',
+        status: 'RUNNING',
+        episodes: [
+          screenplayBatch.episodes[0].episode,
+          {
+            ...screenplayBatch.episodes[1].episode,
+            status: 'ANALYZING',
+            percentage: 37,
+          },
+        ],
+      },
+    });
+    render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
+    );
+    const article = await screen.findByRole('article', {
+      name: '第 1 集剧本正文',
+    });
+    const reader = article.parentElement as HTMLElement;
+    reader.scrollTop = 240;
+    fireEvent.scroll(reader);
+    fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
+    expect(
+      screen.getByRole('region', { name: '第 2 集生成进度' }),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('progressbar')
+        .filter((el) => el.getAttribute('aria-valuenow') === '37'),
+    ).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '第 1 集' }));
+    expect(
+      screen.getByRole('article', { name: '第 1 集剧本正文' }).parentElement
+        ?.scrollTop,
+    ).toBe(240);
+    expect(mocks.queryEpisode).toHaveBeenCalledTimes(1);
+  });
+
   it('removes the former top workflow and opens ordered read-only screenplays', async () => {
     render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     expect(screen.queryByText(/审核草稿/)).not.toBeInTheDocument();
     expect(screen.queryByText(/确认导入/)).not.toBeInTheDocument();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: '查看全部剧本' }),
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
     );
     expect(await screen.findByText('# 第1集：真相')).toBeInTheDocument();
     expect(screen.queryByText('模型输出截断')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '第 2 集' }));
     expect(screen.getByText('模型输出截断')).toBeInTheDocument();
     expect(mocks.queryScreenplays).not.toHaveBeenCalled();
-    expect(screen.getByText(/总进度 100%/)).toBeInTheDocument();
+    expect(screen.getByText(/1 \/ 2 集已完成/)).toBeInTheDocument();
   });
 
   it('copies successful scripts and retries only the retryable failed episode', async () => {
     render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     fireEvent.click(
-      await screen.findByRole('button', { name: '查看全部剧本' }),
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
     );
     await waitFor(() =>
       expect(
@@ -373,8 +630,9 @@ describe('VideoScriptDecompositionPage', () => {
   it('reports clipboard permission failures', async () => {
     mocks.writeText.mockRejectedValueOnce(new Error('denied'));
     render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     fireEvent.click(
-      await screen.findByRole('button', { name: '查看全部剧本' }),
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
     );
     await waitFor(() =>
       expect(
@@ -392,6 +650,7 @@ describe('VideoScriptDecompositionPage', () => {
   it('maps polling and copy behavior without a server-side merge', () => {
     expect(shouldPollVideoDecompositionBatch('RUNNING')).toBe(true);
     expect(shouldPollVideoDecompositionBatch('PARTIAL_FAILED')).toBe(false);
+    expect(shouldPollVideoDecompositionBatch('ANALYSIS_SUCCEEDED')).toBe(false);
     expect(
       buildCopyAllScreenplays({
         ...screenplayBatch,
@@ -417,8 +676,9 @@ describe('VideoScriptDecompositionPage', () => {
 
   it('loads only the selected successful episode and reuses its cache', async () => {
     render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     fireEvent.click(
-      await screen.findByRole('button', { name: '查看全部剧本' }),
+      await screen.findByRole('button', { name: /查看剧本|查看并处理/ }),
     );
     await screen.findByText('# 第1集：真相');
     expect(mocks.queryEpisode).toHaveBeenCalledTimes(1);
@@ -448,14 +708,19 @@ describe('VideoScriptDecompositionPage', () => {
       data: { ...screenplayBatch, id: 10, name: '新批次', episodes: [] },
     });
     render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     const buttons = await screen.findAllByRole('button', {
-      name: '查看全部剧本',
+      name: /查看剧本|查看并处理/,
     });
     fireEvent.click(buttons[0]);
     const signal = mocks.queryBatch.mock.calls[0][1] as AbortSignal;
-    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: /返回生成记录/ }));
     expect(signal.aborted).toBe(true);
-    fireEvent.click(buttons[1]);
+    fireEvent.click(
+      (
+        await screen.findAllByRole('button', { name: /查看剧本|查看并处理/ })
+      )[1],
+    );
     await waitFor(() =>
       expect(screen.getByText('暂无剧集')).toBeInTheDocument(),
     );
@@ -490,10 +755,13 @@ describe('VideoScriptDecompositionPage', () => {
       )
       .mockResolvedValue({ data: { ...running, status: 'SUCCEEDED' } });
     const view = render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
-    fireEvent.click(screen.getByRole('button', { name: '查看全部剧本' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /查看剧本|查看并处理/ }),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
@@ -558,10 +826,13 @@ describe('VideoScriptDecompositionPage', () => {
       },
     }));
     const view = render(<VideoScriptDecompositionPage />);
+    fireEvent.click(screen.getByRole('button', { name: /生成记录/ }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
-    fireEvent.click(screen.getByRole('button', { name: '查看全部剧本' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /查看剧本|查看并处理/ }),
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
@@ -584,7 +855,7 @@ describe('VideoScriptDecompositionPage', () => {
       data: { ...screenplayBatch, id: 9, name: '新批次', episodes: [] },
     });
     render(<VideoScriptDecompositionPage />);
-    await screen.findByRole('button', { name: '查看全部剧本' });
+    await screen.findByRole('option', { name: /千问视频理解/ });
     await act(async () =>
       mocks.uploadProps.onChange({
         fileList: [
@@ -606,8 +877,8 @@ describe('VideoScriptDecompositionPage', () => {
       }),
     );
     expect(mocks.uploadProps.showUploadList).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: '开始生成剧本' }));
-    await screen.findByRole('button', { name: '关闭' });
+    fireEvent.click(screen.getByRole('button', { name: /生成 2 集剧本/ }));
+    await screen.findByRole('button', { name: /返回生成记录/ });
     expect(
       mocks.create.mock.calls[0][0].videos.map((v: any) => v.fileName),
     ).toEqual(['b.mp4', 'a.mp4']);

@@ -8,34 +8,14 @@ const stylesheet = readFileSync(
 );
 
 describe('storyboard layout', () => {
-  it('uses three asset columns with two-column and one-column container fallbacks', () => {
-    expect(stylesheet).toMatch(
-      /\.storyboard-reference-grid\s*{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s,
-    );
-    expect(stylesheet).toMatch(
-      /@container\s*\(max-width:\s*300px\)[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
-    );
-    expect(stylesheet).toMatch(
-      /@container\s*\(max-width:\s*220px\)[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/,
-    );
+  it('keeps two character columns and a larger prompt column on desktop', () => {
+    expect(stylesheet).toMatch(/\.storyboard-reference-grid\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(stylesheet).toMatch(/\.storyboard-card-content\s*{[^}]*grid-template-columns:\s*minmax\(260px,\s*1fr\)\s*minmax\(350px,\s*1\.9fr\)\s*minmax\(\s*240px,\s*1fr\s*\)/s);
   });
 
-  it('reserves room for preview controls within the taller desktop storyboard cards', () => {
-    expect(stylesheet).toMatch(
-      /\.storyboard-card-content\s*{[^}]*height:\s*730px/s,
-    );
-    expect(stylesheet).toMatch(
-      /\.storyboard-preview-stage\s*{[^}]*height:\s*562px/s,
-    );
-    expect(stylesheet).toMatch(
-      /\.storyboard-preview-media\s*{[^}]*width:\s*358px[^}]*height:\s*100%/s,
-    );
-    expect(stylesheet).toMatch(
-      /\.storyboard-card-content\s*>\s*section:first-child\s*{[^}]*overflow-y:\s*auto/s,
-    );
-    expect(stylesheet).toMatch(
-      /@media\s*\(max-width:\s*1100px\)[\s\S]*?\.storyboard-card-content\s*{[^}]*height:\s*auto/s,
-    );
+  it('adapts card height to the viewport with responsive document flow', () => {
+    expect(stylesheet).toMatch(/\.storyboard-card-content\s*{[^}]*height:\s*clamp\(560px,\s*calc\(100dvh - 350px\),\s*730px\)/s);
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*1100px\)[\s\S]*?\.storyboard-card-content\s*{[^}]*height:\s*auto/s);
   });
 
   it('keeps storyboard cards in normal document flow without scroll snapping', () => {

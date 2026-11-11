@@ -63,67 +63,20 @@ afterEach(() => {
 });
 
 describe('live button point estimates', () => {
-  it('shows only the rounded-up amount in points mode while retaining the action name and quote gate', async () => {
-    mocks.request.mockResolvedValue(response(128.1));
-    const submit = vi.fn();
+  it('supports compact integer credits without changing the quote or affordability gate', async () => {
+    mocks.request.mockResolvedValue(response(127.6, false));
     render(
-      <PointEstimateButton
-        displayMode="points"
-        operations={operations()}
-        onClick={submit}
-      >
-        开始创作
-      </PointEstimateButton>,
-    );
-    const button = screen.getByRole('button', { name: '开始创作' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveTextContent('—');
-    expect(button).not.toHaveTextContent(/预估|预计|积分|开始创作/);
-    await advance();
-    expect(button).toBeEnabled();
-    expect(button.textContent).toBe('129');
-    expect(button).toHaveAccessibleDescription(/129 积分/);
-    fireEvent.click(button);
-    expect(submit).toHaveBeenCalledOnce();
-  });
-
-  it('uses zero only for a free action and never replaces a failed quote with zero', async () => {
-    mocks.request.mockRejectedValue(new Error('暂时无法获取积分'));
-    const view = render(
-      <PointEstimateButton displayMode="points" operations={operations()}>
-        开始创作
+      <PointEstimateButton compact operations={operations()}>
+        生成视频
       </PointEstimateButton>,
     );
     await advance();
-    const button = screen.getByRole('button', { name: '开始创作' });
-    expect(button).toBeDisabled();
-    expect(button.textContent).toBe('—');
-    expect(
-      screen.getByRole('button', { name: '刷新积分' }),
-    ).toBeInTheDocument();
-    view.rerender(
-      <PointEstimateButton displayMode="points" operations={[]}>
-        开始创作
-      </PointEstimateButton>,
-    );
-    expect(button).toBeEnabled();
-    expect(button.textContent).toBe('0');
-  });
-
-  it('keeps the numeric amount visible when the balance is insufficient', async () => {
-    mocks.request.mockResolvedValue(response(128.1, false));
-    render(
-      <PointEstimateButton displayMode="points" operations={operations()}>
-        开始创作
-      </PointEstimateButton>,
-    );
-    await advance();
-    const button = screen.getByRole('button', { name: '开始创作' });
-    expect(button).toBeDisabled();
-    expect(button.textContent).toBe('129');
+    const button = screen.getByRole('button', { name: '生成视频' });
+    expect(button).toHaveTextContent('✦ 128');
+    expect(button).not.toHaveTextContent(/预计|预估|积分/);
     expect(button).toHaveAccessibleDescription(/积分不足/);
+    expect(button).toBeDisabled();
   });
-
   it('can hide the inline estimate while retaining its accessible description and quote gate', async () => {
     const submit = vi.fn();
     render(

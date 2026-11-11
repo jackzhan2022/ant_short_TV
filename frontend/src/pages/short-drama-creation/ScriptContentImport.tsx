@@ -1,9 +1,4 @@
-import {
-  FileTextOutlined,
-  FolderOpenOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
-import type { MenuProps } from 'antd';
+import { FileTextOutlined, FolderOpenOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   App,
   Button,
@@ -16,6 +11,7 @@ import {
   Spin,
   Typography,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import { useRef, useState } from 'react';
 import {
   parseScriptFile,
@@ -28,8 +24,8 @@ import {
 } from './service';
 
 type ScriptContentImportProps = {
+  buttonLabel?: string;
   className?: string;
-  label?: string;
   disabled?: boolean;
   localOnly?: boolean;
   currentContent: string;
@@ -43,38 +39,20 @@ type SelectedVersion = {
 
 const supportedExtensions = new Set(['txt', 'md', 'docx']);
 
-const extensionOf = (fileName: string) =>
-  fileName.split('.').pop()?.toLowerCase() || '';
+const extensionOf = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || '';
 
-const ScriptContentImport = ({
-  className,
-  label,
-  disabled = false,
-  localOnly = false,
-  currentContent,
-  onImport,
-}: ScriptContentImportProps) => {
+const ScriptContentImport = ({ buttonLabel, className, disabled = false, localOnly = false, currentContent, onImport }: ScriptContentImportProps) => {
   const { message, modal } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [projects, setProjects] = useState<
-    Array<ReviewProjectSummary & Partial<ReviewProjectMetrics>>
-  >([]);
+  const [projects, setProjects] = useState<Array<ReviewProjectSummary & Partial<ReviewProjectMetrics>>>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsFailed, setProjectsFailed] = useState(false);
-  const [versionsByProject, setVersionsByProject] = useState<
-    Record<number, ReviewVersion[]>
-  >({});
-  const [versionLoading, setVersionLoading] = useState<Record<number, boolean>>(
-    {},
-  );
+  const [versionsByProject, setVersionsByProject] = useState<Record<number, ReviewVersion[]>>({});
+  const [versionLoading, setVersionLoading] = useState<Record<number, boolean>>({});
   const [selected, setSelected] = useState<SelectedVersion>();
 
-  const applyCandidate = (
-    content: string,
-    label: string,
-    onApplied?: () => void,
-  ) => {
+  const applyCandidate = (content: string, label: string, onApplied?: () => void) => {
     const normalized = content.trim();
     if (!normalized) {
       message.error('剧本文件中没有可用文字');
@@ -105,10 +83,9 @@ const ScriptContentImport = ({
       return;
     }
     try {
-      const content =
-        extension === 'docx'
-          ? (await parseScriptFile(file)).data?.content || ''
-          : await file.text();
+      const content = extension === 'docx'
+        ? (await parseScriptFile(file)).data?.content || ''
+        : await file.text();
       applyCandidate(content, `已导入：${file.name}`);
     } catch {
       message.error('剧本文件读取失败');
@@ -126,17 +103,12 @@ const ScriptContentImport = ({
       void queryReviewProjectMetrics()
         .then((metricsResponse) => {
           const metricsByProjectId = new Map(
-            (metricsResponse.data || []).map((metric) => [
-              metric.projectId,
-              metric,
-            ]),
+            (metricsResponse.data || []).map((metric) => [metric.projectId, metric]),
           );
-          setProjects((current) =>
-            current.map((project) => ({
-              ...project,
-              ...metricsByProjectId.get(project.id),
-            })),
-          );
+          setProjects((current) => current.map((project) => ({
+            ...project,
+            ...metricsByProjectId.get(project.id),
+          })));
         })
         .catch(() => undefined);
     } catch {
@@ -189,13 +161,13 @@ const ScriptContentImport = ({
         <Button
           disabled={disabled}
           onClick={localOnly ? () => fileInputRef.current?.click() : undefined}
-          aria-label="导入剧本内容"
+          aria-label={buttonLabel || '导入剧本内容'}
           className={className}
-          icon={<PlusOutlined />}
-          shape={label ? undefined : 'circle'}
-          type="text"
+          icon={buttonLabel ? <FolderOpenOutlined /> : <PlusOutlined />}
+          shape={buttonLabel ? 'default' : 'circle'}
+          type={buttonLabel ? 'default' : 'text'}
         >
-          {label}
+          {buttonLabel}
         </Button>
       </Dropdown>
       <input
@@ -232,9 +204,7 @@ const ScriptContentImport = ({
                   <Space>
                     <Typography.Text strong>{project.name}</Typography.Text>
                     <Typography.Text type="secondary">
-                      {project.versionCount === undefined
-                        ? '版本数加载中'
-                        : `${project.versionCount} 个版本`}
+                      {project.versionCount === undefined ? '版本数加载中' : `${project.versionCount} 个版本`}
                     </Typography.Text>
                   </Space>
                 ),
@@ -255,9 +225,7 @@ const ScriptContentImport = ({
                         <Radio key={version.id} value={version.id}>
                           版本 {version.versionNo}
                           {version.fileName ? ` · ${version.fileName}` : ''}
-                          {version.createdAt
-                            ? ` · ${new Date(version.createdAt).toLocaleString()}`
-                            : ''}
+                          {version.createdAt ? ` · ${new Date(version.createdAt).toLocaleString()}` : ''}
                         </Radio>
                       ))}
                     </Space>
@@ -266,24 +234,13 @@ const ScriptContentImport = ({
               }))}
               onChange={(keys) => {
                 const activeKeys = Array.isArray(keys) ? keys : [keys];
-                for (const key of activeKeys)
-                  void loadProjectVersions(Number(key));
+                for (const key of activeKeys) void loadProjectVersions(Number(key));
               }}
             />
           ) : (
             !projectsLoading && (
-              <Empty
-                description={
-                  projectsFailed
-                    ? '审核剧本列表加载失败'
-                    : '暂无可引用的审核剧本'
-                }
-              >
-                {projectsFailed && (
-                  <Button onClick={() => void loadReviewProjects()}>
-                    重新加载
-                  </Button>
-                )}
+              <Empty description={projectsFailed ? '审核剧本列表加载失败' : '暂无可引用的审核剧本'}>
+                {projectsFailed && <Button onClick={() => void loadReviewProjects()}>重新加载</Button>}
               </Empty>
             )
           )}

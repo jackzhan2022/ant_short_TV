@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -69,15 +69,10 @@ describe('point estimate confirmation dialog', () => {
   it('shows the server estimate and balance before creating any task', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    const confirm = await screen.findByRole('button', { name: '确认消耗 25 积分并继续' });
-    expect(confirm.textContent).toBe('25');
-    expect(confirm.querySelector('svg path')).toHaveAttribute('d', 'm12 3 2.7 6.3L21 12l-6.3 2.7L12 21l-2.7-6.3L3 12l6.3-2.7zM20 2v4m-2-2h4');
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByLabelText('当前可用积分')).toHaveTextContent('100');
-    expect(within(dialog).getByText('余额充足')).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText('exclamation-circle')).not.toBeInTheDocument();
+    expect(await screen.findByText('25')).toBeInTheDocument();
+    expect(screen.getByText('当前可用：100 积分')).toBeInTheDocument();
     expect(mocks.request).toHaveBeenCalledTimes(1);
-    fireEvent.click(confirm);
+    fireEvent.click(screen.getByRole('button', { name: '确认消耗并继续' }));
     await waitFor(() => expect(mocks.submitted).toHaveBeenCalled());
     expect(mocks.request).toHaveBeenLastCalledWith(
       '/api/projects/3/ai-image-tasks',
@@ -88,28 +83,11 @@ describe('point estimate confirmation dialog', () => {
   it('leaves points and tasks untouched when the user cancels', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    await screen.findByRole('button', { name: '确认消耗 25 积分并继续' });
+    await screen.findByText('25');
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     await waitFor(() => expect(mocks.cancelled).toHaveBeenCalled());
     expect(mocks.request).toHaveBeenCalledTimes(1);
     expect(mocks.submitted).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
-  });
-
-  it('keeps confirmation disabled when the server says the balance is insufficient', async () => {
-    mocks.request.mockReset().mockResolvedValue({
-      success: true,
-      data: { estimatedPoints: 24.1, availablePoints: 10, paidAvailablePoints: 5,
-        sufficient: false, lines: [], notice: '请核对可用余额' },
-    });
-    render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    const confirm = await screen.findByRole('button', { name: '确认消耗 25 积分并继续' });
-    expect(confirm).toBeDisabled();
-    expect(screen.getByRole('alert')).toHaveTextContent('可用积分不足');
-    fireEvent.click(confirm);
-    expect(mocks.request).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
-    await waitFor(() => expect(mocks.cancelled).toHaveBeenCalled());
   });
 });

@@ -110,6 +110,78 @@
   color: var(--app-color-error, #d43838);
   margin-top: 8px;
 }
+.embedded {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.embedded > :not(.list):not(.empty) {
+  flex-shrink: 0;
+}
+.embedded > :global(.ant-empty),
+.embedded .empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+.embedded .list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none;
+  gap: 7px;
+  padding: 1px 5px 2px 1px;
+  overflow-y: auto;
+}
+.embedded .row {
+  flex-shrink: 0;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  transition:
+    border-color 150ms,
+    background 150ms;
+}
+.embedded .row:hover {
+  border-color: var(--app-color-primary-border, #c6bfff);
+}
+.embedded .row label > span {
+  min-width: 0;
+}
+.embedded .row strong,
+.embedded .row small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.embedded .row strong {
+  font-size: 13px;
+}
+.embedded .row small {
+  font-size: 11px;
+}
+.embedded .row :global(.ant-btn) {
+  border: 1px solid var(--app-color-border-secondary, #eeedf5);
+  border-radius: 50%;
+  width: 29px;
+  height: 29px;
+  flex-shrink: 0;
+  color: var(--app-color-primary, #6258ed);
+}
+.embedded .pagination {
+  flex-shrink: 0;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.embedded .filters {
+  margin: 12px 0;
+}
 @media (max-width: 640px) {
   .page {
     padding: 16px;

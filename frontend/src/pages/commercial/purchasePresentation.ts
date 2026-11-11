@@ -127,6 +127,9 @@ export const presentOffer = (item: CommercialCatalogItem) => {
     && Number.isFinite(item.listPrice) && item.listPrice > item.price
     ? formatCommercialMoney(item.listPrice, item.currency) : null;
   return {
+    pointAmount: monthlyPoints ?? oneTimePoints,
+    recurringPoints: monthlyPoints !== null,
+    periodMonths,
     price: formatCommercialMoney(item.price, item.currency),
     listPrice,
     primaryBenefit,

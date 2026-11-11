@@ -2,8 +2,6 @@ import type { RequestOptions } from '@@/plugin-request/request';
 import { request } from '@umijs/max';
 import { App } from 'antd';
 import { type ReactNode, useLayoutEffect } from 'react';
-import PointEstimateContent from '@/components/PointEstimateContent';
-import styles from '@/components/PointEstimateContent/index.module.css';
 import { formatPoints } from '@/utils/points';
 
 export { formatPoints } from '@/utils/points';
@@ -101,12 +99,43 @@ export function requiresPointEstimate(url: string, options: Options = {}) {
   );
 }
 
-function PointIcon() {
+function EstimateContent({ estimate }: { estimate: PointEstimate }) {
+  const grouped = new Map<string, { points: number; count: number }>();
+  for (const line of estimate.lines) {
+    const previous = grouped.get(line.label) || { points: 0, count: 0 };
+    grouped.set(line.label, {
+      points: previous.points + Number(line.points),
+      count: previous.count + 1,
+    });
+  }
   return (
-    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"
-      fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 3 2.7 6.3L21 12l-6.3 2.7L12 21l-2.7-6.3L3 12l6.3-2.7zM20 2v4m-2-2h4" />
-    </svg>
+    <div aria-label="积分预估详情">
+      <p>
+        预计消耗 <strong>{formatPoints(estimate.estimatedPoints)}</strong> 积分
+      </p>
+      <p>当前可用：{formatPoints(estimate.availablePoints)} 积分</p>
+      <ul>
+        {[...grouped].map(([label, item]) => (
+          <li key={label}>
+            {label}
+            {item.count > 1 ? ` × ${item.count}` : ''}：
+            {formatPoints(item.points)} 积分
+          </li>
+        ))}
+      </ul>
+      {estimate.lines.some((line) => !line.trialEligible) ? (
+        <p>
+          视频生成可用：{formatPoints(estimate.paidAvailablePoints)}{' '}
+          积分（试用积分不可用于视频生成）
+        </p>
+      ) : null}
+      {!estimate.sufficient ? (
+        <p role="alert">可用积分不足，请充值后重试。</p>
+      ) : null}
+      <p style={{ color: 'var(--app-color-text-secondary)' }}>
+        {estimate.notice}
+      </p>
+    </div>
   );
 }
 
@@ -121,31 +150,15 @@ export function confirmPointEstimates(
   const modal = estimateModal;
   if (!modal)
     return Promise.reject(new Error('积分预估界面尚未就绪，请稍后重试'));
-  const creation = operations.every(({ url }) => url === '/api/projects' || url === '/api/free-creations');
-  const buttonClass = `${styles.actionButton} ${styles.confirmButton}`;
   return new Promise((resolve, reject) => {
     let estimate: PointEstimate | undefined;
     let closed = false;
     const dialog = modal.confirm({
-      title: creation ? '确认本次创作' : '确认积分消耗',
-      icon: null,
-      width: 520,
-      centered: true,
-      closable: true,
-      className: styles.dialog,
-      styles: { container: { padding: 0, borderRadius: 18, overflow: 'hidden' } },
-      focusable: { autoFocusButton: 'cancel' },
-      content: <div className={styles.loading} role="status">正在计算本次消耗的积分…</div>,
-      okText: '—',
+      title: '积分消耗预估',
+      content: <div role="status">正在计算本次操作预计消耗的积分…</div>,
+      okText: '确认消耗并继续',
       cancelText: '取消',
-      okButtonProps: { disabled: true, loading: true, icon: <PointIcon />, className: buttonClass, 'aria-label': '正在计算积分' },
-      cancelButtonProps: { className: styles.actionButton },
-      footer: (_, { OkBtn, CancelBtn }) => (
-        <div className={styles.footer}>
-          <span className={styles.footerNote}>{creation ? '确认后开始创作' : '确认后继续操作'}</span>
-          <div className={styles.actions}><CancelBtn /><OkBtn /></div>
-        </div>
-      ),
+      okButtonProps: { disabled: true },
       onOk: () => {
         if (!estimate?.sufficient)
           return Promise.reject(new Error('积分预估尚未就绪'));
@@ -163,15 +176,8 @@ export function confirmPointEstimates(
         if (closed) return;
         estimate = response;
         dialog.update({
-          content: <PointEstimateContent estimate={estimate} />,
-          okText: formatPoints(Math.ceil(estimate.estimatedPoints)),
-          okButtonProps: {
-            disabled: !estimate.sufficient,
-            loading: false,
-            icon: <PointIcon />,
-            className: buttonClass,
-            'aria-label': `确认消耗 ${formatPoints(Math.ceil(estimate.estimatedPoints))} 积分并继续`,
-          },
+          content: <EstimateContent estimate={estimate} />,
+          okButtonProps: { disabled: !estimate.sufficient },
         });
       })
       .catch((error: unknown) => {

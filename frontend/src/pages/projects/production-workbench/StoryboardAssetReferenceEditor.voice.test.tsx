@@ -31,7 +31,7 @@ describe('storyboard character effective voice', () => {
   it('shows the default voice and source from the effective binding API', async () => {
     render(editor());
     expect(await screen.findByText('角色默认.wav')).toBeInTheDocument();
-    expect(screen.getByText(/角色默认音色.*音频来源项目/)).toBeInTheDocument();
+    expect(screen.getByTitle(/角色默认音色.*音频来源项目/)).toBeInTheDocument();
     expect(mocks.current).toHaveBeenCalledWith(12, 21, { id: 301, variantId: 33 }, expect.any(AbortSignal));
   });
 
@@ -43,7 +43,7 @@ describe('storyboard character effective voice', () => {
     mocks.current.mockResolvedValue(result(true, '老年形态.wav'));
     view.rerender(editor({ ...reference, assetId: 22, variantId: 34 }, 302, 13));
     expect(await screen.findByText('老年形态.wav')).toBeInTheDocument();
-    expect(screen.getByText(/当前分镜形态覆盖.*音频来源项目/)).toBeInTheDocument();
+    expect(screen.getByTitle(/当前分镜形态覆盖.*音频来源项目/)).toBeInTheDocument();
     expect(oldSignal.aborted).toBe(true);
     await act(async () => finish(result(false, '过期音色.wav')));
     await waitFor(() => expect(mocks.current).toHaveBeenLastCalledWith(13, 22, { id: 302, variantId: 34 }, expect.any(AbortSignal)));
@@ -61,10 +61,10 @@ describe('storyboard character effective voice', () => {
     mocks.current.mockResolvedValue(result());
     fireEvent.click(await screen.findByRole('button', { name: '恢复默认' }));
     await screen.findByText('角色默认.wav');
-    expect(screen.getByText(/角色默认音色.*音频来源项目/)).toBeInTheDocument();
+    expect(screen.getByTitle(/角色默认音色.*音频来源项目/)).toBeInTheDocument();
     mocks.current.mockResolvedValue({ success: true, data: { audio: null, overridden: false } });
     fireEvent.click(await screen.findByRole('button', { name: '恢复默认' }));
-    await screen.findByText('未配置音色');
+    await waitFor(() => expect(screen.queryByText('角色默认.wav')).not.toBeInTheDocument());
     expect(screen.queryByText('分镜覆盖.wav')).not.toBeInTheDocument();
   });
 

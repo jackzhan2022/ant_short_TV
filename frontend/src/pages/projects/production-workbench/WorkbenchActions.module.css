@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: Narrow-screen overrides must take precedence over the legacy action buttons inline dimensions. */
 .actions {
   position: fixed;
   bottom: 46px;
@@ -36,6 +37,26 @@
 
 .actionHost {
   display: flex;
+  gap: 12px;
   align-items: center;
   min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .actions {
+    gap: 8px;
+    max-width: calc(100vw - 24px);
+  }
+  .actionHost {
+    gap: 8px;
+  }
+  .actions > button,
+  .actionHost > button,
+  .actionHost > span > button {
+    min-width: 0 !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding-inline: 8px !important;
+    font-size: 11px !important;
+  }
 }
