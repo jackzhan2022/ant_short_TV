@@ -1,9 +1,9 @@
-import { Button } from 'antd';
-import type { ReactNode } from 'react';
-import type { AiVideoTask } from './service';
-import styles from './StoryboardVideoFailure.module.css';
+import { Button, Modal } from 'antd';
+import { type ReactNode, useState } from 'react';
 import PointEstimateButton from '@/components/PointEstimateButton';
 import type { PointEstimateOperation } from '@/services/point-estimate';
+import styles from './StoryboardVideoFailure.module.css';
+import type { AiVideoTask } from './service';
 
 export const videoGenerationError = (task?: AiVideoTask) => {
   if (!task || ['SUCCEEDED', 'CANCELED'].includes(task.status))
@@ -37,6 +37,7 @@ export default function StoryboardVideoFailure({
   retryOperations?: PointEstimateOperation[];
   children?: ReactNode;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <section
       className={styles.container}
@@ -72,11 +73,20 @@ export default function StoryboardVideoFailure({
         <h3 className={styles.title}>
           {timedOut ? '视频生成超时' : '视频生成失败'}
         </h3>
-        <p className={styles.details}>{message}</p>
-        {children}
       </div>
+      <Button
+        type="text"
+        size="small"
+        className={styles.detailsButton}
+        aria-label={`查看分镜${storyboardNo}错误详情`}
+        onClick={() => setDetailsOpen(true)}
+      >
+        查看错误详情
+      </Button>
       {onRetry ? (
-        <PointEstimateButton operations={retryOperations}
+        <PointEstimateButton
+          compact
+          operations={retryOperations}
           className={styles.retry}
           onClick={onRetry}
           aria-label={`重新生成分镜${storyboardNo}视频`}
@@ -84,6 +94,18 @@ export default function StoryboardVideoFailure({
           重新生成
         </PointEstimateButton>
       ) : null}
+      <Modal
+        title={`分镜${storyboardNo} · 错误详情`}
+        open={detailsOpen}
+        onCancel={() => setDetailsOpen(false)}
+        footer={null}
+        width={640}
+        centered
+        destroyOnHidden
+      >
+        <p className={styles.details}>{message}</p>
+        {children}
+      </Modal>
     </section>
   );
 }

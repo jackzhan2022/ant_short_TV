@@ -1,56 +1,30 @@
-import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
-  CloudUploadOutlined,
-  DeleteOutlined,
-  EyeOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
-import { PageContainer, ProTable } from '@ant-design/pro-components';
+import { HistoryOutlined, PlusOutlined } from '@ant-design/icons';
+import { PageContainer } from '@ant-design/pro-components';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UploadFile, UploadProps } from 'antd';
-import {
-  App,
-  Button,
-  Col,
-  Form,
-  Input,
-  Progress,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-  Upload,
-} from 'antd';
+import { App, Button, Upload, type UploadFile, type UploadProps } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import PointEstimateButton from '@/components/PointEstimateButton';
+import type { MediaUploadHandle } from '@/services/mediaUpload';
+import { isPointEstimateCancelled } from '@/services/point-estimate';
+import BatchHistory from './BatchHistory';
 import styles from './index.module.css';
 import {
   pollingDelay,
   shouldPollVideoDecompositionBatch,
   VideoDecompositionQueries,
 } from './queries';
-import ScreenplayDrawer from './ScreenplayDrawer';
-
-export { shouldPollVideoDecompositionBatch } from './queries';
-export { buildCopyAllScreenplays } from './ScreenplayDrawer';
-
-import PointEstimateButton from '@/components/PointEstimateButton';
-import type { MediaUploadHandle } from '@/services/mediaUpload';
-import { isPointEstimateCancelled } from '@/services/point-estimate';
-import { statusText } from '@/utils/fieldDictionary';
-import type {
-  VideoDecompositionBatch,
-  VideoDecompositionUpload,
-  VideoUnderstandingModel,
-} from './service';
+import ScreenplayWorkspace from './ScreenplayWorkspace';
+import type { VideoDecompositionUpload } from './service';
 import {
   createVideoDecompositionBatch,
   queryVideoDecompositionBatches,
   queryVideoUnderstandingModels,
   uploadEpisodeVideo,
 } from './service';
+import UploadComposer from './UploadComposer';
+
+export { shouldPollVideoDecompositionBatch } from './queries';
+export { buildCopyAllScreenplays } from './ScreenplayWorkspace';
 
 type EpisodeUpload = {
   uid: string;
@@ -85,11 +59,6 @@ export const buildDefaultVideoDecompositionBatchName = (date = new Date()) =>
 export const canCreateVideoDecompositionBatch = (episodes: EpisodeUpload[]) =>
   episodes.length > 0 && episodes.every((episode) => episode.storagePath);
 
-const formatFileSize = (size: number) =>
-  size >= MAX_VIDEO_SIZE
-    ? `${(size / MAX_VIDEO_SIZE).toFixed(2)} GB`
-    : `${(size / 1024 / 1024).toFixed(1)} MB`;
-
 const normalizeEpisodes = (files: UploadFile[]): EpisodeUpload[] =>
   files.map((file, index) => ({
     uid: file.uid,
@@ -105,16 +74,11 @@ const normalizeEpisodes = (files: UploadFile[]): EpisodeUpload[] =>
       ?.uploadSessionToken,
   }));
 
-const statusColor = (status: string) => {
-  if (status === 'FAILED' || status === 'PARTIAL_FAILED') return 'red';
-  if (status === 'SUCCEEDED' || status === 'CONFIRMED') return 'green';
-  if (status.includes('ANALYZING') || status === 'RUNNING') return 'blue';
-  return 'default';
-};
-
 const VideoScriptDecompositionPage = () => {
   const { message } = App.useApp();
   const client = useQueryClient();
+  const [view, setView] = useState<'compose' | 'history'>('compose');
+  const removedUploads = useRef(new Set<string>());
   const [files, setFiles] = useState<UploadFile[]>([]);
   const uploadHandles = useRef(new Map<string, MediaUploadHandle>());
   const activeUploads = useRef(new Set<string>());
@@ -122,7 +86,20 @@ const VideoScriptDecompositionPage = () => {
     buildDefaultVideoDecompositionBatchName,
   );
   const [modelId, setModelId] = useState<number>();
-  const [models, setModels] = useState<VideoUnderstandingModel[]>([]);
+  const modelsQuery = useQuery({
+    queryKey: ['video-understanding-models'],
+    queryFn: async () => (await queryVideoUnderstandingModels()).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const models = useMemo(
+    () =>
+      (modelsQuery.data ?? []).filter(
+        (model) =>
+          model.serviceType === 'VIDEO_UNDERSTANDING' &&
+          model.status === 'ENABLED',
+      ),
+    [modelsQuery.data],
+  );
   const [batchPage, setBatchPage] = useState(1);
   const [batchPageSize, setBatchPageSize] = useState(20);
   const [creating, setCreating] = useState(false);
@@ -165,6 +142,7 @@ const VideoScriptDecompositionPage = () => {
   }, []);
 
   const removeUpload = (uid: string) => {
+    removedUploads.current.add(uid);
     activeUploads.current.delete(uid);
     uploadHandles.current.get(uid)?.cancel();
     uploadHandles.current.delete(uid);
@@ -229,22 +207,24 @@ const VideoScriptDecompositionPage = () => {
   };
 
   useEffect(() => {
-    void queryVideoUnderstandingModels()
-      .then((response) => {
-        const available = (response.data ?? []).filter(
-          (model) =>
-            model.serviceType === 'VIDEO_UNDERSTANDING' &&
-            model.status === 'ENABLED',
-        );
-        setModels(available);
-        setModelId(
-          available.find(
-            (model) => model.modelCode === 'qwen3.7-plus' && model.isDefault,
-          )?.id ?? available[0]?.id,
-        );
-      })
-      .catch(() => undefined);
-  }, []);
+    setModelId((current) =>
+      models.some((model) => model.id === current)
+        ? current
+        : (models.find((model) => model.isDefault)?.id ?? models[0]?.id),
+    );
+  }, [models]);
+
+  const reorderFile = (uid: string, targetUid: string) => {
+    setFiles((current) => {
+      const from = current.findIndex((file) => file.uid === uid);
+      const to = current.findIndex((file) => file.uid === targetUid);
+      if (from < 0 || to < 0 || from === to) return current;
+      const next = [...current];
+      const [file] = next.splice(from, 1);
+      next.splice(to, 0, file);
+      return next;
+    });
+  };
 
   const moveFile = (uid: string, direction: -1 | 1) => {
     setFiles((current) => {
@@ -258,6 +238,7 @@ const VideoScriptDecompositionPage = () => {
   };
 
   const uploadProps: UploadProps = {
+    disabled: creating,
     accept: 'video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi',
     multiple: true,
     fileList: files,
@@ -267,7 +248,10 @@ const VideoScriptDecompositionPage = () => {
         message.error(`${file.name} 超过单文件 1GB 上限`);
         return Upload.LIST_IGNORE;
       }
-      if (file.type && !SUPPORTED_VIDEO_TYPES.includes(file.type)) {
+      if (
+        !/\.(mp4|mov|avi)$/i.test(file.name) ||
+        (file.type && !SUPPORTED_VIDEO_TYPES.includes(file.type))
+      ) {
         message.error(`${file.name} 暂不支持该视频格式`);
         return Upload.LIST_IGNORE;
       }
@@ -295,287 +279,178 @@ const VideoScriptDecompositionPage = () => {
       );
       return { abort: () => removeUpload(uid) };
     },
-    onChange: ({ fileList }) => setFiles(fileList),
+    onChange: ({ file, fileList }) =>
+      setFiles((current) => {
+        // Upload progress must never undo a user-defined order or restore a removed file.
+        const incoming = fileList.filter(
+          (item) => !removedUploads.current.has(item.uid),
+        );
+        const updates = new Map(incoming.map((item) => [item.uid, item]));
+        const known = new Set(current.map((item) => item.uid));
+        return [
+          ...current.map((item) =>
+            !file || item.uid === file.uid
+              ? (updates.get(item.uid) ?? item)
+              : item,
+          ),
+          ...incoming.filter((item) => !known.has(item.uid)),
+        ];
+      }),
     onRemove: (file) => {
       removeUpload(file.uid);
       return true;
     },
   };
 
+  const creationValues = useMemo(
+    () => ({
+      name: batchName.trim() || buildDefaultVideoDecompositionBatchName(),
+      modelId,
+      videos: episodes.map((episode) => ({
+        fileName: episode.fileName,
+        storagePath: episode.storagePath || '',
+        uploadSessionToken: episode.uploadSessionToken || '',
+        mimeType: episode.mimeType,
+        fileSize: episode.size,
+      })),
+    }),
+    [batchName, modelId, episodes],
+  );
+  const ready = canCreateVideoDecompositionBatch(episodes) && Boolean(modelId);
+  const showHistory = () => {
+    setOpenBatchId(undefined);
+    setView('history');
+  };
+  const showCompose = () => {
+    setOpenBatchId(undefined);
+    setView('compose');
+  };
+
+  const createBatch = async () => {
+    if (!ready || creating) return;
+    setCreating(true);
+    try {
+      const response = await createVideoDecompositionBatch(creationValues);
+      message.success('剧本生成批次已创建');
+      setFiles([]);
+      uploadHandles.current.clear();
+      activeUploads.current.clear();
+      removedUploads.current.clear();
+      setBatchName(buildDefaultVideoDecompositionBatchName());
+      client.setQueryData(['video-batch', response.data.id], response.data);
+      setOpenBatchId(response.data.id);
+      setBatchPage(1);
+      void client.invalidateQueries({
+        queryKey: ['video-batches'],
+        refetchType: 'none',
+      });
+    } catch (error) {
+      if (!isPointEstimateCancelled(error))
+        message.error(error instanceof Error ? error.message : '创建批次失败');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
-    <PageContainer title="视频拆剧">
+    <PageContainer
+      title={false}
+      breadcrumb={{ items: [] }}
+      className={styles.pageContainer}
+    >
       <div className={styles.page}>
-        <div className={styles.flow}>
-          上传并排序 <span>→</span> 开始生成剧本 <span>→</span> 查看与复制
-        </div>
-        <section className={styles.uploadPanel} aria-label="新建生成批次">
-          <Form layout="vertical">
-            <Row gutter={16}>
-              <Col xs={24} md={12}>
-                <Form.Item label="批次名称">
-                  <Input
-                    value={batchName}
-                    onChange={(event) => setBatchName(event.target.value)}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label="视频理解模型">
-                  <Select
-                    value={modelId}
-                    onChange={setModelId}
-                    style={{ width: '100%' }}
-                    placeholder="请选择视频理解模型"
-                    options={models.map((model) => ({
-                      value: model.id,
-                      label: `${model.name} (${model.modelCode})`,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-
-          <Upload.Dragger {...uploadProps}>
-            <p className="ant-upload-drag-icon">
-              <CloudUploadOutlined />
-            </p>
-            <Typography.Text strong>上传短剧视频</Typography.Text>
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              一个视频生成一集剧本，提交顺序就是集数顺序
-            </Typography.Paragraph>
-          </Upload.Dragger>
-
-          <ProTable<EpisodeUpload>
-            rowKey="uid"
-            search={false}
-            pagination={false}
-            options={false}
-            headerTitle="待生成剧本"
-            dataSource={episodes}
-            columns={[
-              {
-                title: '集数',
-                dataIndex: 'episodeNo',
-                render: (_, record) => <Tag>第 {record.episodeNo} 集</Tag>,
-              },
-              { title: '视频文件', dataIndex: 'fileName' },
-              {
-                title: '大小',
-                dataIndex: 'size',
-                renderText: (value) => formatFileSize(Number(value)),
-              },
-              {
-                title: '上传状态',
-                render: (_, record) =>
-                  record.uploadStatus === 'error' ? (
-                    <span className={styles.failed}>上传失败，请重试</span>
-                  ) : record.storagePath ? (
-                    <span className={styles.succeeded}>上传完成</span>
-                  ) : (
-                    <Progress
-                      size="small"
-                      percent={Math.round(
-                        files.find((file) => file.uid === record.uid)
-                          ?.percent ?? 0,
-                      )}
-                    />
-                  ),
-              },
-              {
-                title: '操作',
-                valueType: 'option',
-                render: (_, record) => (
-                  <Space>
-                    {record.uploadStatus === 'error' && (
-                      <Button
-                        aria-label="重试上传"
-                        title="重试上传"
-                        icon={<ReloadOutlined />}
-                        onClick={() => void retryUpload(record.uid)}
-                      />
-                    )}
-                    <Button
-                      aria-label="上移"
-                      icon={<ArrowUpOutlined />}
-                      disabled={record.episodeNo === 1}
-                      onClick={() => moveFile(record.uid, -1)}
-                    />
-                    <Button
-                      aria-label="下移"
-                      icon={<ArrowDownOutlined />}
-                      disabled={record.episodeNo === episodes.length}
-                      onClick={() => moveFile(record.uid, 1)}
-                    />
-                    <Button
-                      aria-label="删除"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => removeUpload(record.uid)}
-                    />
-                  </Space>
-                ),
-              },
-            ]}
-            toolBarRender={() => [
-              <PointEstimateButton
-                operations={
-                  modelId && canCreateVideoDecompositionBatch(episodes)
-                    ? [
-                        {
-                          url: '/api/video-script-decomposition/batches',
-                          data: {
-                            name: batchName.trim(),
-                            modelId,
-                            videos: episodes.map((episode) => ({
-                              fileName: episode.fileName,
-                              storagePath: episode.storagePath || '',
-                              uploadSessionToken:
-                                episode.uploadSessionToken || '',
-                              mimeType: episode.mimeType,
-                              fileSize: episode.size,
-                            })),
-                          },
-                        },
-                      ]
-                    : undefined
-                }
-                key="create"
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                disabled={
-                  !canCreateVideoDecompositionBatch(episodes) ||
-                  !modelId ||
-                  creating
-                }
-                loading={creating}
-                onClick={async () => {
-                  setCreating(true);
-                  try {
-                    const response = await createVideoDecompositionBatch({
-                      name:
-                        batchName.trim() ||
-                        buildDefaultVideoDecompositionBatchName(),
-                      modelId,
-                      videos: episodes.map((episode) => ({
-                        fileName: episode.fileName,
-                        storagePath: episode.storagePath || '',
-                        uploadSessionToken: episode.uploadSessionToken || '',
-                        mimeType: episode.mimeType,
-                        fileSize: episode.size,
-                      })),
-                    });
-                    message.success('剧本生成批次已创建');
-                    setFiles([]);
-                    uploadHandles.current.clear();
-                    activeUploads.current.clear();
-                    client.setQueryData(
-                      ['video-batch', response.data.id],
-                      response.data,
-                    );
-                    setOpenBatchId(response.data.id);
-                    setBatchPage(1);
-                    void client.invalidateQueries({
-                      queryKey: ['video-batches'],
-                      refetchType: 'none',
-                    });
-                  } catch (error) {
-                    if (isPointEstimateCancelled(error)) return;
-                    message.error(
-                      error instanceof Error ? error.message : '创建批次失败',
-                    );
-                  } finally {
-                    setCreating(false);
-                  }
-                }}
-              >
-                开始生成剧本
-              </PointEstimateButton>,
-            ]}
-          />
-          <div className={styles.uploadHint}>
-            已上传 {episodes.filter((episode) => episode.storagePath).length} /{' '}
-            {episodes.length} 个视频 · 提交顺序即集数顺序
+        <header className={styles.pageHeading}>
+          <div className={styles.headingTitle}>
+            <h1>视频拆剧</h1>
+            <span>从视频到剧本，按集整理</span>
           </div>
-        </section>
-
-        {batchesQuery.isError && (
-          <div role="alert">
-            批次加载失败{' '}
-            <Button onClick={() => void batchesQuery.refetch()}>
-              重试加载批次
-            </Button>
-          </div>
-        )}
-        <ProTable<VideoDecompositionBatch>
-          rowKey="id"
-          search={false}
-          options={false}
-          headerTitle="生成批次"
-          loading={batchesQuery.isPending}
-          dataSource={batches}
-          columns={[
-            { title: '批次', dataIndex: 'name' },
-            {
-              title: '进度',
-              render: (_, record) => (
-                <div>
-                  <Progress
-                    percent={record.percentage}
-                    size="small"
-                    status={
-                      record.status === 'FAILED' ? 'exception' : undefined
-                    }
-                  />
-                  <Typography.Text type="secondary">
-                    成功 {record.succeededEpisodes} · 处理中{' '}
-                    {record.processingEpisodes} · 待处理{' '}
-                    {record.pendingEpisodes} · 失败 {record.failedEpisodes}
-                  </Typography.Text>
-                </div>
-              ),
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              render: (value) => (
-                <Tag color={statusColor(String(value))}>
-                  {statusText(String(value))}
-                </Tag>
-              ),
-            },
-            {
-              title: '操作',
-              valueType: 'option',
-              render: (_, record) => (
+          <div className={styles.headingActions}>
+            {openBatchId ? (
+              <Button className={styles.quietButton} onClick={showHistory}>
+                ← 返回生成记录
+              </Button>
+            ) : (
+              view !== 'history' && (
                 <Button
-                  icon={<EyeOutlined />}
-                  onClick={() => {
-                    setOpenBatchId(record.id);
-                  }}
+                  className={styles.quietButton}
+                  icon={<HistoryOutlined />}
+                  disabled={creating}
+                  onClick={showHistory}
                 >
-                  查看全部剧本
+                  生成记录
+                  <span className={styles.countBadge}>{batchTotal}</span>
                 </Button>
-              ),
-            },
-          ]}
-          pagination={{
-            current: batchPage,
-            pageSize: batchPageSize,
-            total: batchTotal,
-            onChange: (current, size) => {
+              )
+            )}
+            {(openBatchId || view === 'history') && (
+              <Button
+                type="primary"
+                icon={files.length ? undefined : <PlusOutlined />}
+                disabled={creating}
+                onClick={showCompose}
+              >
+                {files.length ? `继续整理 ${files.length} 集` : '新建拆剧'}
+              </Button>
+            )}
+          </div>
+        </header>
+        <UploadComposer
+          files={files}
+          uploadProps={uploadProps}
+          active={!openBatchId && view === 'compose'}
+          batchName={batchName}
+          onBatchNameChange={setBatchName}
+          modelId={modelId}
+          models={models}
+          modelLoading={modelsQuery.isPending}
+          modelError={modelsQuery.isError}
+          onReloadModels={() => void modelsQuery.refetch()}
+          onModelChange={setModelId}
+          onMove={moveFile}
+          onReorder={reorderFile}
+          onRemove={removeUpload}
+          onRetry={(uid) => void retryUpload(uid)}
+          disabled={creating}
+          action={
+            <PointEstimateButton
+              compact
+              operations={
+                ready
+                  ? [
+                      {
+                        url: '/api/video-script-decomposition/batches',
+                        data: creationValues,
+                      },
+                    ]
+                  : undefined
+              }
+              type="primary"
+              disabled={!ready || creating}
+              loading={creating}
+              onClick={() => void createBatch()}
+            >
+              {files.length ? `生成 ${files.length} 集剧本` : '生成剧本'}
+            </PointEstimateButton>
+          }
+        />
+        {!openBatchId && view === 'history' && (
+          <BatchHistory
+            batches={batches}
+            total={batchTotal}
+            current={batchPage}
+            pageSize={batchPageSize}
+            pending={batchesQuery.isPending}
+            error={batchesQuery.isError}
+            onRetry={() => void batchesQuery.refetch()}
+            onPageChange={(current, size) => {
               setBatchPage(current);
               setBatchPageSize(size);
-            },
-          }}
-        />
-
-        {openBatchId && (
-          <ScreenplayDrawer
-            key={openBatchId}
-            batchId={openBatchId}
-            onClose={() => setOpenBatchId(undefined)}
+            }}
+            onOpen={setOpenBatchId}
           />
+        )}
+        {openBatchId && (
+          <ScreenplayWorkspace key={openBatchId} batchId={openBatchId} />
         )}
       </div>
     </PageContainer>

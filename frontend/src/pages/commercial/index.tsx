@@ -1,6 +1,6 @@
-import { LeftOutlined, WalletOutlined } from '@ant-design/icons';
+import { CalendarOutlined, CrownOutlined, LeftOutlined, TeamOutlined, WalletOutlined } from '@ant-design/icons';
 import { history, useAccess, useModel } from '@umijs/max';
-import { App, Button, Empty, Select, Spin, Table, Tag } from 'antd';
+import { App, Button, Empty, Select, Spin, Table, Tabs, Tag } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryTeamPointAccount, queryTeamPointTransactions } from '@/services/account-team/points';
@@ -78,6 +78,7 @@ const CommercialPage = () => {
   const [trialBalance, setTrialBalance] = useState(0);
   const [payment, setPayment] = useState<PaymentOrder>();
   const [submitting, setSubmitting] = useState(false);
+  const [recordTab, setRecordTab] = useState('points');
 
   const load = useCallback(async () => {
     if (!tenantId || currentTenantRef.current !== tenantId) return;
@@ -239,21 +240,39 @@ const CommercialPage = () => {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <button className={styles.brand} type="button" aria-label="剧智创" onClick={() => history.push('/')}>
-          <img className={styles.brandMark} src="/juzhichuang-logo-mark.png" alt="剧智创 Logo" /><span>剧智创</span>
-        </button>
-        <div className={styles.headerRight}>
-          <span className={styles.headerBalance}><WalletOutlined /> 团队积分 <strong>{formatPoints(balance)}</strong></span>
-          {trialBalance > 0 && <span>含试用专属积分 {formatPoints(trialBalance)}，不可用于视频生成</span>}
-          <Button type="text" icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button>
+        <div className={styles.headerInner}>
+          <div className={styles.headerLeft}>
+            <button className={styles.brand} type="button" aria-label="剧智创" onClick={() => history.push('/')}>
+              <span className={styles.brandMarkFrame}><img className={styles.brandMark} src="/juzhichuang-logo-mark.png" alt="剧智创 Logo" /></span><span>剧智创</span>
+            </button>
+            <span className={styles.headerLocation}><WalletOutlined />充值中心</span>
+          </div>
+          <div className={styles.headerRight}>
+            <span className={styles.headerTeam}><TeamOutlined />{teamName}</span>
+            <span className={styles.headerBalance}><span>团队积分</span><strong><span aria-hidden="true">✦</span> {formatPoints(balance)}</strong></span>
+            <Button className={styles.backButton} icon={<LeftOutlined />} onClick={() => history.back()}>返回工作台</Button>
+          </div>
         </div>
       </header>
       <div className={styles.content}>
-        <section className={styles.membershipSummary} aria-label="当前会员">
-          <div><span className={styles.label}>当前会员</span><strong>{current ? snapshotName(current.snapshotJson) : '暂无会员'}</strong>
-            {current ? <Tag color="success">{statusText(current.status)}</Tag> : null}</div>
-          {current ? <div><span className={styles.label}>有效期至</span><strong>{snapshotName(current.snapshotJson) === '试用套餐' ? '无到期时间' : formatCommercialDate(current.endsAt)}</strong></div> : null}
-          {current?.nextGrantAt ? <div><span className={styles.label}>下一次积分发放</span><strong>{formatCommercialDate(current.nextGrantAt)}</strong></div> : null}
+        <div className={styles.intro}><h1>充值中心</h1><p>会员按月享权益，积分包随时补充。</p></div>
+        <section className={styles.membershipSummary} aria-label="团队账户概览">
+          <div className={styles.accountBlock}>
+            <span className={styles.label}><WalletOutlined />可用积分</span>
+            <strong className={styles.accountBalance}><span aria-hidden="true">✦</span> <span>{formatPoints(balance)}</span></strong>
+            <span className={styles.accountNote}>{trialBalance > 0 ? `含试用专属积分 ${formatPoints(trialBalance)}，不可用于视频生成` : '当前团队共享余额'}</span>
+          </div>
+          <div className={styles.accountBlock}>
+            <span className={styles.label}><CrownOutlined />当前会员</span>
+            <div className={styles.accountValue}><strong>{current ? snapshotName(current.snapshotJson) : '暂无会员'}</strong>
+              {current ? <Tag color="success">{statusText(current.status)}</Tag> : null}</div>
+            <span className={styles.accountNote}>权益按订阅月发放</span>
+          </div>
+          <div className={styles.accountBlock}>
+            <span className={styles.label}><CalendarOutlined />会员有效期至</span>
+            <strong className={styles.accountDate}>{current ? (snapshotName(current.snapshotJson) === '试用套餐' ? '无到期时间' : formatCommercialDate(current.endsAt)) : '—'}</strong>
+            {current?.nextGrantAt && new Date(current.nextGrantAt).getTime() > Date.now() ? <span className={styles.accountNote}>下一次积分发放 {formatCommercialDate(current.nextGrantAt)}</span> : null}
+          </div>
         </section>
 
         <Spin spinning={loading}>
@@ -271,73 +290,73 @@ const CommercialPage = () => {
           />
         </Spin>
 
-        <section className={styles.accountSection} aria-label="订阅与订单">
-          <h2>订阅与订单</h2>
-          {queued.length === 0 && orders.length === 0 ? <Empty description="暂无排队订阅或待处理订单" /> : (
-            <div className={styles.orderList}>
-              {queued.map((item) => (
-                <div key={item.id} className={styles.orderRow}>
-                  <span>{snapshotName(item.snapshotJson)} <Tag>{statusText(item.status)}</Tag></span>
-                  <span>{formatCommercialDate(item.startsAt)} 至 {formatCommercialDate(item.endsAt)}</span>
-                </div>
-              ))}
-              {orders.map((item) => (
-                <div key={item.id} className={styles.orderRow}>
-                  <span>{item.merchantOrderNo} <Tag>{statusText(item.status)}</Tag></span>
-                  <span>{formatCommercialMoney(item.amount, item.currency)}</span>
-                  {pendingOrders.some((candidate) => candidate.id === item.id) ? (
-                    <Button type="link" onClick={() => {
-                      if (new Date(item.expiresAt).getTime() <= Date.now()) {
-                        messageRef.current.error('订单已过期，请重新下单');
-                        void load();
-                        return;
-                      }
-                      setPayment(item);
-                    }}>继续支付</Button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className={styles.accountSection} aria-label="积分明细" id="point-history">
-          <div className={styles.pointHistoryHeader}>
-            <h2>积分明细</h2>
-            <Select
-              aria-label="变化类型"
-              className={styles.pointTypeSelect}
-              size="small"
-              value={pointQuery.transactionType}
-              options={[{ label: '全部', value: '' }, ...Object.entries(pointTransactionTypeText).map(([value, label]) => ({ value, label }))]}
+        <section className={styles.records} aria-label="账户记录">
+          <div className={styles.recordsHeading}>
+            <Tabs aria-label="账户记录类型" activeKey={recordTab} onChange={setRecordTab}
+              items={[{ key: 'points', label: '积分明细' }, { key: 'orders', label: '订阅与订单' }]} />
+            {recordTab === 'points' && <Select
+              aria-label="变化类型" className={styles.pointTypeSelect} size="small" value={pointQuery.transactionType}
+              options={[{ label: '全部类型', value: '' }, ...Object.entries(pointTransactionTypeText).map(([value, label]) => ({ value, label }))]}
               onChange={(transactionType: string) => setPointQuery((query) => ({ ...query, current: 1, transactionType }))}
-            />
+            />}
           </div>
-          <Table<TeamPointTransaction>
-            rowKey="id"
-            size="small"
-            loading={pointsLoading}
-            pagination={{
-              current: pointQuery.current,
-              pageSize: pointQuery.pageSize,
-              total: pointTotal,
-              showSizeChanger: true,
-              pageSizeOptions: [20, 50, 100],
-              showTotal: (total) => `共 ${total} 条`,
-              onChange: (current, pageSize) => setPointQuery((query) => ({
-                ...query, current: pageSize === query.pageSize ? current : 1, pageSize,
-              })),
-            }}
-            dataSource={pointTransactions}
-            columns={[
-              { title: '变化类型', dataIndex: 'transactionType', render: (value: string) => pointTransactionTypeText[value] ?? value },
-              { title: '变动积分', dataIndex: 'changeAmount', render: (value: number) => <Tag color={value > 0 ? 'green' : value < 0 ? 'red' : undefined}>{formatPoints(Number(value))}</Tag> },
-              { title: '变动后余额', dataIndex: 'balanceAfter', render: (value: number) => formatPoints(Number(value)) },
-              { title: '说明', dataIndex: 'description', render: (value?: string) => value?.trim() || '-' },
-              { title: '时间', dataIndex: 'createdAt', render: (value?: string) => formatCommercialDate(value) },
-            ]}
-          />
+          <section className={styles.accountSection} aria-label="订阅与订单" hidden={recordTab !== 'orders'}>
+            {queued.length === 0 && orders.length === 0 ? <Empty description="暂无排队订阅或待处理订单" /> : (
+              <div className={styles.orderList}>
+                {queued.map((item) => (
+                  <div key={item.id} className={styles.orderRow}>
+                    <span>{snapshotName(item.snapshotJson)} <Tag>{statusText(item.status)}</Tag></span>
+                    <span>{formatCommercialDate(item.startsAt)} 至 {formatCommercialDate(item.endsAt)}</span>
+                  </div>
+                ))}
+                {orders.map((item) => (
+                  <div key={item.id} className={styles.orderRow}>
+                    <span>{item.merchantOrderNo} <Tag>{statusText(item.status)}</Tag></span>
+                    <span>{formatCommercialMoney(item.amount, item.currency)}</span>
+                    {pendingOrders.some((candidate) => candidate.id === item.id) ? (
+                      <Button type="link" onClick={() => {
+                        if (new Date(item.expiresAt).getTime() <= Date.now()) {
+                          messageRef.current.error('订单已过期，请重新下单');
+                          void load();
+                          return;
+                        }
+                        setPayment(item);
+                      }}>继续支付</Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className={styles.accountSection} aria-label="积分明细" id="point-history" hidden={recordTab !== 'points'}>
+            <Table<TeamPointTransaction>
+              rowKey="id"
+              size="small"
+              loading={pointsLoading}
+              pagination={{
+                current: pointQuery.current,
+                pageSize: pointQuery.pageSize,
+                total: pointTotal,
+                showSizeChanger: true,
+                pageSizeOptions: [20, 50, 100],
+                showTotal: (total) => `共 ${total} 条`,
+                onChange: (current, pageSize) => setPointQuery((query) => ({
+                  ...query, current: pageSize === query.pageSize ? current : 1, pageSize,
+                })),
+              }}
+              dataSource={pointTransactions}
+              columns={[
+                { title: '变化类型', dataIndex: 'transactionType', render: (value: string) => pointTransactionTypeText[value] ?? value },
+                { title: '变动积分', dataIndex: 'changeAmount', render: (value: number) => <span className={value > 0 ? styles.positiveAmount : styles.changeAmount}>{value > 0 ? '+' : ''}{formatPoints(Number(value))}</span> },
+                { title: '变动后余额', dataIndex: 'balanceAfter', render: (value: number) => formatPoints(Number(value)) },
+                { title: '说明', dataIndex: 'description', render: (value?: string) => value?.trim() || '-' },
+                { title: '时间', dataIndex: 'createdAt', render: (value?: string) => formatCommercialDate(value) },
+              ]}
+            />
+          </section>
         </section>
+        <footer className={styles.pageFooter}><span>支付后权益按套餐规则发放</span><span>金额及权益以实际订单为准</span></footer>
       </div>
       <PaymentModal payment={payment} onClose={() => setPayment(undefined)} />
     </main>

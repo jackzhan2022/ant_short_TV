@@ -195,9 +195,12 @@ vi.mock('@ant-design/icons', () => ({
   BarsOutlined: () => <span>bars</span>,
   BulbOutlined: () => <span>bulb</span>,
   CheckCircleOutlined: () => <span>check</span>,
+  CheckOutlined: () => <span>check</span>,
   CloseOutlined: () => <span>close</span>,
   CopyOutlined: () => <span>copy</span>,
   DeleteOutlined: () => <span>delete</span>,
+  DownOutlined: () => <span>down</span>,
+  EllipsisOutlined: () => <span>more</span>,
   EditOutlined: () => <span>edit</span>,
   ExpandOutlined: () => <span>expand</span>,
   FileTextOutlined: () => <span>file</span>,
@@ -210,6 +213,7 @@ vi.mock('@ant-design/icons', () => ({
   ReloadOutlined: () => <span>reload</span>,
   SettingOutlined: () => <span>setting</span>,
   SoundOutlined: () => <span>sound</span>,
+  SearchOutlined: () => <span>search</span>,
   SplitCellsOutlined: () => <span>split</span>,
   PlayCircleOutlined: () => <span>play</span>,
   ThunderboltOutlined: () => <span>thunderbolt</span>,
@@ -2014,9 +2018,7 @@ describe('ProductionWorkbench script page', () => {
 
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByText('图片上限 2')).toBeInTheDocument();
-    expect(screen.getByText('视频上限 1')).toBeInTheDocument();
-    expect(screen.getByText('音频上限 1')).toBeInTheDocument();
+    expect(await screen.findByText('2 图 · 1 视频 · 1 音频')).toBeInTheDocument();
     expect(await screen.findByText('已省略 Serena：MODEL_COUNT_LIMIT')).toBeInTheDocument();
     expect(screen.getByLabelText('分镜1角色1资产形态')).toBeInTheDocument();
   });
@@ -2040,7 +2042,8 @@ describe('ProductionWorkbench script page', () => {
     });
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('可能包含真人');
+    expect(await screen.findByRole('alert')).toHaveTextContent('视频生成失败');
+    fireEvent.click(screen.getByRole('button', { name: '查看分镜1错误详情' }));
     expect(await screen.findByAltText('图片3：Serena / 晚宴礼服')).toHaveAttribute('src', '/submitted-serena.png');
     expect(await screen.findByAltText('图片1：Rowan')).toHaveAttribute('src', '/submitted-rowan.png');
     expect(screen.getByText('图片3：Serena / 晚宴礼服')).toBeInTheDocument();
@@ -2234,7 +2237,7 @@ describe('ProductionWorkbench script page', () => {
       expect(mocks.updateStoryboard).toHaveBeenCalledWith(1, 101, expect.objectContaining({
         videoPrompt: '第一集尚未保存的提示词',
       }));
-      expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
+      expect(screen.getByText('夜色警报')).toBeInTheDocument();
     });
 
     it('does not save a pending prompt after deleting its storyboard', async () => {
@@ -2536,7 +2539,11 @@ describe('ProductionWorkbench script page', () => {
     const preview = screen.getByRole('region', { name: '分镜1视频预览区' });
     const generate = screen.getByRole('button', { name: '生成分镜1视频' });
     expect(preview).toContainElement(error);
-    expect(within(error).getByRole('alert')).toHaveTextContent(failure);
+    expect(within(error).getByRole('alert')).toHaveTextContent('视频生成失败');
+    expect(screen.queryByText(failure)).not.toBeInTheDocument();
+    fireEvent.click(within(error).getByRole('button', { name: '查看分镜1错误详情' }));
+    expect(screen.getByRole('dialog', { name: '分镜1 · 错误详情' })).toHaveTextContent(failure);
+    fireEvent.click(within(screen.getByRole('dialog', { name: '分镜1 · 错误详情' })).getByRole('button', { name: '取消' }));
     expect(generate.closest('.storyboard-prompt-panel')).not.toHaveTextContent(failure);
     expect(screen.queryByText('本次任务未完成')).not.toBeInTheDocument();
     expect(within(error).getByRole('button', { name: '重新生成分镜1视频' })).toBeInTheDocument();
@@ -2574,7 +2581,9 @@ describe('ProductionWorkbench script page', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成分镜1视频' }));
     await screen.findByRole('region', { name: '分镜1视频生成进度' });
     act(() => updates.get(9004)?.({ id: 9004, storyboardId: 101, status: 'FAILED', errorMessage: failure } as AiVideoTask));
-    expect(await screen.findByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent(failure);
+    expect(await screen.findByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent('视频生成失败');
+    fireEvent.click(screen.getByRole('button', { name: '查看分镜1错误详情' }));
+    expect(screen.getByRole('dialog', { name: '分镜1 · 错误详情' })).toHaveTextContent(failure);
   });
 
   it('closes only the corresponding storyboard error and restores its empty preview', async () => {
@@ -2587,7 +2596,9 @@ describe('ProductionWorkbench script page', () => {
     const secondError = await screen.findByRole('region', { name: '分镜2视频生成错误' });
     fireEvent.click(within(secondError).getByRole('button', { name: '关闭分镜2视频错误' }));
     expect(secondError).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent('分镜1失败原因');
+    expect(screen.getByRole('region', { name: '分镜1视频生成错误' })).toHaveTextContent('视频生成失败');
+    fireEvent.click(screen.getByRole('button', { name: '查看分镜1错误详情' }));
+    expect(screen.getByRole('dialog', { name: '分镜1 · 错误详情' })).toHaveTextContent('分镜1失败原因');
     expect(within(screen.getByRole('region', { name: '分镜2视频预览区' })).getByText('请先完成分镜视频生成')).toBeInTheDocument();
   });
 
@@ -2748,7 +2759,7 @@ describe('ProductionWorkbench script page', () => {
 
     expect(screen.getByText('分镜表')).toBeInTheDocument();
     expect(screen.getByText('批量生成视频')).toBeInTheDocument();
-    expect(screen.getByText('第1集 致命捉迷藏')).toBeInTheDocument();
+    expect(screen.getByText('致命捉迷藏')).toBeInTheDocument();
     expect(await screen.findByText('第一集概要')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(screen.getByText('分镜2')).toBeInTheDocument();
@@ -2780,7 +2791,7 @@ describe('ProductionWorkbench script page', () => {
         pageSize: 20,
       });
     });
-    expect(screen.getByText('第2集 夜色警报')).toBeInTheDocument();
+    expect(screen.getByText('夜色警报')).toBeInTheDocument();
     expect(await screen.findByText('第二集概要')).toBeInTheDocument();
     expect(screen.queryByText('第一集概要')).not.toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
@@ -2970,14 +2981,14 @@ describe('ProductionWorkbench script page', () => {
     render(<ProductionWorkbench />);
 
     expect(await screen.findByText('Serena在门外听见阴谋。')).toBeInTheDocument();
-    expect(screen.getByText('第1集 门缝里的阴谋')).toBeInTheDocument();
+    expect(screen.getByText('门缝里的阴谋')).toBeInTheDocument();
     expect(screen.queryByText('旧概要')).not.toBeInTheDocument();
     expect(screen.queryByText(/斌斌独自下楼玩耍/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '2' }));
 
     expect(await screen.findByText('Serena带着证据逃向露台。')).toBeInTheDocument();
-    expect(screen.getByText('第2集 暴雨追杀')).toBeInTheDocument();
+    expect(screen.getByText('暴雨追杀')).toBeInTheDocument();
     expect(screen.queryByText('Serena在门外听见阴谋。')).not.toBeInTheDocument();
     expect(screen.queryByText(/夜幕压低小区楼影/)).not.toBeInTheDocument();
   });
@@ -2989,7 +3000,7 @@ describe('ProductionWorkbench script page', () => {
     mocks.queryAiVoiceTasks.mockReturnValue(pending);
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByText('第1集 致命捉迷藏')).toBeInTheDocument();
+    expect(await screen.findByText('致命捉迷藏')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
     expect(mocks.queryScriptPageWorkspace).not.toHaveBeenCalled();
   });
@@ -3000,7 +3011,7 @@ describe('ProductionWorkbench script page', () => {
     mocks.queryProjectAiModels.mockReturnValue(pending);
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByText('第1集 致命捉迷藏')).toBeInTheDocument();
+    expect(await screen.findByText('致命捉迷藏')).toBeInTheDocument();
     expect(screen.getByText('分镜1')).toBeInTheDocument();
   });
 
@@ -3154,7 +3165,7 @@ describe('ProductionWorkbench script page', () => {
 
   it('submits only the selected active episode and refreshes after completion', async () => {
     render(<ProductionWorkbench />);
-    await screen.findByRole('button', { name: /生成本集分镜/ });
+    await waitFor(() => expect(screen.getByRole('button', { name: /生成本集分镜/ })).not.toBeDisabled());
 
     fireEvent.click(screen.getByRole('button', { name: /生成本集分镜/ }));
 
@@ -3457,7 +3468,7 @@ describe('ProductionWorkbench script page', () => {
     } });
     render(<ProductionWorkbench />);
 
-    expect(await screen.findByText('素材拉取超时')).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: '分镜2视频生成错误' })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '重试失败视频' }));
     await waitFor(() => {
       expect(mocks.regenerateAiVideoTask).toHaveBeenCalledTimes(1);
@@ -4231,6 +4242,29 @@ describe('ProductionWorkbench script page', () => {
       'src',
       'https://example.com/shot-101.mp4',
     );
+  });
+
+  it('moves playback to the large preview and releases it when the dialog closes', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    const { container } = render(<ProductionWorkbench />);
+    fireEvent.click(await screen.findByRole('button', { name: '播放分镜1成片预览' }));
+    const inline = await screen.findByLabelText('分镜1成片预览');
+    expect(inline).toHaveStyle({ objectFit: 'contain' });
+    fireEvent.click(screen.getByRole('button', { name: '大屏播放分镜1视频' }));
+    const dialog = screen.getByRole('dialog', { name: '分镜1视频预览' });
+    expect(inline).not.toBeInTheDocument();
+    expect(container.querySelector('video')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: '播放分镜1大屏成片预览' }));
+    const large = await within(dialog).findByLabelText('分镜1大屏成片预览');
+    expect(large).toHaveAttribute('src', 'https://example.com/shot-101.mp4');
+    expect(large).toHaveStyle({ objectFit: 'contain' });
+    expect(container.querySelectorAll('video')).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(container.querySelector('video')).toBeNull();
+    expect(large).not.toHaveAttribute('src');
+    expect(screen.getByRole('button', { name: '播放分镜1成片预览' })).toBeEnabled();
   });
 
   it('shows an empty state instead of sample storyboards when backend returns no shots', async () => {

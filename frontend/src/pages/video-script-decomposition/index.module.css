@@ -1,31 +1,525 @@
+.pageContainer :global(.ant-pro-page-container-children-container) {
+  padding: 24px 32px;
+}
 .page {
+  color: var(--app-color-text);
+  min-width: 0;
+  padding-bottom: 20px;
+}
+.page [hidden] {
+  display: none;
+}
+.pageHeading,
+.headingTitle,
+.headingActions {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+}
+.pageHeading {
+  justify-content: space-between;
   gap: 20px;
+  min-height: 40px;
 }
-.flow {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  color: var(--app-color-text-secondary);
-  font-size: 13px;
+.headingTitle {
+  gap: 18px;
 }
-.flow span {
+.headingTitle h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  margin: 0;
+}
+.headingTitle > span {
+  padding-left: 18px;
+  border-left: 1px solid var(--app-color-border-secondary);
   color: var(--app-color-text-tertiary);
+  font-size: 12px;
 }
-.uploadPanel {
-  padding: 22px;
+.headingActions {
+  gap: 10px;
+}
+.quietButton {
+  color: var(--app-color-text-secondary);
+  border-color: var(--app-color-border-secondary);
+  box-shadow: none;
+  font-size: 12px;
+}
+.countBadge {
+  border-radius: 4px;
+  background: var(--app-color-bg-layout);
+  color: var(--app-color-text-secondary);
+  font-size: 10px;
+  padding: 1px 6px;
+}
+.flowSteps {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 26px 0 28px;
+  padding: 0;
+  list-style: none;
+  color: var(--app-color-text-tertiary);
+  font-size: 12px;
+}
+.flowSteps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flowSteps li:not(:last-child)::after {
+  content: "";
+  height: 1px;
+  width: 55px;
+  background: var(--app-color-border-secondary);
+  margin: 0 18px 0 10px;
+}
+.flowSteps li > span {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  border: 1px solid var(--app-color-border-secondary);
+  background: var(--app-color-bg-container);
+  font-size: 11px;
+}
+.flowSteps li[aria-current="step"] {
+  color: var(--app-color-primary);
+  font-weight: 500;
+}
+.flowSteps li[aria-current="step"] > span {
+  color: white;
+  background: var(--app-color-primary);
+  border-color: var(--app-color-primary);
+  box-shadow: 0 0 0 4px var(--app-color-primary-bg);
+}
+.flowSteps li[data-done="true"] > span {
+  color: var(--app-color-primary);
+  background: var(--app-color-primary-bg);
+}
+.panel {
+  background: var(--app-color-bg-container);
   border: 1px solid var(--app-color-border-secondary);
   border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 3px 16px rgb(41 43 61 / 2%);
+}
+.intake {
+  max-width: 950px;
+  margin: 0 auto;
+}
+.intakeCopy {
+  text-align: center;
+  padding: 37px 24px 27px;
+}
+.intakeCopy > span {
+  color: var(--app-color-primary);
+  letter-spacing: 2px;
+  font-weight: 500;
+  font-size: 10px;
+}
+.intakeCopy h2 {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+  margin: 12px 0;
+}
+.intakeCopy p {
+  font-size: 12px;
+  color: var(--app-color-text-secondary);
+  margin: 0;
+  line-height: 1.8;
+}
+.intakeUpload {
+  padding: 0 34px 32px;
+}
+.intakeUpload :global(.ant-upload-drag) {
+  border-color: var(--app-color-primary-border, #cacbf0);
+  border-radius: 9px;
+  background: color-mix(
+    in srgb,
+    var(--app-color-primary-bg) 24%,
+    var(--app-color-bg-container)
+  );
+}
+.intakeUpload :global(.ant-upload-drag):hover {
+  background: color-mix(
+    in srgb,
+    var(--app-color-primary-bg) 45%,
+    var(--app-color-bg-container)
+  );
+}
+.dropContent {
+  min-height: 214px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.dropIllustration {
+  width: 62px;
+  height: 70px;
+  display: grid;
+  place-items: center;
+  background: var(--app-color-bg-container);
+  color: var(--app-color-primary);
+  border: 1px solid var(--app-color-primary-border, #d9daff);
+  border-radius: 10px;
+  box-shadow:
+    6px -5px 0 -1px var(--app-color-primary-bg),
+    6px -5px 0 0 var(--app-color-primary-border, #d9daff);
+  font-size: 28px;
+  margin-bottom: 23px;
+}
+.dropContent strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.dropContent em {
+  font-style: normal;
+  color: var(--app-color-primary);
+}
+.dropContent small {
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+  margin-top: 10px;
+}
+.intakeNote {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+  margin-top: 22px;
+}
+.intakeNote span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.configBar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 23px;
+  min-height: 78px;
+  border-top: 1px solid var(--app-color-border-secondary);
+}
+.configBar label {
+  color: var(--app-color-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.batchNameControl,
+.modelControl {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.batchNameControl {
+  flex: 1;
+}
+.batchNameControl input {
+  max-width: 260px;
+  font-size: 12px;
+  height: 36px;
+}
+.modelControl :global(.ant-select) {
+  width: 230px;
+  font-size: 12px;
+  height: 36px;
+}
+.configBar > span {
+  flex-shrink: 0;
+}
+.configBar :global(.ant-btn-primary) {
+  height: 38px;
+  min-width: 148px;
+  font-size: 12px;
+}
+.configBar :global(.point-estimate-compact) {
+  border-left: 1px solid rgb(255 255 255 / 35%);
+  margin-left: 4px;
+  padding-left: 10px;
+}
+.modelError,
+.uploadWarning {
+  font-size: 12px;
+  color: var(--app-color-error, #bb534f);
+}
+.modelError {
+  padding: 0 23px 14px;
+}
+.uploadWarning {
+  margin: 13px 0 0;
+}
+.panelHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--app-color-border-secondary);
+  padding: 18px 22px;
+}
+.panelHeading h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panelHeading p {
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+  margin: 6px 0 0;
+}
+.statusSummary {
+  font-size: 11px;
+  color: var(--app-color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.statusSummary i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--app-color-primary);
+  box-shadow: 0 0 0 4px var(--app-color-primary-bg);
+}
+.statusSummary[data-complete="true"] i {
+  background: var(--app-color-success, #27866b);
+  box-shadow: 0 0 0 4px var(--app-color-success-bg, #edf6f2);
+}
+.statusSummary[data-failed="true"] i {
+  background: var(--app-color-warning, #b78640);
+  box-shadow: 0 0 0 4px var(--app-color-warning-bg, #fcf5e9);
+}
+.studioGrid {
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  height: clamp(410px, calc(100dvh - 345px), 680px);
+}
+.uploadRail,
+.episodeRail {
+  overflow: auto;
+  border-right: 1px solid var(--app-color-border-secondary);
+  padding: 18px 12px;
+  background: color-mix(
+    in srgb,
+    var(--app-color-bg-layout) 35%,
+    var(--app-color-bg-container)
+  );
+  scrollbar-gutter: stable;
+}
+.railLabel {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px 15px;
+  color: var(--app-color-text-tertiary);
+  font-size: 11px;
+}
+.railLabel strong {
+  color: var(--app-color-text-secondary);
+  font-weight: 500;
+}
+.uploadList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.uploadItem {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  position: relative;
+  margin-bottom: 8px;
+}
+.uploadItem:hover {
+  background: var(--app-color-bg-layout);
+}
+.uploadItem[data-selected="true"] {
+  border-color: var(--app-color-primary-border, #d9daff);
+  background: var(--app-color-primary-bg);
+}
+.uploadSelect {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  text-align: left;
+  padding: 13px 10px;
+  cursor: pointer;
+  color: var(--app-color-text);
+}
+.thumbnail {
+  display: grid;
+  place-items: center;
+  width: 67px;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--app-color-primary-bg);
+  color: var(--app-color-primary);
+  border: 1px solid var(--app-color-primary-border, #d9daff);
+  font-size: 18px;
+}
+.uploadInfo {
+  flex: 1;
+  min-width: 0;
+}
+.uploadInfo strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+.uploadInfo > span {
+  display: block;
+  color: var(--app-color-text-tertiary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  font-size: 10px;
+}
+.uploadInfo small {
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.fileActions {
+  display: flex;
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  gap: 1px;
+  opacity: 0;
+  background: var(--app-color-bg-container);
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 5px;
+  box-shadow: 0 3px 10px rgb(41 43 61 / 5%);
+  transition: opacity 0.15s;
+}
+.fileActions :global(.ant-btn) {
+  width: 25px;
+  height: 25px;
+  font-size: 12px;
+}
+.uploadItem:hover .fileActions,
+.uploadItem:focus-within .fileActions {
+  opacity: 1;
+}
+.smallUpload {
+  margin-top: 4px;
+}
+.smallUpload :global(.ant-upload-drag) {
+  border-radius: 7px;
   background: var(--app-color-bg-container);
 }
-.uploadHint {
+.smallUpload :global(.ant-upload-drag .ant-upload-btn) {
+  padding: 10px 6px;
+  font-size: 11px;
   color: var(--app-color-text-secondary);
+}
+.railTip {
+  padding: 14px 9px 0;
+  font-size: 10px;
+  line-height: 1.9;
+  color: var(--app-color-text-tertiary);
+}
+.previewArea {
+  --video-width: min(100%, calc((100dvh - 440px) * 16 / 9));
+  min-width: 0;
+  padding: 22px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.videoTop,
+.previewCaption,
+.videoScreen {
+  width: var(--video-width);
+  min-width: min(300px, 100%);
+  max-width: 900px;
+  margin-inline: auto;
+}
+.videoTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 13px;
   font-size: 12px;
-  padding-top: 12px;
+}
+.videoTop > span {
+  color: var(--app-color-text-tertiary);
+  font-size: 10px;
+}
+.videoScreen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #202332;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.videoScreen video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.videoPlaceholder {
+  text-align: center;
+  padding: 24px;
+  color: #b6bbd0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.videoPlaceholder > :global(.anticon) {
+  font-size: 44px;
+  color: #8c92ae;
+  margin-bottom: 16px;
+}
+.videoPlaceholder p {
+  font-size: 12px;
+  margin: 0;
+}
+.videoPlaceholder small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.8;
+  margin-top: 8px;
+  color: #959db8;
+}
+.previewCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin-top: 13px;
+  color: var(--app-color-text-tertiary);
+  font-size: 10px;
+}
+.previewCaption > span:first-child {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  min-width: 0;
+}
+.previewCaption :global(.anticon) {
+  margin-right: 6px;
+}
+.previewCaption > span:last-child {
+  flex-shrink: 0;
 }
 .succeeded {
-  color: var(--app-color-success, #278366);
+  color: var(--app-color-success, #27866b);
 }
 .failed {
   color: var(--app-color-error, #bb534f);
@@ -33,97 +527,376 @@
 .muted {
   color: var(--app-color-text-tertiary);
 }
-.drawerTitle {
-  font-size: 17px;
+.loading {
+  padding: 36px;
 }
-.drawerTitle small {
-  display: block;
-  margin-top: 3px;
-  color: var(--app-color-text-tertiary);
-  font-size: 12px;
-  font-weight: 400;
+.batchWorkspace {
+  min-width: 0;
 }
-.drawerBody {
+.resultEpisodeList {
   display: flex;
   flex-direction: column;
-}
-.loading {
-  padding: 30px;
-}
-.batchStatus {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 24px;
-  font-size: 12px;
-  color: var(--app-color-text-secondary);
-  border-bottom: 1px solid var(--app-color-border-secondary);
-}
-.resultGrid {
-  display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-.episodeRail {
-  padding: 22px 12px;
-  border-right: 1px solid var(--app-color-border-secondary);
-  background: var(--app-color-bg-container);
-  overflow-y: auto;
-}
-.railLabel {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 10px 18px;
-  color: var(--app-color-text-tertiary);
-  font-size: 12px;
+  gap: 7px;
 }
 .episodeButton {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 11px;
   width: 100%;
-  padding: 13px 12px;
-  margin-bottom: 8px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
   text-align: left;
+  background: none;
   color: var(--app-color-text);
-  background: transparent;
+  padding: 14px 10px;
   cursor: pointer;
 }
 .episodeButton:hover {
   background: var(--app-color-bg-layout);
 }
 .episodeButton[aria-pressed="true"] {
+  border-color: var(--app-color-primary-border, #d9daff);
   background: var(--app-color-primary-bg);
-  color: var(--app-color-primary);
 }
-.episodeButton strong {
-  display: block;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  font-weight: 500;
-  margin: 5px 0;
+.resultEpisodeIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 39px;
+  height: 43px;
+  border: 1px solid var(--app-color-border-secondary);
+  background: var(--app-color-bg-container);
+  border-radius: 5px;
+  color: var(--app-color-text-tertiary);
+  font-size: 18px;
 }
-.episodeButton > span {
-  display: block;
-  font-size: 11px;
+.resultEpisodeInfo {
+  flex: 1;
+  min-width: 0;
 }
 .episodeNumber {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.resultEpisodeInfo strong {
+  display: block;
+  color: var(--app-color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 400;
+  margin: 5px 0;
+}
+.resultEpisodeInfo small {
+  display: block;
+  font-size: 10px;
+}
+.completeIcon,
+.failureIcon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--app-color-success, #27866b);
+  background: var(--app-color-success-bg, #edf6f1);
+  font-size: 12px;
+}
+.failureIcon {
+  color: var(--app-color-warning, #b78640);
+  background: var(--app-color-warning-bg, #fcf5e9);
+}
+.stateArea {
+  min-width: 0;
+  overflow: auto;
+}
+.progressArea,
+.failedArea {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+}
+.progressArea h3,
+.failedArea h3 {
+  margin: 0 0 12px;
+  color: var(--app-color-text);
+  font-size: 17px;
+  font-weight: 500;
+}
+.progressArea p,
+.failedArea p {
   color: var(--app-color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.9;
+  margin: 0;
+}
+.progressOrbit {
+  position: relative;
+  width: 156px;
+  height: 156px;
+  display: grid;
+  place-items: center;
+  margin: 0 0 26px;
+}
+.orbitAnimation {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed var(--app-color-primary-border, #d9daff);
+  border-radius: 50%;
+  animation: orbit 12s linear infinite;
+}
+.orbitAnimation::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--app-color-primary-hover, #9292ff);
+  box-shadow: 0 0 0 5px var(--app-color-primary-bg);
+}
+.progressNumber {
+  font-size: 37px;
+  font-weight: 500;
+  letter-spacing: -1.5px;
+  color: var(--app-color-text);
+  font-variant-numeric: tabular-nums;
+}
+.progressNumber small {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--app-color-text-tertiary);
+  margin-left: 3px;
+  letter-spacing: 0;
+}
+.miniProgress {
+  flex-shrink: 0;
+}
+.miniProgress .progressNumber {
+  font-size: 9px;
+  color: var(--app-color-primary);
+  letter-spacing: 0;
+}
+.miniProgress .progressNumber small {
+  font-size: 7px;
+  margin-left: 0;
+  color: inherit;
+}
+.progressStage {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--app-color-primary);
+  background: var(--app-color-primary-bg);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  margin-top: 23px;
+}
+.progressStage i {
+  width: 4px;
+  height: 4px;
+  background: currentcolor;
+  border-radius: 50%;
+  animation: breathe 1.8s ease-in-out infinite;
+}
+.failedStateIcon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  background: var(--app-color-warning-bg, #fcf5e9);
+  color: var(--app-color-warning, #b78640);
+  border-radius: 50%;
+  font-size: 23px;
+  margin-bottom: 20px;
+}
+.failedArea p[role="alert"] {
+  max-width: 540px;
+  color: var(--app-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.failedArea > :last-child {
+  margin-top: 22px;
 }
 .reader {
   min-width: 0;
   overflow-y: auto;
-  padding: 28px 32px;
+  padding: 26px 30px;
   background: var(--app-color-bg-layout);
   scrollbar-gutter: stable;
 }
+.readingNav {
+  max-width: 790px;
+  margin: 18px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--app-color-text-tertiary);
+}
+.resultFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 22px;
+  border-top: 1px solid var(--app-color-border-secondary);
+  color: var(--app-color-text-secondary);
+  font-size: 11px;
+}
+.resultFooter > div {
+  display: flex;
+  gap: 8px;
+}
+.historyView {
+  margin-top: 28px;
+}
+.historyHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.historyHeading h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
+.historyHeading > span {
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+}
+.historyGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px;
+}
+.historyCard {
+  background: var(--app-color-bg-container);
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 10px;
+  padding: 22px;
+  min-width: 0;
+}
+.historyCard header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.batchIcon {
+  width: 38px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--app-color-primary-border, #d9daff);
+  border-radius: 6px;
+  background: color-mix(
+    in srgb,
+    var(--app-color-primary-bg) 40%,
+    var(--app-color-bg-container)
+  );
+  color: var(--app-color-primary);
+  font-size: 19px;
+}
+.historyCard header > div {
+  flex: 1;
+  min-width: 0;
+}
+.historyCard h3 {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-color-text);
+  margin: 0 0 7px;
+  overflow-wrap: anywhere;
+}
+.historyCard small {
+  font-size: 10px;
+  color: var(--app-color-text-tertiary);
+}
+.batchBadge {
+  border-radius: 4px;
+  background: var(--app-color-primary-bg);
+  color: var(--app-color-primary);
+  padding: 4px 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.batchBadge[data-failed="true"] {
+  color: var(--app-color-warning, #b78640);
+  background: var(--app-color-warning-bg, #fcf5e9);
+}
+.historyCard footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+.historyCard footer > span {
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+}
+.historyCard em {
+  color: var(--app-color-warning, #b78640);
+  font-style: normal;
+}
+.historyPagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+.historyError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 22px;
+  font-size: 12px;
+  color: var(--app-color-error, #bb534f);
+  border-bottom: 1px solid var(--app-color-border-secondary);
+}
+.historyView > .historyError {
+  background: var(--app-color-bg-container);
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.emptyHistory {
+  padding: 65px 20px;
+  border: 1px solid var(--app-color-border-secondary);
+  border-radius: 10px;
+  background: var(--app-color-bg-container);
+}
+.uploadSelect:focus-visible,
+.episodeButton:focus-visible {
+  outline: 2px solid var(--app-color-primary);
+  outline-offset: 2px;
+}
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
 .paper {
-  max-width: 730px;
+  max-width: 790px;
   margin-inline: auto;
-  padding: 36px 46px 26px;
+  padding: 32px 40px;
   background: var(--app-color-bg-container);
   color: var(--app-color-text);
   border: 1px solid var(--app-color-border-secondary);
@@ -150,7 +923,7 @@
 .screenplay {
   margin-top: 22px;
   color: var(--app-color-text-secondary);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 2.05;
   overflow-wrap: anywhere;
 }
@@ -161,7 +934,7 @@
 }
 .screenplay h1 {
   color: var(--app-color-text);
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: 1px;
@@ -171,7 +944,7 @@
 }
 .screenplay h2 {
   color: var(--app-color-text);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.8;
   font-weight: 600;
   border-bottom: 0;
@@ -180,7 +953,7 @@
 }
 .screenplay h3 {
   color: var(--app-color-text);
-  font-size: 15px;
+  font-size: 14px;
   margin: 22px 0 12px;
 }
 .screenplay p {
@@ -221,11 +994,8 @@
   margin-top: 6px;
   white-space: pre-wrap;
   color: var(--app-color-text);
-  font:
-    18px / 1.95 "Noto Serif SC",
-    "Songti SC",
-    SimSun,
-    serif;
+  font-size: 14px;
+  line-height: 2;
   letter-spacing: 0.5px;
 }
 .endMark {
@@ -237,36 +1007,62 @@
   letter-spacing: 3px;
   color: var(--app-color-text-tertiary);
 }
-.failure {
-  color: var(--app-color-error, #bb534f);
-  padding: 20px 0;
+@media (min-width: 1650px) {
+  .studioGrid {
+    grid-template-columns: 310px minmax(0, 1fr);
+  }
 }
-.pending {
-  padding-top: 28px;
-  color: var(--app-color-text-secondary);
+@media (max-width: 1200px) {
+  .pageContainer :global(.ant-pro-page-container-children-container) {
+    padding: 24px;
+  }
+  .studioGrid {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+  .thumbnail {
+    width: 54px;
+  }
+  .modelControl :global(.ant-select) {
+    width: 195px;
+  }
+  .configBar {
+    padding-inline: 18px;
+    gap: 12px;
+  }
+  .batchNameControl input {
+    max-width: 220px;
+  }
+  .resultEpisodeIcon {
+    display: none;
+  }
+  .headingTitle > span {
+    display: none;
+  }
+  .historyCard {
+    padding: 19px;
+  }
 }
-.readingNav {
-  max-width: 730px;
-  margin: 18px auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--app-color-text-tertiary);
-}
-.resultFooter {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 24px;
-  border-top: 1px solid var(--app-color-border-secondary);
-  color: var(--app-color-text-tertiary);
-  font-size: 11px;
-}
-@media (max-width: 800px) {
-  .resultGrid {
-    grid-template-columns: 150px minmax(0, 1fr);
+@media (max-width: 900px) {
+  .studioGrid {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+  .thumbnail {
+    display: none;
+  }
+  .configBar {
+    flex-wrap: wrap;
+  }
+  .batchNameControl {
+    flex: 1 1 100%;
+  }
+  .batchNameControl input {
+    max-width: 100%;
+  }
+  .configBar > span {
+    margin-left: auto;
+  }
+  .modelControl :global(.ant-select) {
+    width: 220px;
   }
   .reader {
     padding: 20px;
@@ -274,54 +1070,246 @@
   .paper {
     padding: 28px 26px;
   }
-  .screenplay h1 {
-    font-size: 26px;
-  }
-}
-@media (max-width: 550px) {
-  .uploadPanel {
-    padding: 14px;
-  }
-  .resultGrid {
-    display: flex;
-    flex-direction: column;
-  }
-  .episodeRail {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 6px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--app-color-border-secondary);
-    padding: 10px;
-  }
-  .railLabel {
+  .previewCaption > span:last-child {
     display: none;
   }
-  .episodeButton {
-    flex: 0 0 125px;
-    margin: 0;
-    padding: 9px 10px;
+  .historyGrid {
+    grid-template-columns: 1fr;
   }
-  .episodeButton strong {
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
+  .statusSummary {
+    white-space: normal;
+  }
+  .resultFooter {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 650px) {
+  .pageContainer :global(.ant-pro-page-container-children-container) {
+    padding: 18px 12px;
+  }
+  .pageHeading {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .headingTitle h1 {
+    font-size: 20px;
+  }
+  .headingActions {
+    gap: 7px;
+  }
+  .headingActions :global(.ant-btn) {
+    font-size: 11px;
+    padding-inline: 10px;
+  }
+  .flowSteps {
+    font-size: 11px;
+    margin: 24px 0;
+  }
+  .flowSteps li {
+    gap: 6px;
+  }
+  .flowSteps li:not(:last-child)::after {
+    width: 21px;
+    margin: 0 9px 0 4px;
+  }
+  .flowSteps li > span {
+    width: 21px;
+    height: 21px;
+    font-size: 10px;
+  }
+  .intakeCopy {
+    padding: 29px 15px 24px;
+  }
+  .intakeCopy h2 {
+    font-size: 22px;
+  }
+  .intakeCopy p {
+    font-size: 11px;
+  }
+  .intakeUpload {
+    padding: 0 16px 23px;
+  }
+  .dropContent {
+    min-height: 210px;
+  }
+  .dropContent strong {
+    font-size: 12px;
+  }
+  .dropContent small {
+    font-size: 10px;
+  }
+  .configBar {
+    padding: 14px 12px;
+    gap: 12px 8px;
+  }
+  .configBar label {
+    font-size: 10px;
+  }
+  .modelControl > label {
+    display: none;
+  }
+  .modelControl :global(.ant-select) {
+    width: 164px;
+    font-size: 10px;
+  }
+  .configBar :global(.ant-btn-primary) {
+    font-size: 11px;
+    min-width: 0;
+    height: 36px;
+    padding-inline: 10px;
+  }
+  .configBar :global(.point-estimate-compact) {
+    padding-left: 7px;
+    margin-left: 0;
+  }
+  .intakeNote {
+    font-size: 10px;
+    gap: 14px;
+  }
+  .panelHeading {
+    padding: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .panelHeading h2 {
+    font-size: 13px;
+  }
+  .panelHeading p,
+  .statusSummary {
+    font-size: 10px;
+  }
+  .studioGrid {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+  .uploadRail,
+  .episodeRail {
+    border-right: 0;
+    border-bottom: 1px solid var(--app-color-border-secondary);
+    padding: 13px 12px;
+    max-height: 200px;
+  }
+  .railLabel {
+    padding: 0 3px 12px;
+  }
+  .uploadList,
+  .resultEpisodeList {
+    display: flex;
+    flex-direction: row;
+    gap: 7px;
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+  .uploadItem {
+    flex: 0 0 165px;
+    margin: 0;
+  }
+  .uploadSelect {
+    padding: 11px;
+  }
+  .uploadInfo strong {
+    font-size: 11px;
+  }
+  .railTip {
+    display: none;
+  }
+  .smallUpload :global(.ant-upload-drag .ant-upload-btn) {
+    padding: 8px;
+  }
+  .previewArea {
+    --video-width: 100%;
+    padding: 18px 14px;
+  }
+  .previewCaption {
+    font-size: 9px;
+  }
+  .videoPlaceholder {
+    padding: 20px;
+  }
+  .episodeButton {
+    flex: 0 0 175px;
+    padding: 10px;
+  }
+  .episodeNumber {
+    font-size: 11px;
+  }
+  .stateArea {
+    min-height: 365px;
+  }
+  .progressArea,
+  .failedArea {
+    min-height: 365px;
+    padding: 24px 20px;
+  }
+  .progressArea h3,
+  .failedArea h3 {
+    font-size: 16px;
   }
   .reader {
-    flex: 1;
-    min-height: 0;
+    max-height: 580px;
     padding: 14px;
   }
   .paper {
     padding: 24px 20px;
   }
-  .dialogue {
-    margin-left: 10px;
+  .screenplay h1 {
+    font-size: 20px;
   }
-  .batchStatus,
+  .dialogue {
+    margin-left: 8px;
+    padding-left: 13px;
+  }
   .resultFooter {
-    padding: 10px 16px;
+    padding: 13px;
+  }
+  .resultFooter > span {
+    font-size: 10px;
+  }
+  .resultFooter .quietButton {
+    font-size: 11px;
+  }
+  .historyCard {
+    padding: 18px;
+  }
+  .historyCard header {
+    gap: 9px;
+  }
+  .batchIcon {
+    width: 31px;
+    height: 36px;
+  }
+  .historyCard h3 {
+    font-size: 12px;
+  }
+  .batchBadge {
+    font-size: 9px;
+    padding: 3px 5px;
+  }
+  .historyCard footer {
+    gap: 9px;
+  }
+  .historyPagination {
+    overflow-x: auto;
+  }
+}
+@media (hover: none) {
+  .fileActions {
+    opacity: 1;
+  }
+  .uploadSelect {
+    padding-bottom: 34px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbitAnimation,
+  .progressStage i {
+    animation: none;
+  }
+  .fileActions {
+    transition: none;
+  }
+  .page :global(.ant-progress-circle-path) {
+    transition: none;
   }
 }

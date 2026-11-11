@@ -143,6 +143,49 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+it('clears the draft and audition without saving a voice', async () => {
+  show(true);
+  fireEvent.click(await screen.findByRole('radio', { name: /清朗少年/ }));
+  expect(screen.getByText('已选 1 项')).toBeInTheDocument();
+  expect(
+    screen.getByLabelText('试听清朗少年', { selector: 'audio' }),
+  ).toHaveAttribute('src', '/api/system-audio/71/playback');
+  fireEvent.click(screen.getByRole('button', { name: '清除' }));
+  expect(screen.getByRole('radio', { name: /清朗少年/ })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
+  expect(
+    screen.queryByLabelText('试听清朗少年', { selector: 'audio' }),
+  ).not.toBeInTheDocument();
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it('auditions another audio without replacing the selected reference', async () => {
+  mocks.library.mockResolvedValue(
+    response([
+      audio,
+      { ...audio, id: 52, name: '第二段.wav', previewUrl: '/audio/52' },
+    ]),
+  );
+  show();
+  fireEvent.click(
+    await screen.findByRole('button', { name: '打开匠心音频库' }),
+  );
+  fireEvent.click(await screen.findByRole('radio', { name: /角色参考.wav/ }));
+  fireEvent.click(screen.getByRole('button', { name: '试听第二段.wav' }));
+  expect(
+    screen.getByLabelText('试听第二段.wav', { selector: 'audio' }),
+  ).toHaveAttribute('src', '/audio/52');
+  expect(screen.getByRole('radio', { name: /角色参考.wav/ })).toBeChecked();
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
+  await waitFor(() =>
+    expect(mocks.save).toHaveBeenCalledWith(
+      1,
+      11,
+      expect.objectContaining({ resourceId: 51 }),
+    ),
+  );
+});
+
 it('loads project folders first and saves an audio only from the selected project', async () => {
   show();
   fireEvent.click(
@@ -159,7 +202,7 @@ it('loads project folders first and saves an audio only from the selected projec
   expect(
     screen.getByLabelText('试听角色参考.wav', { selector: 'audio' }),
   ).toHaveAttribute('src', '/audio/51');
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await waitFor(() => expect(mocks.saved).toHaveBeenCalledWith(reference));
   expect(mocks.save).toHaveBeenCalledWith(
     1,
@@ -174,7 +217,7 @@ it('selects system audio and saves its reference in the current project without 
     'aria-selected',
     'true',
   );
-  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
   const systemReference = {
     sourceProjectId: 1,
     sourceProjectName: '系统音频',
@@ -190,13 +233,17 @@ it('selects system audio and saves its reference in the current project without 
   expect(
     screen.getByLabelText('试听清朗少年', { selector: 'audio' }),
   ).toHaveAttribute('src', systemReference.previewUrl);
-  const firstPlayer = screen.getByLabelText('试听清朗少年', { selector: 'audio' });
+  const firstPlayer = screen.getByLabelText('试听清朗少年', {
+    selector: 'audio',
+  });
   fireEvent.error(firstPlayer);
   expect(screen.getByRole('alert')).toHaveTextContent('音频播放失败');
   fireEvent.click(screen.getByRole('button', { name: '试听清朗少年' }));
-  expect(screen.getByLabelText('试听清朗少年', { selector: 'audio' })).not.toBe(firstPlayer);
+  expect(screen.getByLabelText('试听清朗少年', { selector: 'audio' })).not.toBe(
+    firstPlayer,
+  );
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await waitFor(() =>
     expect(mocks.saved).toHaveBeenCalledWith(systemReference),
   );
@@ -209,18 +256,18 @@ it('clears a system selection and its player when switching sources', async () =
   show(true);
   fireEvent.click(await screen.findByRole('radio', { name: /清朗少年/ }));
   fireEvent.click(screen.getByRole('button', { name: '试听清朗少年' }));
-  expect(screen.getByRole('button', { name: '确认' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeEnabled();
   fireEvent.click(screen.getByRole('tab', { name: '项目音频库' }));
   await screen.findByRole('button', { name: '打开匠心音频库' });
   expect(
     screen.queryByLabelText('试听清朗少年', { selector: 'audio' }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
   fireEvent.click(screen.getByRole('tab', { name: '系统音频' }));
   expect(
     await screen.findByRole('radio', { name: /清朗少年/ }),
   ).not.toBeChecked();
-  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
 });
 
 it('ignores stale system audio results after changing filters and supports retry', async () => {
@@ -279,7 +326,7 @@ it('clears selection and playback when returning to projects and filters folders
     await screen.findByRole('button', { name: '打开另一项目音频库' }),
   );
   await screen.findByRole('radio', { name: /角色参考.wav/ });
-  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
   expect(mocks.library).toHaveBeenLastCalledWith(
     2,
     expect.objectContaining({ category: undefined }),
@@ -324,7 +371,7 @@ it('uploads local audio to the current project before saving the character refer
     'src',
     'blob:local-audio',
   );
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await waitFor(() => expect(mocks.saved).toHaveBeenCalledWith(reference));
   expect(mocks.upload).toHaveBeenCalledWith(
     expect.any(File),
@@ -347,11 +394,11 @@ it('rejects unsupported local files and cancels a pending upload when unmounted'
   fireEvent.change(screen.getByLabelText('上传参考音频'), {
     target: { files: [new File(['bad'], 'image.png')] },
   });
-  expect(screen.getByRole('button', { name: '确认' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '应用音色' })).toBeDisabled();
   fireEvent.change(screen.getByLabelText('上传参考音频'), {
     target: { files: [new File(['audio'], '参考.mp3')] },
   });
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await waitFor(() => expect(mocks.upload).toHaveBeenCalledOnce());
   view.unmount();
   await act(async () =>
@@ -377,7 +424,7 @@ it('shows persisted voice information and does not silently accept a failed save
     await screen.findByRole('button', { name: '打开匠心音频库' }),
   );
   fireEvent.click(await screen.findByRole('radio', { name: /角色参考.wav/ }));
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await screen.findByText('无权访问来源项目');
   expect(mocks.saved).not.toHaveBeenCalled();
   expect(mocks.close).not.toHaveBeenCalled();
@@ -386,41 +433,107 @@ it('shows persisted voice information and does not silently accept a failed save
 it('saves a storyboard shape override without changing the characters default voice', async () => {
   const scope = { id: 301, variantId: 101, variantName: '老年形态' };
   const changed = vi.fn();
-  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国" storyboard={scope} onClose={mocks.close} onSaved={mocks.saved} onChanged={changed} /></App>);
+  render(
+    <App>
+      <CharacterVoiceModal
+        projectId={1}
+        characterId={11}
+        characterName="陈志国"
+        storyboard={scope}
+        onClose={mocks.close}
+        onSaved={mocks.saved}
+        onChanged={changed}
+      />
+    </App>,
+  );
   await screen.findByText(/使用角色默认音色/);
   expect(mocks.current).not.toHaveBeenCalled();
-  expect(mocks.storyboardCurrent).toHaveBeenCalledWith(1, 11, scope, expect.any(AbortSignal));
+  expect(mocks.storyboardCurrent).toHaveBeenCalledWith(
+    1,
+    11,
+    scope,
+    expect.any(AbortSignal),
+  );
   fireEvent.click(screen.getByRole('tab', { name: '项目音频库' }));
-  fireEvent.click(await screen.findByRole('button', { name: '打开匠心音频库' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: '打开匠心音频库' }),
+  );
   fireEvent.click(await screen.findByRole('radio', { name: /角色参考.wav/ }));
-  fireEvent.click(screen.getByRole('button', { name: '确认' }));
+  fireEvent.click(screen.getByRole('button', { name: '应用音色' }));
   await waitFor(() => expect(mocks.saved).toHaveBeenCalledWith(reference));
-  expect(mocks.storyboardSave).toHaveBeenCalledWith(1, 11, scope, expect.objectContaining({ sourceProjectId: 1, resourceId: 51 }));
+  expect(mocks.storyboardSave).toHaveBeenCalledWith(
+    1,
+    11,
+    scope,
+    expect.objectContaining({ sourceProjectId: 1, resourceId: 51 }),
+  );
   expect(changed).toHaveBeenCalledTimes(1);
   expect(mocks.save).not.toHaveBeenCalled();
 });
 
 it('removes only the storyboard override when restoring the default voice', async () => {
-  mocks.storyboardCurrent.mockResolvedValue({ success: true, data: { audio: reference, overridden: true } });
-  mocks.storyboardReset.mockResolvedValue({ success: true, data: { audio: { ...reference, name: '角色默认.wav' }, overridden: false } });
+  mocks.storyboardCurrent.mockResolvedValue({
+    success: true,
+    data: { audio: reference, overridden: true },
+  });
+  mocks.storyboardReset.mockResolvedValue({
+    success: true,
+    data: { audio: { ...reference, name: '角色默认.wav' }, overridden: false },
+  });
   const scope = { id: 301, variantId: 101 };
-  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国" storyboard={scope} onClose={mocks.close} onSaved={mocks.saved} /></App>);
-  fireEvent.click(await screen.findByRole('button', { name: '恢复角色默认音色' }));
+  render(
+    <App>
+      <CharacterVoiceModal
+        projectId={1}
+        characterId={11}
+        characterName="陈志国"
+        storyboard={scope}
+        onClose={mocks.close}
+        onSaved={mocks.saved}
+      />
+    </App>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: '恢复角色默认音色' }),
+  );
   await screen.findByText('当前音色：角色默认.wav');
   expect(mocks.storyboardReset).toHaveBeenCalledWith(1, 11, scope);
-  expect(screen.queryByRole('button', { name: '恢复角色默认音色' })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: '恢复角色默认音色' }),
+  ).not.toBeInTheDocument();
   expect(mocks.save).not.toHaveBeenCalled();
   expect(mocks.storyboardSave).not.toHaveBeenCalled();
 });
 
-
-it.each([reference, null])('notifies the card after restoring a default, including an empty default (%s)', async (audio) => {
-  mocks.storyboardCurrent.mockResolvedValue({ success: true, data: { audio: reference, overridden: true } });
-  mocks.storyboardReset.mockResolvedValue({ success: true, data: { audio, overridden: false } });
+it.each([
+  reference,
+  null,
+])('notifies the card after restoring a default, including an empty default (%s)', async (audio) => {
+  mocks.storyboardCurrent.mockResolvedValue({
+    success: true,
+    data: { audio: reference, overridden: true },
+  });
+  mocks.storyboardReset.mockResolvedValue({
+    success: true,
+    data: { audio, overridden: false },
+  });
   const changed = vi.fn();
-  render(<App><CharacterVoiceModal projectId={1} characterId={11} characterName="陈志国"
-    storyboard={{ id: 301, variantId: 101 }} onClose={mocks.close} onSaved={mocks.saved} onChanged={changed} /></App>);
-  fireEvent.click(await screen.findByRole('button', { name: '恢复角色默认音色' }));
+  render(
+    <App>
+      <CharacterVoiceModal
+        projectId={1}
+        characterId={11}
+        characterName="陈志国"
+        storyboard={{ id: 301, variantId: 101 }}
+        onClose={mocks.close}
+        onSaved={mocks.saved}
+        onChanged={changed}
+      />
+    </App>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: '恢复角色默认音色' }),
+  );
   await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
   expect(mocks.saved).not.toHaveBeenCalled();
   expect(mocks.close).not.toHaveBeenCalled();

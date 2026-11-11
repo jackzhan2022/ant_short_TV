@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   error: vi.fn(),
   success: vi.fn(),
+  confirm: vi.fn(),
   location: { pathname: '/script-review-library', search: '' },
 }));
 vi.mock('@umijs/max', () => ({
@@ -35,6 +36,13 @@ vi.mock('@/services/point-estimate', () => ({
   isPointEstimateCancelled: (error: Error) =>
     error.name === 'PointEstimateCancelledError',
 }));
+vi.mock('@/components/PointEstimateButton', () => ({
+  default: ({ children, disabled, loading, onClick }: any) => (
+    <button type="button" disabled={disabled || loading} onClick={onClick}>
+      {children}
+    </button>
+  ),
+}));
 vi.mock('../script-review/simpleService', () => ({
   submitReview: mocks.submit,
   getReviewProgress: mocks.progress,
@@ -44,7 +52,7 @@ vi.mock('../script-review/simpleService', () => ({
   retrySimpleReview: mocks.retry,
   cancelSimpleReview: mocks.cancel,
 }));
-vi.mock('../script-review/ReportIssueList', () => ({
+vi.mock('./ReviewReportReader', () => ({
   default: ({ markdown }: { markdown: string }) => (
     <article>{markdown}</article>
   ),
@@ -64,7 +72,7 @@ vi.mock('antd', () => ({
   App: {
     useApp: () => ({
       message: { error: mocks.error, success: mocks.success },
-      modal: { confirm: ({ onOk }: any) => onOk?.() },
+      modal: { confirm: mocks.confirm },
     }),
   },
   Button: ({ children, disabled, loading, onClick, ...props }: any) => (
@@ -110,13 +118,14 @@ vi.mock('antd', () => ({
   Progress: ({ percent }: any) => (
     <div role="progressbar" aria-valuenow={percent} />
   ),
-  Drawer: ({ open, title, children, onClose }: any) =>
+  Drawer: ({ open, title, children, footer, onClose }: any) =>
     open ? (
       <section aria-label={title}>
         <button onClick={onClose} type="button">
-          关闭历史
+          关闭原文
         </button>
         {children}
+        {footer}
       </section>
     ) : null,
   Pagination: ({ current, total, onChange }: any) =>
@@ -138,6 +147,7 @@ const task = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.confirm.mockImplementation(({ onOk }: any) => onOk?.());
   localStorage.setItem('currentTenantId', '7');
   mocks.location = { pathname: '/script-review-library', search: '' };
   mocks.submit.mockResolvedValue({ data: { businessId: 31 } });
@@ -195,14 +205,7 @@ describe('简化剧本审核', () => {
     );
     expect(mocks.content).not.toHaveBeenCalled();
     expect(mocks.history).not.toHaveBeenCalled();
-    const details = screen
-      .getByText('查看本次提交的剧本原文')
-      .closest('details');
-    if (!details) throw new Error('Missing original text section');
-    act(() => {
-      details.open = true;
-      fireEvent(details, new Event('toggle'));
-    });
+    fireEvent.click(screen.getByRole('button', { name: '查看原文' }));
     await screen.findByText('提交时的原始剧本');
     expect(mocks.content).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: '返回输入' }));
@@ -222,6 +225,103 @@ describe('简化剧本审核', () => {
     await screen.findByText('# 审核结论：需要补充人物动机');
     fireEvent.click(screen.getByRole('button', { name: '返回输入' }));
     expect(screen.getByLabelText('剧本内容')).toHaveValue('未提交的草稿');
+  });
+
+  it('全选与恢复默认，未选择维度时禁止提交', () => {
+    render(<Page />);
+    fireEvent.change(screen.getByLabelText('剧本内容'), {
+      target: { value: '剧本' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '全选' }));
+    expect(
+      screen
+        .getAllByRole('checkbox')
+        .filter((item) => (item as HTMLInputElement).checked),
+    ).toHaveLength(13);
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认' }));
+    expect(
+      screen
+        .getAllByRole('checkbox')
+        .filter((item) => (item as HTMLInputElement).checked),
+    ).toHaveLength(3);
+    for (const name of ['台词合理性', '人物关系一致性', '人物认知一致性'])
+      fireEvent.click(screen.getByLabelText(name));
+    expect(screen.getByRole('button', { name: '开始审核' })).toBeDisabled();
+  });
+
+  it('历史分页后返回输入保留草稿', async () => {
+    mocks.history.mockResolvedValue({
+      items: [task],
+      page: 1,
+      pageSize: 20,
+      total: 21,
+    });
+    render(<Page />);
+    fireEvent.change(screen.getByLabelText('剧本内容'), {
+      target: { value: '保留草稿' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '历史报告' }));
+    await screen.findByText('雨夜来信');
+    expect(screen.queryByLabelText('剧本内容')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() =>
+      expect(mocks.history).toHaveBeenCalledWith(7, 2, expect.any(AbortSignal)),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '返回输入' }));
+    expect(screen.getByLabelText('剧本内容')).toHaveValue('保留草稿');
+    expect(mocks.content).not.toHaveBeenCalled();
+  });
+
+  it('审核中显示真实接口进度和当前动作', async () => {
+    mocks.location.search = '?taskId=31';
+    mocks.progress.mockResolvedValue({
+      id: 31,
+      status: 'RUNNING',
+      overallProgress: 37,
+      currentAction: '正在核验人物关系',
+    });
+    render(<Page />);
+    await screen.findByText('正在核验人物关系');
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '37',
+    );
+    expect(mocks.report).not.toHaveBeenCalled();
+  });
+
+  it('原文抽屉再次审核需确认替换草稿，取消后草稿保持不变', async () => {
+    mocks.confirm.mockImplementation(() => undefined);
+    render(<Page />);
+    fireEvent.change(screen.getByLabelText('剧本内容'), {
+      target: { value: '未提交草稿' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '历史报告' }));
+    await screen.findByText('雨夜来信');
+    fireEvent.click(screen.getByRole('button', { name: '查看报告' }));
+    await screen.findByText('# 审核结论：需要补充人物动机');
+    fireEvent.click(screen.getByRole('button', { name: '查看原文' }));
+    await screen.findByText('提交时的原始剧本');
+    fireEvent.click(screen.getByRole('button', { name: '基于原文再次审核' }));
+    await waitFor(() =>
+      expect(mocks.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: '用本次原文替换输入框内容？' }),
+      ),
+    );
+    expect(mocks.submit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '返回输入' }));
+    expect(screen.getByLabelText('剧本内容')).toHaveValue('未提交草稿');
+    fireEvent.click(screen.getByRole('button', { name: '历史报告' }));
+    await screen.findByText('雨夜来信');
+    fireEvent.click(screen.getByRole('button', { name: '查看报告' }));
+    await screen.findByText('# 审核结论：需要补充人物动机');
+    fireEvent.click(screen.getByRole('button', { name: '查看原文' }));
+    await screen.findByText('提交时的原始剧本');
+    fireEvent.click(screen.getByRole('button', { name: '基于原文再次审核' }));
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(2));
+    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    expect(screen.getByLabelText('剧本内容')).toHaveValue('提交时的原始剧本');
+    expect(mocks.content).toHaveBeenCalledTimes(1);
+    expect(mocks.submit).not.toHaveBeenCalled();
   });
 
   it('网络失败后重试复用提交标识，改变输入后生成新标识', async () => {

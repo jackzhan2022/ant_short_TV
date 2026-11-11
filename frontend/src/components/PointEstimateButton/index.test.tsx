@@ -63,6 +63,20 @@ afterEach(() => {
 });
 
 describe('live button point estimates', () => {
+  it('supports compact integer credits without changing the quote or affordability gate', async () => {
+    mocks.request.mockResolvedValue(response(127.6, false));
+    render(
+      <PointEstimateButton compact operations={operations()}>
+        生成视频
+      </PointEstimateButton>,
+    );
+    await advance();
+    const button = screen.getByRole('button', { name: '生成视频' });
+    expect(button).toHaveTextContent('✦ 128');
+    expect(button).not.toHaveTextContent(/预计|预估|积分/);
+    expect(button).toHaveAccessibleDescription(/积分不足/);
+    expect(button).toBeDisabled();
+  });
   it('can hide the inline estimate while retaining its accessible description and quote gate', async () => {
     const submit = vi.fn();
     render(

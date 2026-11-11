@@ -8,12 +8,14 @@ type Props = {
   selectedId?: number;
   disabled?: boolean;
   onSelect?: (audio: SystemAudio) => void;
+  onPreview?: (audio: SystemAudio) => void;
 };
 
 export default function SystemAudioList({
   selectedId,
   disabled,
   onSelect,
+  onPreview,
 }: Props) {
   const [input, setInput] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -62,7 +64,15 @@ export default function SystemAudioList({
   }, [keyword, gender, ageGroup, page, retry]);
 
   return (
-    <div className={onSelect ? styles.picker : undefined}>
+    <div
+      className={
+        onPreview
+          ? `${styles.picker} ${styles.embedded}`
+          : onSelect
+            ? styles.picker
+            : undefined
+      }
+    >
       <Input.Search
         aria-label="搜索系统音频"
         placeholder="搜索音频名称或分类"
@@ -116,7 +126,12 @@ export default function SystemAudioList({
       {failed ? (
         <div className={styles.empty}>
           <Empty description="音频加载失败" />
-          <Button aria-label="重试" onClick={() => setRetry((value) => value + 1)}>重试</Button>
+          <Button
+            aria-label="重试"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            重试
+          </Button>
         </div>
       ) : loading ? (
         <div className={styles.empty} role="status">
@@ -150,9 +165,14 @@ export default function SystemAudioList({
                     onChange={() => onSelect(item)}
                   />
                   <span>
-                    <strong>{item.name}</strong>
+                    <strong>
+                      {onPreview ? item.category || item.name : item.name}
+                    </strong>
                     <small>
-                      {[item.gender, item.ageGroup, item.category]
+                      {(onPreview
+                        ? [item.name, item.gender, item.ageGroup]
+                        : [item.gender, item.ageGroup, item.category]
+                      )
                         .filter(Boolean)
                         .join(' · ')}
                     </small>
@@ -178,6 +198,10 @@ export default function SystemAudioList({
                 icon={<PlayCircleOutlined />}
                 aria-label={`试听${item.name}`}
                 onClick={() => {
+                  if (onPreview) {
+                    onPreview(item);
+                    return;
+                  }
                   setPreview(item);
                   setPlaybackFailed(false);
                   setPlaybackAttempt((value) => value + 1);

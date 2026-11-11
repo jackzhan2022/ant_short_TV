@@ -1,8 +1,8 @@
-import PointEstimateButton from '@/components/PointEstimateButton';
 import {
   CloseOutlined,
   CopyOutlined,
-  HolderOutlined,
+  DownOutlined,
+  ExpandOutlined,
   PlusOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
@@ -12,33 +12,39 @@ import {
   Flex,
   Input,
   InputNumber,
+  Modal,
   Popover,
   Select,
   Switch,
   Tag,
   Typography,
 } from 'antd';
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
+import PointEstimateButton from '@/components/PointEstimateButton';
 import './storyboard.css';
-import ClickToPlayVideo from '@/components/ClickToPlayVideo';
-import StoryboardVideoTools from './StoryboardVideoTools';
-import SubtitleEraseStatus from './SubtitleEraseStatus';
-import useDelayedPromptSave from './useDelayedPromptSave';
-import { useStoryboardDraft,} from './storyboard-drafts';
-import { isEraseActive, } from './subtitle-erase-service';
+
+import { memo } from 'react';
+import ClickToPlayVideo, {
+  stopActiveVideo,
+} from '@/components/ClickToPlayVideo';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import MaterialPromptEditor from './MaterialPromptEditor';
 import StoryboardAssetReferenceEditor from './StoryboardAssetReferenceEditor';
-import StoryboardPromptReferencePicker from './StoryboardPromptReferencePicker';
+import StoryboardHistoryPicker from './StoryboardHistoryPicker';
 import StoryboardImageUpload from './StoryboardImageUpload';
-import StoryboardVideoStrip from './StoryboardVideoStrip';
+import StoryboardPromptReferencePicker from './StoryboardPromptReferencePicker';
 import StoryboardVideoEmptyState from './StoryboardVideoEmptyState';
-import StoryboardVideoFailure, { videoGenerationError } from './StoryboardVideoFailure';
-import StoryboardVideoGenerationStatus, { isVideoGenerationActive } from './StoryboardVideoGenerationStatus';
+import StoryboardVideoFailure, {
+  videoGenerationError,
+} from './StoryboardVideoFailure';
+import StoryboardVideoGenerationStatus, {
+  isVideoGenerationActive,
+} from './StoryboardVideoGenerationStatus';
+import StoryboardVideoStrip from './StoryboardVideoStrip';
+import StoryboardVideoTools from './StoryboardVideoTools';
+import StoryboardVoiceGenerator from './StoryboardVoiceGenerator';
+import SubtitleEraseStatus from './SubtitleEraseStatus';
 import type {
   AiImageTask,
   AiVideoResult,
@@ -50,13 +56,22 @@ import type {
   StoryboardPromptNode,
   StoryboardShot,
 } from './service';
-
-import { memo } from 'react';
-import MaterialPromptEditor from './MaterialPromptEditor';
-import StoryboardHistoryPicker from './StoryboardHistoryPicker';
-import StoryboardVoiceGenerator from './StoryboardVoiceGenerator';
-import { useStoryboardRow, useStoryboardEditor, useStoryboardMedia, useStoryboardResources, useStoryboardCardActions } from './storyboard-card-context';
-import { splitNames, getStoryboardPropNames, getStoryboardScriptText, getStoryboardPrompt } from './storyboard-model';
+import {
+  useStoryboardCardActions,
+  useStoryboardEditor,
+  useStoryboardMedia,
+  useStoryboardResources,
+  useStoryboardRow,
+} from './storyboard-card-context';
+import { useStoryboardDraft } from './storyboard-drafts';
+import {
+  getStoryboardPrompt,
+  getStoryboardPropNames,
+  getStoryboardScriptText,
+  splitNames,
+} from './storyboard-model';
+import { isEraseActive } from './subtitle-erase-service';
+import useDelayedPromptSave from './useDelayedPromptSave';
 
 type PromptReferenceOption = Extract<StoryboardPromptNode, { type: 'mention' }>;
 const successStatuses = ['SUCCESS', 'SUCCEEDED'];
@@ -113,17 +128,27 @@ const getPlaceholderBackground = (key: string) => {
 const firstByName = <T extends { name: string }>(items: T[], names: string[]) =>
   items.find((item) => names.includes(item.name));
 
-const suggestVisibleCharacter = (storyboard: StoryboardShot, assets: CharacterAsset[]) => {
+const suggestVisibleCharacter = (
+  storyboard: StoryboardShot,
+  assets: CharacterAsset[],
+) => {
   const descriptions = [
     storyboard.visualDescription,
-    ...(storyboard.shotPlan?.shots || []).flatMap((shot) => [shot.positioning, shot.action]),
-  ].filter(Boolean).join(' ');
+    ...(storyboard.shotPlan?.shots || []).flatMap((shot) => [
+      shot.positioning,
+      shot.action,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(' ');
   const matches = assets.filter((asset) => {
     const name = asset.name.trim();
     if (!name) return false;
     if (!/^[a-zA-Z\s'-]+$/.test(name)) return descriptions.includes(name);
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^a-zA-Z])${escaped}(?=$|[^a-zA-Z])`, 'i').test(descriptions);
+    return new RegExp(`(^|[^a-zA-Z])${escaped}(?=$|[^a-zA-Z])`, 'i').test(
+      descriptions,
+    );
   });
   return matches.length === 1 ? matches[0] : undefined;
 };
@@ -132,10 +157,12 @@ const getStoryboardVideo = (
   storyboard: StoryboardShot,
   videoTasks: AiVideoTask[],
 ) => {
-  const boundTask = videoTasks.find((task) =>
-    task.storyboardId === storyboard.id && task.results?.some((result) =>
-      result.id === storyboard.currentVideoResultId,
-    ),
+  const boundTask = videoTasks.find(
+    (task) =>
+      task.storyboardId === storyboard.id &&
+      task.results?.some(
+        (result) => result.id === storyboard.currentVideoResultId,
+      ),
   );
   const selectedTask = videoTasks.find(
     (task) =>
@@ -143,17 +170,28 @@ const getStoryboardVideo = (
       task.results?.some((result) => result.isSelected),
   );
   const task =
-    boundTask || selectedTask ||
+    boundTask ||
+    selectedTask ||
     videoTasks.find(
       (item) => item.storyboardId === storyboard.id && item.results?.length,
     );
   const result =
-    task?.results?.find((item) => item.id === storyboard.currentVideoResultId)
-    || task?.results?.find((item) => item.isSelected) || task?.results?.[0];
+    task?.results?.find(
+      (item) => item.id === storyboard.currentVideoResultId,
+    ) ||
+    task?.results?.find((item) => item.isSelected) ||
+    task?.results?.[0];
   return {
-    resultId: result?.id || (storyboard.currentVideoUrl ? storyboard.currentVideoResultId || undefined : undefined),
-    selected: Boolean(result?.isSelected || result?.id === storyboard.currentVideoResultId),
-    coverUrl: result?.coverUrl || storyboard.firstFrameThumbnailUrl || undefined,
+    resultId:
+      result?.id ||
+      (storyboard.currentVideoUrl
+        ? storyboard.currentVideoResultId || undefined
+        : undefined),
+    selected: Boolean(
+      result?.isSelected || result?.id === storyboard.currentVideoResultId,
+    ),
+    coverUrl:
+      result?.coverUrl || storyboard.firstFrameThumbnailUrl || undefined,
     videoUrl:
       result?.videoUrl ||
       storyboard.currentVideoUrl ||
@@ -176,12 +214,18 @@ const thumbnailFor = (
   return fallback || undefined;
 };
 
-const avatarRail = (names: string[], assets: CharacterAsset[], imageTasks: AiImageTask[]) => (
+const avatarRail = (
+  names: string[],
+  assets: CharacterAsset[],
+  imageTasks: AiImageTask[],
+) => (
   <div style={{ display: 'flex', width: 58, overflow: 'hidden' }}>
     {names.slice(0, 4).map((name, index) => {
       const asset = assets.find((item) => item.name === name);
-      const image = asset?.visual?.primaryVariant?.currentImageThumbnailUrl
-        || asset?.mainImageThumbnailUrl || thumbnailFor(imageTasks, 'CHARACTER', asset?.id);
+      const image =
+        asset?.visual?.primaryVariant?.currentImageThumbnailUrl ||
+        asset?.mainImageThumbnailUrl ||
+        thumbnailFor(imageTasks, 'CHARACTER', asset?.id);
       return (
         <span
           key={name}
@@ -200,7 +244,18 @@ const avatarRail = (names: string[], assets: CharacterAsset[], imageTasks: AiIma
             overflow: 'hidden',
           }}
         >
-          {image ? <LazyMediaImage src={image} alt={`${name}参考图`} width="100%" height="100%" preview={false} style={{ objectFit: 'cover' }} /> : name.slice(0, 1)}
+          {image ? (
+            <LazyMediaImage
+              src={image}
+              alt={`${name}参考图`}
+              width="100%"
+              height="100%"
+              preview={false}
+              style={{ objectFit: 'cover' }}
+            />
+          ) : (
+            name.slice(0, 1)
+          )}
         </span>
       );
     })}
@@ -235,77 +290,184 @@ const plainTextFromDocument = (document?: StoryboardPromptDocument | null) =>
     .map((node) => (node.type === 'text' ? node.text : node.displayName))
     .join('') || '';
 
-const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useStoryboardRow>> }) => {
-  const { item, generationSettings, generationSettingsSaveStatus, eraseTasks, erasedPreviewResult } = row;
-  const { projectId, canCaptureVideo, characters, scenes, props, episodes, referenceOptions, referenceThumbnails,
-    model, modelId, aspectRatio, modelConstraints, generatingReferenceKeys } = useStoryboardResources();
-  const { draftStore, updateDraft, saveFields, saveScript, replaceReferences, retrySave, saveStatus,
-    promptFor, previewVideoOperations, saveGenerationSettings: onGenerationSettingsChange,
-    retryGenerationSettings: onRetryGenerationSettings } = useStoryboardEditor(item.id);
-  const { imageTasks = [], videoTasks = [], videoHistory, bindingVideoId, selectingFirstFrameId,
-    generateVideo, generateImage, bindVideoResult: onBindVideoResult, selectFirstFrame: onSelectFirstFrame,
-    regenerateImage: onRegenerateImage, cancelImage: onCancelImage, cancelVideo: onCancelVideo,
-    retryVideo: onRetryVideo, loadVideoCandidates, retryErase: onRetryErase } = useStoryboardMedia(item.id);
-  const { add, copy, remove, capture: onCaptureVideo, erase: onEraseVideo, uploaded: onImageUploaded,
-    generateReferenceImage: onGenerateReferenceImage, loadVariants: onLoadVariants } = useStoryboardCardActions(item.id);
+const StoryboardCardView = ({
+  row,
+}: {
+  row: NonNullable<ReturnType<typeof useStoryboardRow>>;
+}) => {
+  const {
+    item,
+    generationSettings,
+    generationSettingsSaveStatus,
+    eraseTasks,
+    erasedPreviewResult,
+  } = row;
+  const {
+    projectId,
+    canCaptureVideo,
+    characters,
+    scenes,
+    props,
+    episodes,
+    referenceOptions,
+    referenceThumbnails,
+    model,
+    modelId,
+    aspectRatio,
+    modelConstraints,
+    generatingReferenceKeys,
+  } = useStoryboardResources();
+  const {
+    draftStore,
+    updateDraft,
+    saveFields,
+    saveScript,
+    replaceReferences,
+    retrySave,
+    saveStatus,
+    promptFor,
+    previewVideoOperations,
+    saveGenerationSettings: onGenerationSettingsChange,
+    retryGenerationSettings: onRetryGenerationSettings,
+  } = useStoryboardEditor(item.id);
+  const {
+    imageTasks = [],
+    videoTasks = [],
+    videoHistory,
+    bindingVideoId,
+    selectingFirstFrameId,
+    generateVideo,
+    generateImage,
+    bindVideoResult: onBindVideoResult,
+    selectFirstFrame: onSelectFirstFrame,
+    regenerateImage: onRegenerateImage,
+    cancelImage: onCancelImage,
+    cancelVideo: onCancelVideo,
+    retryVideo: onRetryVideo,
+    loadVideoCandidates,
+    retryErase: onRetryErase,
+  } = useStoryboardMedia(item.id);
+  const {
+    add,
+    copy,
+    remove,
+    capture: onCaptureVideo,
+    erase: onEraseVideo,
+    uploaded: onImageUploaded,
+    generateReferenceImage: onGenerateReferenceImage,
+    loadVariants: onLoadVariants,
+  } = useStoryboardCardActions(item.id);
   const index = (item.storyboardNo || item.shotNo) - 1;
 
   const { message } = App.useApp();
   const localDraft = useStoryboardDraft(draftStore, item.id);
-  const promptDocument = useMemo(() => promptFor(item), [item, localDraft, promptFor, characters, scenes, props, episodes, imageTasks]);
+  const promptDocument = useMemo(
+    () => promptFor(item),
+    [
+      item,
+      localDraft,
+      promptFor,
+      characters,
+      scenes,
+      props,
+      episodes,
+      imageTasks,
+    ],
+  );
   const draft = {
-    ...(localDraft || { scriptText: getStoryboardScriptText(item), videoPrompt: getStoryboardPrompt(item) }),
+    ...(localDraft || {
+      scriptText: getStoryboardScriptText(item),
+      videoPrompt: getStoryboardPrompt(item),
+    }),
     promptDocument,
   };
   const videoEstimateOperations = useMemo(
     () => previewVideoOperations([item], () => promptDocument),
-    [item, promptDocument, previewVideoOperations, generationSettings, modelId, aspectRatio, referenceOptions],
+    [
+      item,
+      promptDocument,
+      previewVideoOperations,
+      generationSettings,
+      modelId,
+      aspectRatio,
+      referenceOptions,
+    ],
   );
-  const promptSave = useDelayedPromptSave(() => saveFields( {
-    videoPrompt: draft.videoPrompt,
-    promptDocument: draft.promptDocument || undefined,
-  }));
+  const promptSave = useDelayedPromptSave(() =>
+    saveFields({
+      videoPrompt: draft.videoPrompt,
+      promptDocument: draft.promptDocument || undefined,
+    }),
+  );
   const warnings = item.shotPlan?.warnings ?? [];
   const characterNames = splitNames(item.characters);
-  const suggestedCharacter = characterNames.length ? undefined : suggestVisibleCharacter(item, characters);
-  const shownCharacterNames = characterNames.length ? characterNames : suggestedCharacter ? [suggestedCharacter.name] : [];
-  const dialogueSpeaker = String(item.dialogue || '').split(/[:：]/, 1)[0]
-    .replace(/VO$/i, '').trim();
-  const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME'>('VIDEO');
+  const suggestedCharacter = characterNames.length
+    ? undefined
+    : suggestVisibleCharacter(item, characters);
+  const shownCharacterNames = characterNames.length
+    ? characterNames
+    : suggestedCharacter
+      ? [suggestedCharacter.name]
+      : [];
+  const dialogueSpeaker = String(item.dialogue || '')
+    .split(/[:：]/, 1)[0]
+    .replace(/VO$/i, '')
+    .trim();
+  const [previewKey, setPreviewKey] = useState<'VIDEO' | 'FIRST_FRAME'>(
+    'VIDEO',
+  );
   const [previewVersion, setPreviewVersion] = useState<AiVideoResult>();
+  const [largeVideoOpen, setLargeVideoOpen] = useState(false);
   useEffect(() => {
     setPreviewVersion(undefined);
     setPreviewKey('VIDEO');
+    setLargeVideoOpen(false);
   }, [item.currentVideoResultId]);
   useEffect(() => {
-    if (erasedPreviewResult) { setPreviewVersion(erasedPreviewResult); setPreviewKey('VIDEO'); }
+    if (erasedPreviewResult) {
+      setPreviewVersion(erasedPreviewResult);
+      setPreviewKey('VIDEO');
+    }
   }, [erasedPreviewResult?.id]);
   const sceneNames = splitNames(item.scene);
   const propNames = getStoryboardPropNames(item);
   const scene = firstByName(scenes, sceneNames);
   const prop = firstByName(props, propNames);
   const boundVideo = getStoryboardVideo(item, videoTasks);
-  const version = previewVersion || videoHistory?.data.find((result) => result.id === item.currentVideoResultId);
-  const video = version ? {
-    resultId: version.id,
-    selected: item.currentVideoResultId != null ? version.id === item.currentVideoResultId : Boolean(version.isSelected),
-    coverUrl: version.coverUrl || undefined,
-    videoUrl: version.videoUrl,
-  } : boundVideo;
-  const videoVersions = videoTasks.filter((task) => task.storyboardId === item.id).flatMap((task) => task.results || []);
+  const version =
+    previewVersion ||
+    videoHistory?.data.find(
+      (result) => result.id === item.currentVideoResultId,
+    );
+  const video = version
+    ? {
+        resultId: version.id,
+        selected:
+          item.currentVideoResultId != null
+            ? version.id === item.currentVideoResultId
+            : Boolean(version.isSelected),
+        coverUrl: version.coverUrl || undefined,
+        videoUrl: version.videoUrl,
+      }
+    : boundVideo;
+  const videoVersions = videoTasks
+    .filter((task) => task.storyboardId === item.id)
+    .flatMap((task) => task.results || []);
   const insertReference = (reference: PromptReferenceOption) => {
     const currentNodes = draft.promptDocument?.nodes?.length
       ? draft.promptDocument.nodes
       : [{ type: 'text' as const, text: draft.videoPrompt }];
-    const separator = currentNodes.length ? [{ type: 'text' as const, text: ' ' }] : [];
+    const separator = currentNodes.length
+      ? [{ type: 'text' as const, text: ' ' }]
+      : [];
     const promptDocument: StoryboardPromptDocument = {
       version: 2,
       nodes: [...currentNodes, ...separator, reference],
     };
     const videoPrompt = plainTextFromDocument(promptDocument);
     promptSave.cancel();
-    updateDraft( { videoPrompt, promptDocument });
-    saveFields( { videoPrompt, promptDocument });
+    updateDraft({ videoPrompt, promptDocument });
+    saveFields({ videoPrompt, promptDocument });
   };
   const copyPrompt = async () => {
     try {
@@ -315,7 +477,9 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
       message.error('提示词复制失败');
     }
   };
-  const renderReferencePicker = (onSelect: (reference: PromptReferenceOption) => void) => (
+  const renderReferencePicker = (
+    onSelect: (reference: PromptReferenceOption) => void,
+  ) => (
     <StoryboardPromptReferencePicker
       storyboardNo={index + 1}
       characters={characters}
@@ -335,12 +499,19 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
         <Flex align="center" gap={6}>
           <InputNumber
             aria-label={`分镜${index + 1}视频时长`}
-            min={modelConstraints?.duration?.intelligent ? -1 : modelConstraints?.duration?.min}
+            min={
+              modelConstraints?.duration?.intelligent
+                ? -1
+                : modelConstraints?.duration?.min
+            }
             max={modelConstraints?.duration?.max}
             value={generationSettings.durationSeconds}
             onChange={(value) =>
               onGenerationSettingsChange({
-                durationSeconds: typeof value === 'number' ? value : generationSettings.durationSeconds,
+                durationSeconds:
+                  typeof value === 'number'
+                    ? value
+                    : generationSettings.durationSeconds,
               })
             }
             style={{ width: 108 }}
@@ -366,7 +537,9 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
         <Switch
           aria-label={`分镜${index + 1}生成音频`}
           checked={generationSettings.generateAudio}
-          onChange={(generateAudio) => onGenerationSettingsChange({ generateAudio })}
+          onChange={(generateAudio) =>
+            onGenerationSettingsChange({ generateAudio })
+          }
         />
       </Flex>
       <Flex justify="space-between" align="center">
@@ -404,26 +577,38 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
       };
     }
     return {
-      url: visual?.primaryVariant?.currentImageThumbnailUrl || asset?.mainImageThumbnailUrl,
-      source: visual?.resolvedImageSource || (asset?.mainImageThumbnailUrl ? 'LEGACY_FALLBACK' : undefined),
+      url:
+        visual?.primaryVariant?.currentImageThumbnailUrl ||
+        asset?.mainImageThumbnailUrl,
+      source:
+        visual?.resolvedImageSource ||
+        (asset?.mainImageThumbnailUrl ? 'LEGACY_FALLBACK' : undefined),
     };
   };
   const resolvedSceneVisual = resolveEpisodeVisual(scene);
   const resolvedPropVisual = resolveEpisodeVisual(prop);
   const sceneImage =
-    resolvedSceneVisual.url ||
-    thumbnailFor(imageTasks, 'SCENE', scene?.id);
+    resolvedSceneVisual.url || thumbnailFor(imageTasks, 'SCENE', scene?.id);
   const propImage =
-    resolvedPropVisual.url ||
-    thumbnailFor(imageTasks, 'PROP', prop?.id);
+    resolvedPropVisual.url || thumbnailFor(imageTasks, 'PROP', prop?.id);
   const previewSources = [
-    { key: 'FIRST_FRAME' as const, label: '首帧', url: item.firstFrameThumbnailUrl || thumbnailFor(imageTasks, 'STORYBOARD', item.id) },
+    {
+      key: 'FIRST_FRAME' as const,
+      label: '首帧',
+      url:
+        item.firstFrameThumbnailUrl ||
+        thumbnailFor(imageTasks, 'STORYBOARD', item.id),
+    },
     { key: 'VIDEO' as const, label: '视频', url: video.coverUrl },
   ].filter((source) => source.url);
   const visiblePreviewSources = previewSources.filter(
-    (source) => source.key !== 'VIDEO' || (!videoVersions.length && !videoHistory?.data.length),
+    (source) =>
+      source.key !== 'VIDEO' ||
+      (!videoVersions.length && !videoHistory?.data.length),
   );
-  const selectedPreview = previewSources.find((source) => source.key === previewKey);
+  const selectedPreview = previewSources.find(
+    (source) => source.key === previewKey,
+  );
   const visualSourceLabel = (source?: string | null) => {
     if (source === 'EPISODE_PREFERRED') return '剧集首选形象';
     if (source === 'PRIMARY_VARIANT') return '主形象';
@@ -436,17 +621,24 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
     )
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
   const unselectedFirstFrame = imageTasks
-    .filter((task) => task.targetType === 'STORYBOARD' && task.targetId === item.id)
+    .filter(
+      (task) => task.targetType === 'STORYBOARD' && task.targetId === item.id,
+    )
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
     .flatMap((task) => task.results || [])
-    .find((result) => !result.selected && result.status === 'ACTIVE' && result.thumbnailUrl);
+    .find(
+      (result) =>
+        !result.selected && result.status === 'ACTIVE' && result.thumbnailUrl,
+    );
   const videoTask = videoTasks
     .filter((task) => task.storyboardId === item.id)
     .sort((a, b) => b.id - a.id)[0];
   const videoGenerating = isVideoGenerationActive(videoTask);
-  const [dismissedVideoErrorTaskId, setDismissedVideoErrorTaskId] = useState<number>();
+  const [dismissedVideoErrorTaskId, setDismissedVideoErrorTaskId] =
+    useState<number>();
   const videoError = videoGenerationError(videoTask);
-  const visibleVideoError = videoTask?.id === dismissedVideoErrorTaskId ? undefined : videoError;
+  const visibleVideoError =
+    videoTask?.id === dismissedVideoErrorTaskId ? undefined : videoError;
   useEffect(() => {
     if (videoGenerating) {
       setPreviewKey('VIDEO');
@@ -454,45 +646,27 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
     }
   }, [videoGenerating, videoTask?.id]);
   return (
-    <article
-      className="storyboard-card"
-      style={{
-        border: '1px solid #e4e9f2',
-        borderRadius: 12,
-        background: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 2px 10px rgba(27, 39, 74, 0.04)',
-      }}
-    >
-      <div
-        className="storyboard-card-header"
-        style={{
-          minHeight: 52,
-          borderBottom: '1px solid #edf0f6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
+    <article className="storyboard-card">
+      <div className="storyboard-card-header">
         <Flex align="center" gap={10}>
-          <HolderOutlined style={{ color: '#8a93a8', fontSize: 15 }} />
-          <Typography.Text strong>分镜{index + 1}</Typography.Text>
-          <span
-            style={{
-              height: 16,
-              borderRadius: 4,
-              background: '#eef1ff',
-              color: '#5454ff',
-              fontSize: 10,
-              padding: '0 4px',
-              lineHeight: '16px',
-            }}
-          >
-            ID
+          <span className="storyboard-shot-number">
+            {String(index + 1).padStart(2, '0')}
           </span>
-          <Tag color="blue">全能参考生视频</Tag>
+          <Typography.Text>分镜{index + 1}</Typography.Text>
+          <span className="storyboard-shot-mode">全能参考生视频</span>
         </Flex>
         <Flex gap={4} style={{ color: '#7f88a6', fontSize: 16 }}>
+          <span
+            className={`storyboard-shot-status${videoGenerating ? ' is-generating' : visibleVideoError ? ' is-failed' : video.videoUrl ? ' is-ready' : ''}`}
+          >
+            {videoGenerating
+              ? '生成中'
+              : visibleVideoError
+                ? '生成失败'
+                : video.videoUrl
+                  ? '已生成'
+                  : '待生成'}
+          </span>
           <Button
             type="text"
             size="small"
@@ -514,7 +688,7 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
             aria-label={`删除分镜${index + 1}`}
             onClick={async () => {
               const pending = promptSave.cancel();
-              if (!await remove() && pending) {
+              if (!(await remove()) && pending) {
                 promptSave.markDirty();
                 promptSave.schedule();
               }
@@ -545,42 +719,72 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
         </div>
       ) : null}
 
-      <div
-        className="storyboard-card-content"
-        style={{
-          display: 'grid',
-          gap: 20,
-          padding: '18px 20px 22px',
-        }}
-      >
+      <div className="storyboard-card-content">
         <section data-storyboard-scroll-region>
-          <Typography.Text strong style={{ fontSize: 15 }}>
-            分镜信息
-          </Typography.Text>
-          <Flex align="center" gap={8} style={{ marginTop: 14 }}>
-            <PointEstimateButton operations={(item.imagePrompt || item.visualDescription)?.trim() ? [{ url: `/api/projects/${projectId}/ai-image-tasks`, data: { taskType: 'STORYBOARD_FIRST_FRAME', targetType: 'STORYBOARD', targetId: item.id, prompt: item.imagePrompt || item.visualDescription, aspectRatio: '9:16', imageCount: 1, quality: 'STANDARD' } }] : undefined}
-              size="small"
-              onClick={() => generateImage()}
-              disabled={['PENDING', 'RUNNING'].includes(
-                imageTask?.execution?.status || '',
-              )}
-            >
-              生成首帧
-            </PointEstimateButton>
-            <StoryboardHistoryPicker storyboardId={item.id} storyboardNo={index + 1} type="IMAGE" />
-            {imageTask?.execution ? (
-              <AiExecutionStatus
-                task={imageTask.execution}
-                onCancel={() => onCancelImage(imageTask)}
-                onRetry={() => onRegenerateImage(imageTask)}
-                retryOperations={[{ url: `/api/projects/${projectId}/ai-image-tasks/${imageTask.id}/regenerate` }]}
+          <div className="storyboard-column-heading">
+            <Typography.Text>分镜信息</Typography.Text>
+            <Flex align="center" gap={6}>
+              <PointEstimateButton
+                compact
+                operations={
+                  (item.imagePrompt || item.visualDescription)?.trim()
+                    ? [
+                        {
+                          url: `/api/projects/${projectId}/ai-image-tasks`,
+                          data: {
+                            taskType: 'STORYBOARD_FIRST_FRAME',
+                            targetType: 'STORYBOARD',
+                            targetId: item.id,
+                            prompt: item.imagePrompt || item.visualDescription,
+                            aspectRatio: '9:16',
+                            imageCount: 1,
+                            quality: 'STANDARD',
+                          },
+                        },
+                      ]
+                    : undefined
+                }
+                size="small"
+                onClick={() => generateImage()}
+                disabled={['PENDING', 'RUNNING'].includes(
+                  imageTask?.execution?.status || '',
+                )}
+              >
+                生成首帧
+              </PointEstimateButton>
+              <StoryboardHistoryPicker
+                storyboardId={item.id}
+                storyboardNo={index + 1}
+                type="IMAGE"
               />
-            ) : null}
-          </Flex>
+              {imageTask?.execution ? (
+                <AiExecutionStatus
+                  task={imageTask.execution}
+                  onCancel={() => onCancelImage(imageTask)}
+                  onRetry={() => onRegenerateImage(imageTask)}
+                  retryOperations={[
+                    {
+                      url: `/api/projects/${projectId}/ai-image-tasks/${imageTask.id}/regenerate`,
+                    },
+                  ]}
+                />
+              ) : null}
+            </Flex>
+          </div>
           {unselectedFirstFrame ? (
             <Flex align="center" gap={8} style={{ marginTop: 10 }}>
-              <div style={{ width: 42, height: 42, flex: 'none', overflow: 'hidden' }}>
-                <PreviewPoster src={unselectedFirstFrame.thumbnailUrl ?? undefined} title="待选首帧" />
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  flex: 'none',
+                  overflow: 'hidden',
+                }}
+              >
+                <PreviewPoster
+                  src={unselectedFirstFrame.thumbnailUrl ?? undefined}
+                  title="待选首帧"
+                />
               </div>
               <Button
                 size="small"
@@ -591,8 +795,9 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
               </Button>
             </Flex>
           ) : null}
-          <div style={{ marginTop: 22, color: '#1f2937', fontSize: 14 }}>
+          <div className="storyboard-script-heading">
             剧本原文
+            <span>可编辑</span>
           </div>
           <Input.TextArea
             className="storyboard-script-editor"
@@ -603,250 +808,264 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
             }
             onBlur={() => saveScript()}
             autoSize={{ minRows: 4, maxRows: 5 }}
-            style={{
-              marginTop: 9,
-              borderColor: '#d8deee',
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 400,
-              lineHeight: 1.7,
-            }}
           />
 
           {item.assetReferences !== undefined ? (
-            <StoryboardVoiceGenerator storyboardId={item.id} storyboardNo={index + 1} defaultSpeaker={dialogueSpeaker || shownCharacterNames[0] || ""} textContent={item.dialogue || item.visualDescription || ""}>
-              {(openVoice) => <StoryboardAssetReferenceEditor
-              projectId={projectId}
+            <StoryboardVoiceGenerator
               storyboardId={item.id}
               storyboardNo={index + 1}
-              references={item.assetReferences || []}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-              onChange={(references) => void replaceReferences(references)}
-              onLoadVariants={onLoadVariants}
-              onVoice={openVoice}
-              onGenerateImage={(reference, generationKey) =>
-                void onGenerateReferenceImage(reference, generationKey)}
-              generatingReferenceKeys={generatingReferenceKeys}
-            />}
-            </StoryboardVoiceGenerator>
-          ) : (<>
-          <div style={{ marginTop: 22 }}>
-            <Flex justify="space-between" align="center">
-              <span>出镜角色</span>
-            </Flex>
-            <Flex align="center" gap={9} style={{ marginTop: 13 }}>
-              {avatarRail(shownCharacterNames, characters, imageTasks)}
-              <Select
-                aria-label={`分镜${index + 1}出镜角色`}
-                value={shownCharacterNames[0] || undefined}
-                options={characters.map((asset) => ({
-                  label: `${asset.name} - ${asset.name}`,
-                  value: asset.name,
-                }))}
-                style={{ flex: 1 }}
-                onChange={(value) =>
-                  saveFields({ characters: value || '' })
-                }
-              />
-              {shownCharacterNames.length ? (
-                <Button
-                  size="small"
-                  aria-label={`清空分镜${index + 1}出镜角色`}
-                  onClick={() => saveFields({ characters: '' })}
-                >
-                  清空
-                </Button>
-              ) : null}
-              <StoryboardVoiceGenerator storyboardId={item.id} storyboardNo={index + 1} defaultSpeaker={dialogueSpeaker || shownCharacterNames[0] || ""} textContent={item.dialogue || item.visualDescription || ""} />
-            </Flex>
-            {suggestedCharacter ? (
-              <Flex align="center" gap={6} style={{ marginTop: 6 }}>
-                <Tag color="warning">按画面推断，待确认</Tag>
-                <Button size="small" type="link" onClick={() => saveFields( { characters: suggestedCharacter.name })}>
-                  确认分镜{index + 1}出镜角色
-                </Button>
-              </Flex>
-            ) : null}
-          </div>
-
-          <div style={{ marginTop: 28 }}>
-            <Flex justify="space-between" align="center">
-              <span>分镜场景</span>
-            </Flex>
-            <div
-              style={{
-                width: 190,
-                height: 102,
-                marginTop: 12,
-                borderRadius: 8,
-                overflow: 'hidden',
-                background: '#eef2f7',
-              }}
+              defaultSpeaker={dialogueSpeaker || shownCharacterNames[0] || ''}
+              textContent={item.dialogue || item.visualDescription || ''}
             >
-              {sceneImage ? (
-                <PreviewPoster src={sceneImage} title={`${item.scene || '场景'}参考图`} />
-              ) : (
-                <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: '#8793a7', fontSize: 12 }}>
-                  未生成场景参考图
-                </div>
+              {(openVoice) => (
+                <StoryboardAssetReferenceEditor
+                  projectId={projectId}
+                  storyboardId={item.id}
+                  storyboardNo={index + 1}
+                  references={item.assetReferences || []}
+                  characters={characters}
+                  scenes={scenes}
+                  props={props}
+                  onChange={(references) => void replaceReferences(references)}
+                  onLoadVariants={onLoadVariants}
+                  onVoice={openVoice}
+                  onGenerateImage={(reference, generationKey) =>
+                    void onGenerateReferenceImage(reference, generationKey)
+                  }
+                  generatingReferenceKeys={generatingReferenceKeys}
+                />
               )}
-            </div>
-            {scene ? (
-              <Tag
-                color={
-                  resolvedSceneVisual.source === 'LEGACY_FALLBACK'
-                    ? 'orange'
-                    : 'blue'
-                }
-              >
-                场景参考来源：
-                {visualSourceLabel(resolvedSceneVisual.source)}
-              </Tag>
-            ) : null}
-            <Flex gap={8} style={{ marginTop: 10 }}>
-              <Select
-                aria-label={`分镜${index + 1}场景`}
-                value={sceneNames[0] || undefined}
-                options={scenes.map((asset) => ({
-                  label: `${asset.name} - ${asset.name}`,
-                  value: asset.name,
-                }))}
-                style={{ flex: 1 }}
-                onChange={(value) =>
-                  saveFields( { scene: value || '' })
-                }
-              />
-              {sceneNames.length ? (
-                <Button
-                  size="small"
-                  aria-label={`清空分镜${index + 1}场景`}
-                  onClick={() => saveFields( { scene: '' })}
-                >
-                  清空
-                </Button>
-              ) : null}
-            </Flex>
-          </div>
-
-          <div style={{ marginTop: 20 }}>
-            <Flex justify="space-between" align="center">
-              <span>场景道具</span>
-            </Flex>
-            <Flex align="center" gap={9} style={{ marginTop: 13 }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 38,
-                  borderRadius: 7,
-                  overflow: 'hidden',
-                  background: getPlaceholderBackground('prop-1'),
-                }}
-              >
-                {propImage && (
-                  <LazyMediaImage
-                    src={propImage}
-                    alt={prop?.name}
-                    width="100%"
-                    height="100%"
-                    preview={false}
-                    style={{ objectFit: 'cover' }}
+            </StoryboardVoiceGenerator>
+          ) : (
+            <>
+              <div style={{ marginTop: 22 }}>
+                <Flex justify="space-between" align="center">
+                  <span>出镜角色</span>
+                </Flex>
+                <Flex align="center" gap={9} style={{ marginTop: 13 }}>
+                  {avatarRail(shownCharacterNames, characters, imageTasks)}
+                  <Select
+                    aria-label={`分镜${index + 1}出镜角色`}
+                    value={shownCharacterNames[0] || undefined}
+                    options={characters.map((asset) => ({
+                      label: `${asset.name} - ${asset.name}`,
+                      value: asset.name,
+                    }))}
+                    style={{ flex: 1 }}
+                    onChange={(value) =>
+                      saveFields({ characters: value || '' })
+                    }
                   />
-                )}
+                  {shownCharacterNames.length ? (
+                    <Button
+                      size="small"
+                      aria-label={`清空分镜${index + 1}出镜角色`}
+                      onClick={() => saveFields({ characters: '' })}
+                    >
+                      清空
+                    </Button>
+                  ) : null}
+                  <StoryboardVoiceGenerator
+                    storyboardId={item.id}
+                    storyboardNo={index + 1}
+                    defaultSpeaker={
+                      dialogueSpeaker || shownCharacterNames[0] || ''
+                    }
+                    textContent={item.dialogue || item.visualDescription || ''}
+                  />
+                </Flex>
+                {suggestedCharacter ? (
+                  <Flex align="center" gap={6} style={{ marginTop: 6 }}>
+                    <Tag color="warning">按画面推断，待确认</Tag>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() =>
+                        saveFields({ characters: suggestedCharacter.name })
+                      }
+                    >
+                      确认分镜{index + 1}出镜角色
+                    </Button>
+                  </Flex>
+                ) : null}
               </div>
-              <Select
-                aria-label={`分镜${index + 1}场景道具`}
-                value={propNames[0] || undefined}
-                options={props.map((asset) => ({
-                  label: `${asset.name} - ${asset.name}`,
-                  value: asset.name,
-                }))}
-                style={{ flex: 1 }}
-                onChange={(value) =>
-                  saveFields( { props: value || '' })
-                }
-              />
-              {propNames.length ? (
-                <Button
-                  size="small"
-                  aria-label={`清空分镜${index + 1}场景道具`}
-                  onClick={() => saveFields( { props: '' })}
+
+              <div style={{ marginTop: 28 }}>
+                <Flex justify="space-between" align="center">
+                  <span>分镜场景</span>
+                </Flex>
+                <div
+                  style={{
+                    width: 190,
+                    height: 102,
+                    marginTop: 12,
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: '#eef2f7',
+                  }}
                 >
-                  清空
-                </Button>
-              ) : null}
-            </Flex>
-            {prop ? (
-              <Tag
-                color={
-                  resolvedPropVisual.source === 'LEGACY_FALLBACK'
-                    ? 'orange'
-                    : 'blue'
-                }
-              >
-                道具参考来源：
-                {visualSourceLabel(resolvedPropVisual.source)}
-              </Tag>
-            ) : null}
-          </div>
-          </>)}
+                  {sceneImage ? (
+                    <PreviewPoster
+                      src={sceneImage}
+                      title={`${item.scene || '场景'}参考图`}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        height: '100%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        color: '#8793a7',
+                        fontSize: 12,
+                      }}
+                    >
+                      未生成场景参考图
+                    </div>
+                  )}
+                </div>
+                {scene ? (
+                  <Tag
+                    color={
+                      resolvedSceneVisual.source === 'LEGACY_FALLBACK'
+                        ? 'orange'
+                        : 'blue'
+                    }
+                  >
+                    场景参考来源：
+                    {visualSourceLabel(resolvedSceneVisual.source)}
+                  </Tag>
+                ) : null}
+                <Flex gap={8} style={{ marginTop: 10 }}>
+                  <Select
+                    aria-label={`分镜${index + 1}场景`}
+                    value={sceneNames[0] || undefined}
+                    options={scenes.map((asset) => ({
+                      label: `${asset.name} - ${asset.name}`,
+                      value: asset.name,
+                    }))}
+                    style={{ flex: 1 }}
+                    onChange={(value) => saveFields({ scene: value || '' })}
+                  />
+                  {sceneNames.length ? (
+                    <Button
+                      size="small"
+                      aria-label={`清空分镜${index + 1}场景`}
+                      onClick={() => saveFields({ scene: '' })}
+                    >
+                      清空
+                    </Button>
+                  ) : null}
+                </Flex>
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <Flex justify="space-between" align="center">
+                  <span>场景道具</span>
+                </Flex>
+                <Flex align="center" gap={9} style={{ marginTop: 13 }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 38,
+                      borderRadius: 7,
+                      overflow: 'hidden',
+                      background: getPlaceholderBackground('prop-1'),
+                    }}
+                  >
+                    {propImage && (
+                      <LazyMediaImage
+                        src={propImage}
+                        alt={prop?.name}
+                        width="100%"
+                        height="100%"
+                        preview={false}
+                        style={{ objectFit: 'cover' }}
+                      />
+                    )}
+                  </div>
+                  <Select
+                    aria-label={`分镜${index + 1}场景道具`}
+                    value={propNames[0] || undefined}
+                    options={props.map((asset) => ({
+                      label: `${asset.name} - ${asset.name}`,
+                      value: asset.name,
+                    }))}
+                    style={{ flex: 1 }}
+                    onChange={(value) => saveFields({ props: value || '' })}
+                  />
+                  {propNames.length ? (
+                    <Button
+                      size="small"
+                      aria-label={`清空分镜${index + 1}场景道具`}
+                      onClick={() => saveFields({ props: '' })}
+                    >
+                      清空
+                    </Button>
+                  ) : null}
+                </Flex>
+                {prop ? (
+                  <Tag
+                    color={
+                      resolvedPropVisual.source === 'LEGACY_FALLBACK'
+                        ? 'orange'
+                        : 'blue'
+                    }
+                  >
+                    道具参考来源：
+                    {visualSourceLabel(resolvedPropVisual.source)}
+                  </Tag>
+                ) : null}
+              </div>
+            </>
+          )}
         </section>
 
         <section className="storyboard-prompt-section">
-          <Flex align="center" gap={12}>
-            <Typography.Text strong style={{ fontSize: 15 }}>
-              分镜视频生成
-            </Typography.Text>
-            <span
-              style={{
-                height: 32,
-                borderRadius: 8,
-                background: '#f0f2fb',
-                color: '#20283a',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '0 14px',
-                fontWeight: 600,
-              }}
-            >
+          <div className="storyboard-column-heading">
+            <Typography.Text>分镜视频生成</Typography.Text>
+            <span className="storyboard-director-label">
               <ThunderboltOutlined />
               <span>3D导演台</span>
-              <span style={{ color: '#6956ff', fontSize: 12 }}>Beta</span>
+              <small>Beta</small>
             </span>
-          </Flex>
-          <Flex gap={6} wrap style={{ marginTop: 8 }}>
-            {modelConstraints?.image?.maxCount !== undefined ? (
-              <Tag>图片上限 {modelConstraints.image.maxCount}</Tag>
-            ) : null}
-            {modelConstraints?.video?.maxCount !== undefined ? (
-              <Tag>视频上限 {modelConstraints.video.maxCount}</Tag>
-            ) : null}
-            {modelConstraints?.audio?.maxCount !== undefined ? (
-              <Tag>音频上限 {modelConstraints.audio.maxCount}</Tag>
-            ) : null}
-            {(videoTask?.referenceDiagnostics?.omitted || []).map((omitted) => (
-              <Tag color="warning" key={`${omitted.sourceType}-${omitted.sourceId}-${omitted.variantId}-${omitted.reason}`}>
-                已省略 {' '}
-                {omitted.displayName || `${omitted.assetType || '素材'} ${omitted.assetId || ''}`}
-                {omitted.reason ? `：${omitted.reason === 'IMAGE_UNAVAILABLE' ? '参考图片不可用' : omitted.reason}` : ''}
-              </Tag>
-            ))}
-          </Flex>
-          <div
-            className="storyboard-prompt-panel"
-            style={{
-              border: '1px solid #dfe5f2',
-              borderRadius: 14,
-              padding: '16px 18px 12px',
-            }}
-          >
+          </div>
+          {videoTask?.referenceDiagnostics?.omitted?.length ? (
+            <Flex gap={6} wrap className="storyboard-prompt-diagnostics">
+              {(videoTask?.referenceDiagnostics?.omitted || []).map(
+                (omitted) => (
+                  <Tag
+                    color="warning"
+                    key={`${omitted.sourceType}-${omitted.sourceId}-${omitted.variantId}-${omitted.reason}`}
+                  >
+                    已省略{' '}
+                    {omitted.displayName ||
+                      `${omitted.assetType || '素材'} ${omitted.assetId || ''}`}
+                    {omitted.reason
+                      ? `：${omitted.reason === 'IMAGE_UNAVAILABLE' ? '参考图片不可用' : omitted.reason}`
+                      : ''}
+                  </Tag>
+                ),
+              )}
+            </Flex>
+          ) : null}
+          <div className="storyboard-prompt-panel">
             <Flex
               align="center"
               gap={10}
-              style={{ color: '#b5bdcc', marginBottom: 12 }}
+              className="storyboard-composer-toolbar"
             >
+              <span className="storyboard-composer-title">提示词</span>
+              <span className="storyboard-material-limits" title="素材引用上限">
+                {modelConstraints?.image?.maxCount !== undefined
+                  ? `${modelConstraints.image.maxCount} 图`
+                  : ''}
+                {modelConstraints?.video?.maxCount !== undefined
+                  ? ` · ${modelConstraints.video.maxCount} 视频`
+                  : ''}
+                {modelConstraints?.audio?.maxCount !== undefined
+                  ? ` · ${modelConstraints.audio.maxCount} 音频`
+                  : ''}
+              </span>
               <StoryboardImageUpload
                 key={`${projectId}:${item.id}`}
                 projectId={projectId}
@@ -855,29 +1074,49 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
                 disabled={!canCaptureVideo}
                 onUploaded={(image) => {
                   const reference: PromptReferenceOption = {
-                    type: 'mention', mediaType: 'IMAGE', sourceType: 'IMAGE_MATERIAL',
-                    sourceId: image.materialId, displayName: image.name,
+                    type: 'mention',
+                    mediaType: 'IMAGE',
+                    sourceType: 'IMAGE_MATERIAL',
+                    sourceId: image.materialId,
+                    displayName: image.name,
                   };
                   onImageUploaded(reference);
                   insertReference(reference);
                 }}
               />
-              <Popover content={referencePicker} trigger="click" placement="bottomLeft">
-                <Button aria-label="添加提示词引用" title="引用资产" icon={<span aria-hidden="true">@</span>} />
+              <Popover
+                content={referencePicker}
+                trigger="click"
+                placement="bottomLeft"
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label="添加提示词引用"
+                  title="引用资产"
+                  icon={<span aria-hidden="true">@</span>}
+                />
               </Popover>
               <Button
+                type="text"
+                size="small"
                 aria-label={`复制分镜${index + 1}提示词`}
                 title="复制提示词"
                 icon={<CopyOutlined />}
                 onClick={() => void copyPrompt()}
               />
-              <span>
-                使用 @
-                引用角色、场景、道具、音色及参考素材，编辑更灵活，分镜更精准
-              </span>
             </Flex>
-            {saveStatus === 'error' ? <Button type="link" danger size="small"
-              aria-label={`重试保存分镜${index + 1}`} onClick={() => void retrySave()}>保存失败，点击重试</Button> : null}
+            {saveStatus === 'error' ? (
+              <Button
+                type="link"
+                danger
+                size="small"
+                aria-label={`重试保存分镜${index + 1}`}
+                onClick={() => void retrySave()}
+              >
+                保存失败，点击重试
+              </Button>
+            ) : null}
             <MaterialPromptEditor
               label={`分镜${index + 1}视频提示词`}
               value={draft.videoPrompt}
@@ -886,85 +1125,112 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
               renderReferencePicker={renderReferencePicker}
               onCommit={(videoPrompt, promptDocument) => {
                 promptSave.cancel();
-                saveFields( { videoPrompt, promptDocument });
+                saveFields({ videoPrompt, promptDocument });
               }}
               onChange={(videoPrompt, promptDocument) => {
                 promptSave.markDirty();
-                updateDraft( { videoPrompt, promptDocument });
+                updateDraft({ videoPrompt, promptDocument });
               }}
               onFocus={promptSave.pause}
               onBlur={promptSave.schedule}
             />
-            <Flex
-              justify="space-between"
-              align="center"
-              wrap
-              gap={8}
-              style={{ marginTop: 9 }}
-            >
-              <Flex gap={6} wrap>
-                <Tag icon={<ThunderboltOutlined />}>
-                  {model}
-                </Tag>
-                <Popover content={parameterEditor} trigger="click" placement="bottomLeft">
+            <div className="storyboard-composer-hint">
+              <span>@ 引用角色、场景与音色</span>
+              <span>
+                {saveStatus === 'saving'
+                  ? '保存中…'
+                  : saveStatus === 'saved'
+                    ? '已保存'
+                    : ''}
+              </span>
+            </div>
+            <div className="storyboard-composer-footer">
+              <span className="storyboard-composer-model" title={model}>
+                <ThunderboltOutlined />
+                {model}
+              </span>
+              <div className="storyboard-composer-actions">
+                <Popover
+                  content={parameterEditor}
+                  trigger="click"
+                  placement="bottomLeft"
+                >
                   <Button
+                    type="text"
                     size="small"
                     aria-label={`分镜${index + 1}视频参数`}
                   >
-                    ◷ {' '}
                     {generationSettings.durationSeconds === -1
                       ? '智能'
-                      : `${generationSettings.durationSeconds}s`}{' '} | 1个 | {generationSettings.resolution} | mp4
+                      : `${generationSettings.durationSeconds}s`}{' '}
+                    · {generationSettings.resolution} <DownOutlined />
                   </Button>
                 </Popover>
-                <Popover content={referencePicker} trigger="click" placement="bottomLeft">
-                  <Button size="small" aria-label="选择提示词素材">@</Button>
-                </Popover>
-              </Flex>
-              <PointEstimateButton operations={videoEstimateOperations}
-                type="primary"
-                onClick={() => { promptSave.flush(); generateVideo(); }}
-                aria-label={`生成分镜${index + 1}视频`}
-                disabled={videoGenerating}
-                style={{
-                  minWidth: 92,
-                  background: '#5b50ff',
-                  borderColor: '#5b50ff',
-                  fontWeight: 700,
-                }}
+                <PointEstimateButton
+                  compact
+                  operations={videoEstimateOperations}
+                  type="primary"
+                  onClick={() => {
+                    promptSave.flush();
+                    generateVideo();
+                  }}
+                  aria-label={`生成分镜${index + 1}视频`}
+                  disabled={videoGenerating}
+                >
+                  <ThunderboltOutlined /> 生成视频
+                </PointEstimateButton>
+              </div>
+            </div>
+            {generationSettingsSaveStatus ? (
+              <Flex
+                aria-label={`分镜${index + 1}参数保存状态`}
+                style={{ marginTop: 4 }}
               >
-                <ThunderboltOutlined /> 生成视频
-              </PointEstimateButton>
-            </Flex>
-            {generationSettingsSaveStatus ? <Flex aria-label={`分镜${index + 1}参数保存状态`} style={{ marginTop: 4 }}>
-              {generationSettingsSaveStatus === 'error' ? <Button type="link" size="small" danger
-                aria-label={`重试保存分镜${index + 1}视频参数`} onClick={onRetryGenerationSettings}>
-                视频参数保存失败，重试
-              </Button> : <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {generationSettingsSaveStatus === 'saving' ? '正在保存视频参数' : '视频参数已保存'}
-              </Typography.Text>}
-            </Flex> : null}
+                {generationSettingsSaveStatus === 'error' ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    danger
+                    aria-label={`重试保存分镜${index + 1}视频参数`}
+                    onClick={onRetryGenerationSettings}
+                  >
+                    视频参数保存失败，重试
+                  </Button>
+                ) : (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {generationSettingsSaveStatus === 'saving'
+                      ? '正在保存视频参数'
+                      : '视频参数已保存'}
+                  </Typography.Text>
+                )}
+              </Flex>
+            ) : null}
           </div>
         </section>
 
         <section
           className="storyboard-preview-section"
           aria-label={`分镜${index + 1}视频预览区`}
-          style={{
-            position: 'relative',
-            background: '#f7f9fd',
-            borderRadius: 10,
-            overflow: 'hidden',
-          }}
         >
-          <div
-            className="storyboard-preview-stage"
-            style={{
-              background: videoGenerating || visibleVideoError || (previewKey === 'VIDEO' && !video.videoUrl) ? '#f7f8fc' : '#2c333f',
-              display: 'flex',
-              justifyContent: 'center',
-            }}
-          >
+          <div className="storyboard-column-heading">
+            <Typography.Text>视频预览</Typography.Text>
+            {previewKey === 'VIDEO' &&
+            video.videoUrl &&
+            !videoGenerating &&
+            !visibleVideoError ? (
+              <Button
+                type="text"
+                size="small"
+                icon={<ExpandOutlined />}
+                aria-label={`大屏播放分镜${index + 1}视频`}
+                onClick={() => {
+                  stopActiveVideo();
+                  setLargeVideoOpen(true);
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="storyboard-preview-stage">
             <div
               className="storyboard-preview-media"
               style={{ position: 'relative' }}
@@ -981,28 +1247,51 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
                   message={visibleVideoError}
                   timedOut={videoTask.execution?.status === 'TIMED_OUT'}
                   onClose={() => setDismissedVideoErrorTaskId(videoTask.id)}
-                  onRetry={(videoTask.retryable || videoTask.execution?.retryable) ? () => onRetryVideo(videoTask) : undefined}
-                  retryOperations={[{ url: `/api/projects/${projectId}/ai-video-tasks/${videoTask.id}/regenerate` }]}
+                  onRetry={
+                    videoTask.retryable || videoTask.execution?.retryable
+                      ? () => onRetryVideo(videoTask)
+                      : undefined
+                  }
+                  retryOperations={[
+                    {
+                      url: `/api/projects/${projectId}/ai-video-tasks/${videoTask.id}/regenerate`,
+                    },
+                  ]}
                 >
                   {!!videoTask.referenceDiagnostics?.failedImages?.length && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
-                      {videoTask.referenceDiagnostics.failedImages.map((image) => (
-                        <figure key={image.contentIndex} style={{ margin: 0, width: 120 }}>
-                          {image.imageUrl ? (
-                            <LazyMediaImage
-                              src={image.imageUrl}
-                              alt={`${image.label}：${image.displayName || '参考图片'}`}
-                              width={120}
-                              height={90}
-                              imageStyle={{ objectFit: 'contain' }}
-                              placeholderFallback="图片无法加载"
-                            />
-                          ) : null}
-                          <figcaption>
-                            {image.label}{image.displayName ? `：${image.displayName}` : ''}
-                          </figcaption>
-                        </figure>
-                      ))}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 12,
+                        marginTop: 8,
+                      }}
+                    >
+                      {videoTask.referenceDiagnostics.failedImages.map(
+                        (image) => (
+                          <figure
+                            key={image.contentIndex}
+                            style={{ margin: 0, width: 120 }}
+                          >
+                            {image.imageUrl ? (
+                              <LazyMediaImage
+                                src={image.imageUrl}
+                                alt={`${image.label}：${image.displayName || '参考图片'}`}
+                                width={120}
+                                height={90}
+                                imageStyle={{ objectFit: 'contain' }}
+                                placeholderFallback="图片无法加载"
+                              />
+                            ) : null}
+                            <figcaption>
+                              {image.label}
+                              {image.displayName
+                                ? `：${image.displayName}`
+                                : ''}
+                            </figcaption>
+                          </figure>
+                        ),
+                      )}
                     </div>
                   )}
                 </StoryboardVideoFailure>
@@ -1014,33 +1303,78 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
                   style={{
                     width: '100%',
                     height: '100%',
-                    objectFit: 'cover',
-                    background: '#000',
+                    aspectRatio: 'auto',
+                    background: '#171922',
                   }}
+                  active={!largeVideoOpen}
                 />
-              ) : previewKey === 'VIDEO' ? <StoryboardVideoEmptyState /> : (
+              ) : previewKey === 'VIDEO' ? (
+                <StoryboardVideoEmptyState />
+              ) : (
                 <PreviewPoster
                   src={selectedPreview?.url || video.coverUrl}
                   title={`分镜${index + 1}主预览`}
                 />
               )}
             </div>
-            {previewKey === 'VIDEO' && video.videoUrl && !videoGenerating && !visibleVideoError ? (
-              <StoryboardVideoTools enabled={canCaptureVideo} resultId={video.resultId} canErase={canCaptureVideo}
-                eraseRunning={eraseTasks.some(task => task.sourceResultId === video.resultId && isEraseActive(task))}
-                onErase={() => { if (video.resultId) onEraseVideo(video.resultId, item.storyboardNo || item.shotNo); }}
-                onCapture={() => { if (video.resultId) onCaptureVideo(video.resultId, item.storyboardNo || item.shotNo); }} />
+            {previewKey === 'VIDEO' &&
+            video.videoUrl &&
+            !videoGenerating &&
+            !visibleVideoError ? (
+              <StoryboardVideoTools
+                enabled={canCaptureVideo}
+                resultId={video.resultId}
+                canErase={canCaptureVideo}
+                eraseRunning={eraseTasks.some(
+                  (task) =>
+                    task.sourceResultId === video.resultId &&
+                    isEraseActive(task),
+                )}
+                onErase={() => {
+                  if (video.resultId)
+                    onEraseVideo(
+                      video.resultId,
+                      item.storyboardNo || item.shotNo,
+                    );
+                }}
+                onCapture={() => {
+                  if (video.resultId)
+                    onCaptureVideo(
+                      video.resultId,
+                      item.storyboardNo || item.shotNo,
+                    );
+                }}
+              />
             ) : null}
+          </div>
+          <div className="storyboard-media-format">
+            <span>{aspectRatio || '9:16'}</span>
+            <span>
+              {generationSettings.resolution} ·{' '}
+              {generationSettings.durationSeconds === -1
+                ? '智能时长'
+                : `${generationSettings.durationSeconds}s`}
+            </span>
           </div>
           <SubtitleEraseStatus tasks={eraseTasks} onRetry={onRetryErase} />
           <StoryboardVideoStrip
             storyboardNo={item.storyboardNo || item.shotNo}
             results={videoVersions}
             history={videoHistory}
-            currentResultId={item.currentVideoResultId || (boundVideo.selected ? boundVideo.resultId : undefined)}
-            previewResultId={previewKey === 'VIDEO' ? video.resultId : undefined}
-            onPreview={(result) => { setPreviewVersion(result); setPreviewKey('VIDEO'); }}
-            onLoad={(current, pageSize, signal) => loadVideoCandidates( current, pageSize, signal)}
+            currentResultId={
+              item.currentVideoResultId ||
+              (boundVideo.selected ? boundVideo.resultId : undefined)
+            }
+            previewResultId={
+              previewKey === 'VIDEO' ? video.resultId : undefined
+            }
+            onPreview={(result) => {
+              setPreviewVersion(result);
+              setPreviewKey('VIDEO');
+            }}
+            onLoad={(current, pageSize, signal) =>
+              loadVideoCandidates(current, pageSize, signal)
+            }
           />
           {visiblePreviewSources.length > 0 && (
             <Flex
@@ -1095,7 +1429,9 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
           )}
           {video.resultId ? (
             <Flex className="storyboard-preview-binding" justify="center">
-              {video.selected ? <Tag color="success">当前分镜视频</Tag> : (
+              {video.selected ? (
+                <Tag color="success">当前分镜视频</Tag>
+              ) : (
                 <Button
                   size="small"
                   loading={bindingVideoId === video.resultId}
@@ -1106,15 +1442,48 @@ const StoryboardCardView = ({ row }: { row: NonNullable<ReturnType<typeof useSto
               )}
             </Flex>
           ) : null}
-          <Flex justify="center" style={{ marginTop: 8 }}>
-            <StoryboardHistoryPicker storyboardId={item.id} storyboardNo={index + 1} type="VIDEO" />
+          <Flex
+            justify="space-between"
+            align="center"
+            className="storyboard-history-row"
+          >
+            <span>历史视频</span>
+            <StoryboardHistoryPicker
+              storyboardId={item.id}
+              storyboardNo={index + 1}
+              type="VIDEO"
+            />
           </Flex>
+          {largeVideoOpen && video.videoUrl ? (
+            <Modal
+              open
+              title={`分镜${index + 1}视频预览`}
+              width={1040}
+              centered
+              footer={null}
+              destroyOnHidden
+              onCancel={() => {
+                stopActiveVideo();
+                setLargeVideoOpen(false);
+              }}
+            >
+              <ClickToPlayVideo
+                src={video.videoUrl}
+                poster={video.coverUrl}
+                alt={`分镜${index + 1}大屏成片预览`}
+                style={{
+                  height: 'min(68vh, 660px)',
+                  aspectRatio: 'auto',
+                  borderRadius: 8,
+                }}
+              />
+            </Modal>
+          ) : null}
         </section>
       </div>
     </article>
   );
 };
-
 
 const StoryboardCard = memo(({ storyboardId }: { storyboardId: number }) => {
   const row = useStoryboardRow(storyboardId);

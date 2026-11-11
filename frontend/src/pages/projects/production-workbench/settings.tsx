@@ -18,6 +18,7 @@ import {
   Empty,
   Flex,
   Input,
+  type InputRef,
   Modal,
   Pagination,
   Radio,
@@ -33,9 +34,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
+import AssetSettingsIcon, { AssetSettingsPlaceholder } from './AssetSettingsIcon';
 import AiExecutionStatus from '@/components/AiExecutionStatus';
 import { isPointEstimateCancelled } from '@/services/point-estimate';
-import AssetImagePlaceholder from './AssetImagePlaceholder';
 import AssetNameEditor from './AssetNameEditor';
 import ManualAssetCreate from './ManualAssetCreate';
 import AssetLocalImageUpload from './AssetLocalImageUpload';
@@ -55,6 +57,7 @@ import {
 import StableImage from './StableImage';
 import VirtualAvatarPanel from './VirtualAvatarPanel';
 import styles from './settings.module.css';
+import { assetAppearanceSummary, assetMatchesGeneration, type AssetGenerationFilter } from './asset-presentation';
 import {
   type AssetImageBatch,
   type AssetDeletionImpact,
@@ -117,7 +120,7 @@ const scopeLabels: Record<ScriptElementType, string> = {
 
 const generationStatusLabel = (status: string) =>
   ({
-    NOT_STARTED: '等待生成',
+    NOT_STARTED: '待生成',
     GENERATING: '生成中',
     FAILED: '生成失败',
   })[status] ?? status;
@@ -136,11 +139,13 @@ const GenerationStatusOverlay = ({
   label,
   count,
   compact = false,
+  badge = false,
 }: {
   status: string;
   label: string;
   count?: number;
   compact?: boolean;
+  badge?: boolean;
 }) => {
   if (status === 'COMPLETED') return null;
   const generating = status === 'GENERATING';
@@ -149,24 +154,10 @@ const GenerationStatusOverlay = ({
     <span
       role="status"
       aria-label={label}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: compact ? 2 : 6,
-        background: failed ? 'rgb(255 77 79 / 14%)' : 'rgb(255 255 255 / 78%)',
-        color: failed ? '#cf1322' : 'var(--app-color-text-secondary)',
-        fontSize: compact ? 10 : 13,
-        fontWeight: 500,
-        lineHeight: compact ? '14px' : '20px',
-        pointerEvents: 'none',
-      }}
+      className={`${styles.generationOverlay} ${compact ? styles.generationCompact : ''} ${badge ? styles.generationBadge : ''}`}
+      data-state={failed ? 'failed' : generating ? 'generating' : 'waiting'}
     >
-      {generating ? <Spin size={compact ? 'small' : 'medium'} /> : null}
+      {generating ? <Spin size={compact ? 'small' : 'medium'} /> : badge ? <AssetSettingsIcon name="clock" /> : null}
       <span>
         {generationStatusLabel(status)}
         {count ? ` ${count}` : ''}
@@ -179,7 +170,7 @@ const getSummary = (type: ElementType, item: AssetRecord) => {
   if (type === 'CHARACTER') {
     const character = item as CharacterAsset;
     return [
-      character.roleType,
+      ({ LEAD: '主角', MAIN: '主角', SUPPORTING: '配角', EXTRA: '群演' } as Record<string, string>)[character.roleType] || character.roleType,
       character.gender,
       character.ageRange,
       character.identity,
@@ -223,6 +214,7 @@ const assetSections = [
 const AssetCard = ({
   item,
   type,
+  index,
   onDelete,
   onSave,
   onRename,
@@ -236,6 +228,7 @@ const AssetCard = ({
 }: {
   item: AssetRecord;
   type: ElementType;
+  index: number;
   onDelete: (type: ElementType, id: number) => void;
   onSave: (type: ElementType, item: AssetRecord) => void;
   onRename: (type: ElementType, assetId: number, name: string) => Promise<void>;
@@ -289,7 +282,7 @@ const AssetCard = ({
 
   return (
     <article
-      style={{ minWidth: 0, cursor: 'pointer' }}
+      className={`${styles.assetCard} ${visualActive ? styles.assetCardActive : ''} ${selected ? styles.assetCardSelected : ''}`}
       onClick={(event) => {
         if (event.target instanceof Element && event.target.closest('button, input, label, a, [role="dialog"]')) return;
         onManageVisual(type, item);
@@ -298,25 +291,7 @@ const AssetCard = ({
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div
           data-testid={`asset-image-${type}-${item.id}`}
-          onMouseLeave={() => {
-            setActionMenuOpen(false);
-          }}
-          style={{
-            display: 'grid',
-            placeItems: 'end start',
-            position: 'relative',
-            aspectRatio: '2 / 1',
-            padding: thumbnailUrl ? 0 : '16px 18px',
-            border: visualActive
-              ? '2px solid var(--app-color-primary)'
-              : '1px solid var(--app-color-border-secondary)',
-            borderRadius: 8,
-            overflow: 'hidden',
-            background: 'var(--app-color-fill-secondary)',
-            color: 'var(--app-color-text-tertiary)',
-            fontSize: 34,
-            fontWeight: 700,
-          }}
+          className={styles.cardVisual}
         >
           <button
             type="button"
@@ -328,123 +303,81 @@ const AssetCard = ({
           <StableImage
             src={thumbnailUrl}
             alt={`${item.name}当前视觉形象`}
-            fallback={<AssetImagePlaceholder />}
-            imageStyle={{ objectFit: 'cover' }}
+            fallback={<AssetSettingsPlaceholder type={type} />}
+            style={{ background: 'transparent' }}
+            imageStyle={{ objectFit: 'contain' }}
           />
-          <span
-            style={{
-              position: 'absolute',
-              top: 8,
-              left: 8,
-              zIndex: 2,
-              padding: '3px 8px',
-              borderRadius: 4,
-              background: 'var(--app-color-text)',
-              color: 'var(--app-color-bg-container)',
-              fontSize: 12,
-              fontWeight: 500,
-              opacity: 0.7,
-              pointerEvents: 'none',
-            }}
-          >
-            {!showingPendingImage && item.status === 'CONFIRMED' ? '已确认' : '待确认'}
-          </span>
+          <span className={styles.visualNumber}>{type.slice(0, 3)} / {String(index + 1).padStart(3, '0')}</span>
+          <span className={styles.visualType}>{type}</span>
+          <div className={styles.cardCheck}>
+            <Checkbox aria-label={`选择${assetDisplayName(item)}`} checked={selected}
+              disabled={readOnly} onChange={(event) => onSelectedChange(event.target.checked)} />
+          </div>
             <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
-              <Button
-                size="small"
-                aria-label={`${item.name}资产操作`}
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
                 disabled={readOnly}
-                icon={<EditOutlined />}
-                onClick={() => setActionMenuOpen((open) => !open)}
-              >
-                操作
-              </Button>
-              {actionMenuOpen ? (
-                <Flex
-                  vertical
-                  gap={4}
-                  style={{
-                    position: 'absolute',
-                    top: 34,
-                    right: 0,
+                open={actionMenuOpen}
+                onOpenChange={setActionMenuOpen}
+                popupRender={() => (
+                  <Flex vertical gap={4} style={{
                     minWidth: 104,
                     padding: 4,
                     background: 'var(--app-color-bg-elevated)',
                     border: '1px solid var(--app-color-border)',
                     borderRadius: 6,
                     boxShadow: '0 4px 14px rgb(41 43 61 / 12%)',
-                  }}
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    aria-label={`保存${item.name}`}
-                    disabled={readOnly}
-                    onClick={() => onSave(type, item)}
-                  >
-                    保存修改
-                  </Button>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    aria-label={`删除${item.name}`}
-                    disabled={readOnly}
-                    onClick={() => onDelete(type, item.id)}
-                  >
-                    删除资产
-                  </Button>
-                </Flex>
-              ) : null}
+                  }}>
+                    <Button type="text" size="small" icon={<EditOutlined />}
+                      aria-label={`保存${item.name}`} disabled={readOnly}
+                      onClick={() => { setActionMenuOpen(false); onSave(type, item); }}>
+                      保存修改
+                    </Button>
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />}
+                      aria-label={`删除${item.name}`} disabled={readOnly}
+                      onClick={() => { setActionMenuOpen(false); onDelete(type, item.id); }}>
+                      删除资产
+                    </Button>
+                  </Flex>
+                )}
+              >
+              <Button
+                size="small"
+                aria-label={`${item.name}资产操作`}
+                disabled={readOnly}
+                className={styles.cardMenu}
+                icon={<AssetSettingsIcon name="more" />}
+              />
+              </Dropdown>
             </div>
-          {!thumbnailUrl && assetGenerationStatus ? (
-            <GenerationStatusOverlay
-              status={assetGenerationStatus.status}
-              count={assetGenerationStatus.count}
-              label={`${item.name}视觉形象生成状态`}
-            />
+          {!thumbnailUrl ? (
+            <GenerationStatusOverlay badge status={assetGenerationStatus?.status ?? 'NOT_STARTED'}
+              count={assetGenerationStatus?.count} label={`${item.name}视觉形象生成状态`} />
           ) : null}
         </div>
-        <div style={{ padding: '10px 0 0' }}>
-          <Flex align="center" gap={8}>
-            <Checkbox
-              aria-label={`选择${assetDisplayName(item)}`}
-              checked={selected}
-              onChange={(event) => onSelectedChange(event.target.checked)}
-            />
-            <span style={{ minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--app-color-text)' }}>
+        <div className={styles.cardBody}>
+          <div className={styles.cardNameRow}>
+            <span className={styles.cardName}>
               <AssetNameEditor name={item.name} label={elementLabels[type]} maxLength={100}
                 disabled={readOnly || renameDisabled} onSave={(name) => onRename(type, item.id, name)} />
             </span>
-          </Flex>
-          <div
-            style={{
-              display: '-webkit-box',
-              marginTop: 4,
-              overflow: 'hidden',
-              color: 'var(--app-color-text-secondary)',
-              fontSize: 12,
-              lineHeight: '19px',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-            }}
-          >
-            <span style={{ color: 'var(--app-color-text)' }}>
-              {visualLabel} {item.visualSummary?.variantCount ?? item.visual?.variantCount ?? 0} 个
+            <span className={styles.confirmationBadge} data-confirmed={!showingPendingImage && item.status === 'CONFIRMED'}>
+              <AssetSettingsIcon name="check" />{!showingPendingImage && item.status === 'CONFIRMED' ? '已确认' : '待确认'}
             </span>
-            <span
-              style={{ padding: '0 6px', color: 'var(--app-color-border)' }}
-            >
-              |
-            </span>
-            {getDescription(type, item) ||
-              getSummary(type, item) ||
-              '暂无设定描述'}
           </div>
-          <Flex justify="space-between" align="center" style={{ marginTop: 8 }}>
-            {'production' in item && item.production ? <span style={{ color: 'var(--app-color-primary)', fontSize: 12 }}>共用来源：{item.production.sourceNames.length} 项原道具</span> : null}
+          <div className={styles.cardTags}>
+            <span>{visualLabel} {item.visualSummary?.variantCount ?? item.visual?.variantCount ?? 0} 个</span>
+            {type === 'CHARACTER' ? [
+              (item as CharacterAsset).gender,
+              (item as CharacterAsset).ageRange,
+            ].filter(Boolean).map((tag) => <span key={tag}>{tag}</span>) : null}
+          </div>
+          <p className={styles.cardDescription}>
+            {assetAppearanceSummary(getDescription(type, item)) || assetAppearanceSummary(getSummary(type, item)) || '暂无设定描述，点击配置视觉形象'}
+          </p>
+          <div className={styles.cardFooter}>
+            {'production' in item && item.production ? <span className={styles.productionSource}>共用来源：{item.production.sourceNames.length} 项原道具</span> : null}
             <span
               title={
                 item.visualSummary
@@ -455,11 +388,11 @@ const AssetCard = ({
               }
               style={{
                 color: 'var(--app-color-text-tertiary)',
-                fontSize: 12,
+                fontSize: 11,
                 cursor: variantEpisodes.length ? 'help' : 'default',
               }}
             >
-              关联 {episodeCount} 集
+              <AssetSettingsIcon name="video" />关联 {episodeCount} 集
             </span>
             {type === 'CHARACTER' ? <Button
               size="small"
@@ -477,7 +410,7 @@ const AssetCard = ({
             >
               视觉形象
             </Button>}
-          </Flex>
+          </div>
         </div>
       </div>
     </article>
@@ -489,6 +422,33 @@ const ProductionWorkbenchSettings = () => {
   const projectId = Number(params.id);
   const { footerActionHost, setSettingsActionHost, project } = useOutletContext<ProductionWorkbenchOutletContext>() ?? {};
   const [noticeVisible, setNoticeVisible] = useState(true);
+  const [noticeDetailsOpen, setNoticeDetailsOpen] = useState(false);
+  const [generationFilter, setGenerationFilter] = useState<AssetGenerationFilter>('ALL');
+  const [compactCards, setCompactCards] = useState(false);
+  const [assetMoreOpen, setAssetMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<InputRef>(null);
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey ||
+        (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable="true"], [role="dialog"]'))) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+    document.addEventListener('keydown', focusSearch);
+    return () => document.removeEventListener('keydown', focusSearch);
+  }, []);
+  useEffect(() => {
+    if (!assetMoreOpen) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setAssetMoreOpen(false);
+    };
+    const dismissWithEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAssetMoreOpen(false); };
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('keydown', dismissWithEscape);
+    return () => { document.removeEventListener('mousedown', dismiss); document.removeEventListener('keydown', dismissWithEscape); };
+  }, [assetMoreOpen]);
+  const [detailTab, setDetailTab] = useState<'overview' | 'prompt'>('overview');
   useEffect(() => { setNoticeVisible(true); }, [projectId]);
   const [voiceCharacter, setVoiceCharacter] = useState<CharacterAsset>();
   const [propSimplification, setPropSimplification] = useState<PropSimplificationStatus>();
@@ -712,6 +672,7 @@ const ProductionWorkbenchSettings = () => {
     setSelectedVisualVariantId(undefined);
     setSelectedAssetIds([]);
     setAssetKeyword('');
+    setGenerationFilter('ALL');
     setBatchPreflight(undefined);
     setActiveImageBatch(undefined);
     setBatchLoading(false);
@@ -794,24 +755,15 @@ const ProductionWorkbenchSettings = () => {
   const matchesAssetName = (name: string) => name.toLocaleLowerCase().includes(assetSearch);
   const visibleAssets = activeAssets.filter((item) =>
     [item.name, assetDisplayName(item), ...('production' in item ? item.production?.sourceNames ?? [] : [])]
-      .some(matchesAssetName));
+      .some(matchesAssetName) && assetMatchesGeneration(item, generationFilter));
   const visibleSceneProps = productionProps.sceneItems.filter((item) => matchesAssetName(item.sourceName));
-  const activeGeneration = activeAssets.reduce(
-    (
-      summary: { completed: number; failed: number; generating: number },
-      item: AssetRecord,
-    ) => {
-      Object.entries(item.visual?.generationSummary ?? {}).forEach(
-        ([status, count]) => {
-          if (status === 'COMPLETED') summary.completed += count;
-          else if (status === 'FAILED') summary.failed += count;
-          else summary.generating += count;
-        },
-      );
-      return summary;
-    },
-    { completed: 0, generating: 0, failed: 0 },
-  );
+  const generationFilters: { value: AssetGenerationFilter; label: string }[] = [
+    { value: 'ALL', label: '全部' },
+    { value: 'NOT_STARTED', label: '待生成' },
+    { value: 'COMPLETED', label: '已完成' },
+    { value: 'GENERATING', label: '生成中' },
+    { value: 'FAILED', label: '失败' },
+  ];
 
   const submitReextraction = async (
     targetType: ScriptElementType,
@@ -885,7 +837,7 @@ const ProductionWorkbenchSettings = () => {
   });
 
   const openAssetImageBatch = async (mode: 'PRIMARY' | 'ALL') => {
-    if (!selectedAssetIds.length) return;
+    if (normalizationBlocked || !selectedAssetIds.length) return;
     const requestId = ++batchRequestIdRef.current;
     const requestProjectId = projectId;
     setBatchLoading(true);
@@ -1237,6 +1189,7 @@ const ProductionWorkbenchSettings = () => {
     const requestId = visualRequestIdRef.current + 1;
     visualRequestIdRef.current = requestId;
     setVisualAsset({ type, item });
+    setDetailTab('overview');
     setGenerationVariantId(undefined);
     setAddingVariant(false);
     setNewVariantName('');
@@ -1417,22 +1370,36 @@ const ProductionWorkbenchSettings = () => {
     return null;
   }
 
+  const batchGenerationAction = (
+    <span className={styles.floatingGenerate}>
+      <Dropdown
+        trigger={['click']}
+        disabled={normalizationBlocked || !selectedAssetIds.length || batchLoading}
+        menu={{
+          items: [
+            { key: 'PRIMARY', label: `生成所选${elementLabels[activeType]}主图` },
+            { key: 'ALL', label: `生成所选${elementLabels[activeType]}全部形态图` },
+          ],
+          onClick: ({ key }) => void openAssetImageBatch(key === 'ALL' ? 'ALL' : 'PRIMARY'),
+        }}
+      >
+        <Button type="primary" aria-label={`${elementLabels[activeType]}图生成`}
+          disabled={normalizationBlocked || !selectedAssetIds.length || batchLoading} loading={batchLoading}>
+          <AssetSettingsIcon name="spark" />
+          生成{elementLabels[activeType]}图{selectedAssetIds.length ? ` (${selectedAssetIds.length})` : ''}
+        </Button>
+      </Dropdown>
+    </span>
+  );
+
   const notice = noticeVisible ? (
     <section
       aria-label="资产设定提示"
-      style={{
-        position: 'relative',
-        marginBottom: 16,
-        padding: '10px 48px 10px 16px',
-        background: 'var(--app-color-primary-bg)',
-        border: '1px solid var(--app-color-primary-bg)',
-        borderRadius: 8,
-        color: 'var(--app-color-primary)',
-        fontSize: 13,
-        lineHeight: '20px',
-      }}
+      className={styles.notice}
     >
-      请确保需要独立制作的角色、场景及道具已生成。点击图片可配置视觉形象，关键状态请分别保留参考图；随场景呈现的物品需确认或更新对应场景图。
+      <span className={styles.noticeDot} aria-hidden="true">i</span>
+      <span>请先完成独立制作资产的参考图。<span className={styles.noticeExtra}>点击卡片管理视觉形象，关键状态可分别保留参考图。</span></span>
+      <Button type="link" size="small" onClick={() => setNoticeDetailsOpen(true)}>查看说明</Button>
       <Button
         type="text"
         aria-label="关闭资产设定提示"
@@ -1499,6 +1466,10 @@ const ProductionWorkbenchSettings = () => {
             : '该资产目前没有分镜引用，确定删除吗？'}</p>
           <p>分镜文字描述和已有图片、视频将保留。</p>
         </Modal>
+        <Modal open={noticeDetailsOpen} title="资产设定说明" footer={null} onCancel={() => setNoticeDetailsOpen(false)}>
+          <p>请确保需要独立制作的角色、场景及道具已生成。点击图片可配置视觉形象，关键状态请分别保留参考图；随场景呈现的物品需确认或更新对应场景图。</p>
+          <p>“已确认”表示资产设定已确认，图片生成进度请查看独立的生成状态。</p>
+        </Modal>
         {notice}
         {activeExecution ? (
           <div
@@ -1527,9 +1498,7 @@ const ProductionWorkbenchSettings = () => {
         }} onRefresh={reload} />
         <fieldset disabled={normalizationBlocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
-        <div style={{ marginBottom: 16 }}>
-          <VirtualAvatarPanel projectId={projectId} onChanged={() => mutateVariant(async () => undefined, '虚拟人像状态已更新')} />
-        </div>
+
         <Modal
           title="确认删除此形态？"
           open={Boolean(variantDeletion)}
@@ -1704,13 +1673,11 @@ const ProductionWorkbenchSettings = () => {
         <div className={styles.toolbarRow}>
           <div
             role="tablist"
-            style={{ display: 'flex', alignSelf: 'stretch', gap: 28 }}
+            aria-label="资产分类"
+            className={styles.categoryTabs}
           >
             {assetSections.map((section) => {
               const count = assetsByType[section.type].length;
-              const completed = assetsByType[section.type].filter(
-                (item: AssetRecord) => item.status === 'CONFIRMED',
-              ).length;
               const active = activeType === section.type;
               return (
                 <button
@@ -1720,48 +1687,30 @@ const ProductionWorkbenchSettings = () => {
                   aria-selected={active}
                   onClick={() => {
                     setActiveType(section.type);
+                    setGenerationFilter('ALL');
                     setAssetKeyword('');
                     setSelectedAssetIds([]);
                     closeVisualGallery();
                   }}
-                  style={{
-                    border: 0,
-                    borderRadius: 0,
-                    alignSelf: 'stretch',
-                    background: 'transparent',
-                    color: active
-                      ? 'var(--app-color-primary)'
-                      : 'var(--app-color-text-secondary)',
-                    boxShadow: active
-                      ? 'inset 0 -2px 0 var(--app-color-primary)'
-                      : 'none',
-                    padding: '0 2px',
-                    cursor: 'pointer',
-                    fontWeight: active ? 600 : 400,
-                    fontSize: 18,
-                  }}
+                  className={styles.categoryTab}
                 >
+                  <AssetSettingsIcon name={section.type === 'CHARACTER' ? 'user' : section.type === 'SCENE' ? 'scene' : 'cube'} />
                   {elementLabels[section.type]}
-                  <span
-                    style={{
-                      marginLeft: 6,
-                      fontSize: 12,
-                      color: active
-                        ? 'var(--app-color-primary)'
-                        : 'var(--app-color-text-tertiary)',
-                    }}
-                  >
-                    {completed}/{count}
+                  <span>
+                    {count}
                   </span>
                 </button>
               );
             })}
           </div>
+          <div className={styles.libraryTools}>
           <Input
+            ref={searchRef}
             className={styles.assetSearch}
             aria-label="搜索资产"
             placeholder={`搜索${elementLabels[activeType]}名称`}
             prefix={<SearchOutlined />}
+            suffix={<kbd className={styles.searchHint}>/</kbd>}
             allowClear
             value={assetKeyword}
             onChange={(event) => {
@@ -1769,24 +1718,7 @@ const ProductionWorkbenchSettings = () => {
               setSelectedAssetIds([]);
             }}
           />
-          <fieldset
-            disabled={normalizationBlocked}
-            role="toolbar"
-            aria-label={`${elementLabels[activeType]}资产操作`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              flexWrap: 'wrap',
-              gap: 14,
-              color: 'var(--app-color-text-secondary)',
-              fontSize: 13,
-              whiteSpace: 'normal',
-              border: 0,
-              padding: 0,
-              margin: 0,
-            }}
-          >
+          <div className={styles.addAsset}>
             <ManualAssetCreate
               key={projectId}
               projectId={projectId}
@@ -1814,39 +1746,16 @@ const ProductionWorkbenchSettings = () => {
                 }
               }}
             />
-            <span>
-              {elementLabels[activeType]}总计 {activeAssets.length}
-            </span>
-            <span style={{ color: 'var(--app-color-border)' }}>|</span>
-            <span>已完成 {activeGeneration.completed}</span>
-            <span style={{ color: 'var(--app-color-border)' }}>|</span>
-            <span>生成中 {activeGeneration.generating}</span>
-            <span style={{ color: 'var(--app-color-border)' }}>|</span>
-            <span>失败 {activeGeneration.failed}</span>
-            <Checkbox
-              aria-label={assetSearch ? '全选搜索结果' : '全选当前分类'}
-              disabled={!visibleAssets.length || (activeType === 'PROP' && showSceneProps)}
-              checked={
-                visibleAssets.length > 0 &&
-                visibleAssets.every((item) => selectedAssetIds.includes(item.id))
-              }
-              indeterminate={
-                selectedAssetIds.length > 0 &&
-                selectedAssetIds.length < visibleAssets.length
-              }
-              onChange={(event) =>
-                setSelectedAssetIds(
-                  event.target.checked
-                    ? visibleAssets.map((item) => item.id)
-                    : [],
-                )
-              }
-            >
-              全选
-            </Checkbox>
-            <span>已选择 {selectedAssetIds.length} 项</span>
+          </div>
+          <div ref={moreRef} className={styles.moreWrap}>
+            <Button aria-label="更多资产操作" aria-expanded={assetMoreOpen} aria-controls="asset-more-menu"
+              className={styles.moreButton} icon={<AssetSettingsIcon name="more" />}
+              onClick={() => setAssetMoreOpen((open) => !open)} />
+            <fieldset id="asset-more-menu" hidden={!assetMoreOpen} disabled={normalizationBlocked} className={styles.moreMenu}>
+            <VirtualAvatarPanel projectId={projectId} disabled={normalizationBlocked} onChanged={() => mutateVariant(async () => undefined, '虚拟人像状态已更新')} />
             <Dropdown
               trigger={['click']}
+              getPopupContainer={(trigger) => trigger.parentElement ?? trigger}
               disabled={extractionBusy}
               menu={{
                 items: [
@@ -1879,31 +1788,57 @@ const ProductionWorkbenchSettings = () => {
                   if (character) void openVisualGallery('CHARACTER', character, variantId);
                 }} />
             ) : null}
-            <Dropdown
-              trigger={['click']}
-              disabled={!selectedAssetIds.length || batchLoading}
-              menu={{
-                items: [
-                  { key: 'PRIMARY', label: `生成所选${elementLabels[activeType]}主图` },
-                  { key: 'ALL', label: `生成所选${elementLabels[activeType]}全部形态图` },
-                ],
-                onClick: ({ key }) =>
-                  void openAssetImageBatch(key === 'ALL' ? 'ALL' : 'PRIMARY'),
-              }}
+            </fieldset>
+          </div>
+          </div>
+          </div>
+          <div className={styles.filterRow}>
+            <fieldset aria-label="图片生成状态筛选" className={styles.statusFilters}>
+              {generationFilters.map((filter) => <button key={filter.value} type="button"
+                aria-pressed={generationFilter === filter.value}
+                disabled={activeType === 'PROP' && showSceneProps}
+                onClick={() => { setGenerationFilter(filter.value); setSelectedAssetIds([]); }}>
+                {filter.value !== 'ALL' ? <i className={styles.statusDot} data-status={filter.value} /> : null}{filter.label} <span>{activeAssets.filter((asset) => assetMatchesGeneration(asset, filter.value)).length}</span>
+              </button>)}
+            </fieldset>
+            <div className={styles.viewTools}>
+              <span>{selectedAssetIds.length ? `已选择 ${selectedAssetIds.length} 项` : '未选择资产'}</span>
+              <fieldset className={styles.viewSwitch} aria-label="卡片密度">
+                <button type="button" aria-label="标准卡片" title="标准卡片" aria-pressed={!compactCards} onClick={() => setCompactCards(false)}><AssetSettingsIcon name="grid" /></button>
+                <button type="button" aria-label="紧凑卡片" title="紧凑卡片" aria-pressed={compactCards} onClick={() => setCompactCards(true)}><AssetSettingsIcon name="dense" /></button>
+              </fieldset>
+            </div>
+          </div>
+          <fieldset
+            disabled={normalizationBlocked}
+            role="toolbar"
+            aria-label={`${elementLabels[activeType]}资产操作`}
+            className={styles.assetOperations}
+          >
+            <Checkbox
+              aria-label={assetSearch || generationFilter !== 'ALL' ? '全选搜索结果' : '全选当前分类'}
+              disabled={!visibleAssets.length || (activeType === 'PROP' && showSceneProps)}
+              checked={
+                visibleAssets.length > 0 &&
+                visibleAssets.every((item) => selectedAssetIds.includes(item.id))
+              }
+              indeterminate={
+                selectedAssetIds.length > 0 &&
+                selectedAssetIds.length < visibleAssets.length
+              }
+              onChange={(event) =>
+                setSelectedAssetIds(
+                  event.target.checked
+                    ? visibleAssets.map((item) => item.id)
+                    : [],
+                )
+              }
             >
-              <Button
-                type="primary"
-                size="small"
-                aria-label={`${elementLabels[activeType]}图生成`}
-                disabled={!selectedAssetIds.length || batchLoading}
-                loading={batchLoading}
-              >
-                {elementLabels[activeType]}图生成
-              </Button>
-            </Dropdown>
+              全选当前展示
+            </Checkbox>
+            <span>点击卡片查看视觉形象</span>
           </fieldset>
-        </div>
-
+        <div className={styles.gallery}>
         {activeType === 'PROP' && (propSimplification?.appliedPlanId || propSimplification?.production.needsReview) ? (
           <section aria-label="道具制作清单" style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8, background: 'var(--app-color-primary-bg)' }}>
             <span>{propSimplification.production.needsReview ? '原资产或剧本已变化，请重新分析精简方案。' : `当前按 ${productionProps.items.length} 项独立制作展示，${productionProps.sceneItems.length} 项随场景呈现。原名称及使用记录保留。`}</span>
@@ -1922,9 +1857,10 @@ const ProductionWorkbenchSettings = () => {
           return (
             <section>
               {items.length ? (
-                <div className={styles.assetGrid}>
-                  {items.map((item: AssetRecord) => (
+                <div className={`${styles.assetGrid} ${compactCards ? styles.assetGridCompact : ''}`}>
+                  {items.map((item: AssetRecord, index) => (
                     <AssetCard
+                      index={index}
                       key={`${projectId}-${section.type}-${item.id}`}
                       item={item}
                       type={section.type}
@@ -1959,14 +1895,16 @@ const ProductionWorkbenchSettings = () => {
                   }}
                 >
                   <Empty
-                    description={assetSearch ? `未找到相关${elementLabels[section.type]}` : `暂无${elementLabels[section.type]}设定`}
+                    description={assetSearch ? `未找到相关${elementLabels[section.type]}` : generationFilter !== 'ALL' ? '当前状态下暂无资产' : `暂无${elementLabels[section.type]}设定`}
                   />
                 </div>
               )}
             </section>
           );
         })()}
+        </div>
         </section>
+        {footerActionHost ? createPortal(batchGenerationAction, footerActionHost) : batchGenerationAction}
         <div ref={setSettingsActionHost} className={styles.workbenchActionSlot} />
         </div>
         {visualAsset
@@ -2018,24 +1956,39 @@ const ProductionWorkbenchSettings = () => {
                   <section aria-label="视觉形象画廊" className={styles.visualPanel}>
                     <header className={styles.visualHeader}>
                       <div className={styles.visualHeading}>
-                        <Typography.Title level={5} style={{ margin: 0 }}
+                        <small className={styles.detailEyebrow}>{elementLabels[visualAsset.type]}视觉形象</small>
+                        <Typography.Title level={5} style={{ margin: 0, fontSize: 20 }}
                           aria-label={`${visualAsset.item.name}${selectedVariant ? ` · ${selectedVariant.name}` : ''}`}>
                           <span className={styles.visualNames}>
                             <AssetNameEditor key={`${projectId}-${visualAsset.type}-${visualAsset.item.id}`}
                               name={visualAsset.item.name} label={elementLabels[visualAsset.type]} maxLength={100}
                               disabled={!canRename || normalizationBlocked}
                               onSave={(name) => renameAsset(visualAsset.type, visualAsset.item.id, name)} />
-                            {selectedVariant && <>
+                            <span className={styles.detailConfirmed}>{visualAsset.item.status === 'CONFIRMED' ? '已确认' : '待确认'}</span>
+                          </span>
+                        </Typography.Title>
+                      </div>
+                      <Button
+                        type="text"
+                        aria-label="关闭视觉形象"
+                        onClick={closeVisualGallery}
+                        className={styles.closeVisual}
+                      >
+                        ×
+                      </Button>
+                    </header>
+                    <div className={`${styles.panelContent} ${visualAsset.type === 'CHARACTER' ? styles.characterPanelContent : ''}`}>
+                      <div className={styles.detailScroll}>
+                        <div className={styles.detailMeta}>
+                          <span className={styles.detailVariantName}>                            {selectedVariant && <>
                               <span aria-hidden="true">·</span>
                               <AssetNameEditor key={`${projectId}-variant-${selectedVariant.id}`}
                                 name={selectedVariant.name} label="形态" maxLength={100}
                                 disabled={!canRename || normalizationBlocked || visualLoading}
                                 onSave={(name) => renameVariant(visualAsset.type, visualAsset.item.id, selectedVariant.id, name)} />
                             </>}
-                          </span>
-                        </Typography.Title>
-                      </div>
-                      <div className={styles.visualMeta}>
+</span>
+                          <details className={styles.episodeDisclosure}><summary>查看出镜剧集 · {selectedVariantEpisodes.length} 集</summary>                      <div className={styles.visualMeta}>
                         <div className={styles.episodeInfo}>
                           <span>出镜剧集</span>
                           <span
@@ -2048,16 +2001,8 @@ const ProductionWorkbenchSettings = () => {
                         </div>
                         {'production' in visualAsset.item && visualAsset.item.production ? <div className={styles.episodeInfo}><span>共用来源</span><span>{visualAsset.item.production.sourceNames.join('、')}</span></div> : null}
                       </div>
-                      <Button
-                        type="text"
-                        aria-label="关闭视觉形象"
-                        onClick={closeVisualGallery}
-                        className={styles.closeVisual}
-                      >
-                        ×
-                      </Button>
-                    </header>
-                    <div className={`${styles.panelContent} ${visualAsset.type === 'CHARACTER' ? styles.characterPanelContent : ''}`}>
+</details>
+                        </div>
                       <div className={styles.visualContent}>
                         {visualLoading ? (
                           <div role="status">视觉形象加载中</div>
@@ -2082,11 +2027,12 @@ const ProductionWorkbenchSettings = () => {
                                 cover: '点击放大',
                               }}
                               alt={`${selectedVariant.name}预览图`}
-                              fallback={<AssetImagePlaceholder />}
+                              fallback={<AssetSettingsPlaceholder type={visualAsset.type} />}
+                              style={{ background: 'transparent' }}
                               loading="eager"
                               imageStyle={{ objectFit: 'contain' }}
                             />
-                            <GenerationStatusOverlay
+                            <GenerationStatusOverlay badge
                               status={selectedVariant.generationStatus}
                               label={`${selectedVariant.name}主预览生成状态`}
                             />
@@ -2117,6 +2063,7 @@ const ProductionWorkbenchSettings = () => {
                           <Empty description="暂无视觉形象" />
                         )}
                         <div className={styles.variantArea}>
+                          <div className={styles.detailSectionTitle}><span>{visualAsset.type === 'CHARACTER' ? '角色形态' : '视觉形象'} <small> · {visual?.variantCount ?? variants.length} 个</small></span><small>点击切换形象</small></div>
                           <div className={styles.variantRow}>
                             <section
                               ref={thumbnailViewportRef}
@@ -2147,7 +2094,8 @@ const ProductionWorkbenchSettings = () => {
                                         <StableImage
                                           src={variant.currentImageThumbnailUrl}
                                           alt={`${variant.name}缩略图`}
-                                          fallback={<AssetImagePlaceholder compact />}
+                                          style={{ background: 'transparent' }}
+                                          fallback={<AssetSettingsIcon name={visualAsset.type === 'CHARACTER' ? 'user' : visualAsset.type === 'SCENE' ? 'scene' : 'cube'} />}
                                           imageStyle={{ objectFit: 'contain' }}
                                         />
                                         {visualAsset.type === 'CHARACTER' && isVirtualAvatarVariant(variant) ? (
@@ -2155,11 +2103,8 @@ const ProductionWorkbenchSettings = () => {
                                             虚拟
                                           </Tag>
                                         ) : null}
-                                        <GenerationStatusOverlay
-                                          compact
-                                          status={variant.generationStatus}
-                                          label={`${variant.name}缩略图生成状态`}
-                                        />
+                                        {variant.generationStatus !== 'NOT_STARTED' ? <GenerationStatusOverlay compact
+                                          status={variant.generationStatus} label={`${variant.name}缩略图生成状态`} /> : null}
                                       </span>
                                       <span className={styles.variantName} title={variant.name}>
                                         {variant.name}
@@ -2236,15 +2181,25 @@ const ProductionWorkbenchSettings = () => {
                             />
                           ) : null}
                         </div>
-                        {visualAsset.type !== 'CHARACTER' ? <p className={styles.assetDescription}>
-                          {getDescription(visualAsset.type, visualAsset.item) ||
-                            getSummary(visualAsset.type, visualAsset.item) ||
-                            '暂无设定描述'}
-                        </p> : null}
                         {selectedVariant?.errorMessage ? (
                           <Typography.Text type="danger">{selectedVariant.errorMessage}</Typography.Text>
                         ) : null}
                       </div>
+                      <div role="tablist" aria-label="资产详情内容" className={styles.detailTabs}>
+                        <button type="button" role="tab" id="asset-overview-tab" aria-controls="asset-overview-panel" aria-selected={detailTab === 'overview'} onClick={() => setDetailTab('overview')}>概览</button>
+                        <button type="button" role="tab" id="asset-prompt-tab" aria-controls="asset-prompt-panel" aria-selected={detailTab === 'prompt'} onClick={() => setDetailTab('prompt')}>原始提示词</button>
+                      </div>
+                      <div role="tabpanel" id="asset-overview-panel" aria-labelledby="asset-overview-tab" hidden={detailTab !== 'overview'} className={styles.detailOverview}>
+                        <span className={styles.detailLabel}>外观设定</span>
+                        <p className={styles.assetDescription}>{assetAppearanceSummary(selectedVariant?.appearance) || assetAppearanceSummary(getDescription(visualAsset.type, visualAsset.item)) || assetAppearanceSummary(getSummary(visualAsset.type, visualAsset.item)) || '暂无外观描述，可在原始提示词中查看完整设定。'}</p>
+                        <div className={styles.detailFields}>
+                          <div><span className={styles.detailLabel}>资产信息</span><p>{assetAppearanceSummary(getSummary(visualAsset.type, visualAsset.item)) || elementLabels[visualAsset.type]} · {visual?.variantCount ?? visualAsset.item.visualSummary?.variantCount ?? variants.length} 个形态</p></div>
+                          <div><span className={styles.detailLabel}>视觉风格</span><p>{project?.visualStyle || '未设置'}</p></div>
+                          <div><span className={styles.detailLabel}>图像状态</span><p>{selectedVariant?.generationStatus === 'COMPLETED' ? '已完成' : generationStatusLabel(selectedVariant?.generationStatus || 'NOT_STARTED')}</p></div>
+                          <div><span className={styles.detailLabel}>关联剧集</span><p>{selectedVariantEpisodes.length} 集</p></div>
+                        </div>
+                      </div>
+                      <div role="tabpanel" id="asset-prompt-panel" aria-labelledby="asset-prompt-tab" hidden={detailTab !== 'prompt'} className={styles.detailPrompt}>
                       {visualAsset.type === 'CHARACTER' ? (
                         <AssetVisualPromptEditor
                           key={`${projectId}-${visualAsset.item.id}-${primaryVariant?.id}`}
@@ -2255,7 +2210,9 @@ const ProductionWorkbenchSettings = () => {
                           blockedReason={visualEditBlockReason}
                           onSaved={applySavedCharacterPrompt}
                         />
-                      ) : null}
+                      ) : <p className={styles.assetDescription}>{selectedVariant?.prompt || visualAsset.item.prompt || '暂无提示词'}</p>}
+                      </div>
+                      </div>
                       {selectedEditBlockReason ? (
                         <p role="status" aria-label="视觉形象操作提示" id="visual-edit-block-reason" className={styles.visualBlockReason}>
                           {selectedEditBlockReason}

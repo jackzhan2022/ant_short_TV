@@ -1,7 +1,9 @@
 import {
   AudioOutlined,
+  CheckOutlined,
   FolderOutlined,
   PlayCircleOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
 import { App, Button, Empty, Input, Modal, Pagination } from 'antd';
@@ -89,10 +91,15 @@ function VoicePicker({
   const [currentFailed, setCurrentFailed] = useState(false);
   const [overridden, setOverridden] = useState(false);
   const [selected, setSelected] = useState<AudioReference>();
+  const [selectedLabel, setSelectedLabel] = useState<string>();
   const [preview, setPreview] = useState<{
     name: string;
     previewUrl: string;
+    label?: string;
   }>();
+  const [playbackAttempt, setPlaybackAttempt] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [playbackFailed, setPlaybackFailed] = useState(false);
   const [file, setFile] = useState<File>();
   const [localUrl, setLocalUrl] = useState<string>();
   const [dragging, setDragging] = useState(false);
@@ -317,73 +324,120 @@ function VoicePicker({
     }
   };
   const showingFolders = Boolean(project && view === 'folders' && !folder);
+  const audition =
+    source === 'upload'
+      ? file && localUrl
+        ? { name: file.name, previewUrl: localUrl }
+        : undefined
+      : preview || selected;
+  const hasSelection = source === 'upload' ? Boolean(file) : Boolean(selected);
+  const auditionLabel =
+    preview?.label || (!preview ? selectedLabel : undefined);
+  const startPreview = (audio: {
+    name: string;
+    previewUrl: string;
+    label?: string;
+  }) => {
+    setPreview(audio);
+    setPlaybackAttempt((value) => value + 1);
+    setPlaybackFailed(false);
+    setPlaying(false);
+  };
+  const clearSelection = () => {
+    setSelected(undefined);
+    setSelectedLabel(undefined);
+    setFile(undefined);
+    setPreview(undefined);
+    setPlaying(false);
+    setPlaybackFailed(false);
+  };
 
   return (
     <Modal
       open
+      centered
+      className={styles.modal}
+      classNames={{
+        container: styles.container,
+        header: styles.header,
+        body: styles.body,
+        footer: styles.footer,
+      }}
       title={
-        <span className={styles.title}>
-          <AudioOutlined />
-          {storyboard ? '分镜角色音色' : '配置音色'}
-        </span>
+        <div className={styles.title}>
+          <span className={styles.titleIcon}>
+            <AudioOutlined />
+          </span>
+          <div>
+            <h2>{storyboard ? '分镜角色音色' : '配置音色'}</h2>
+            <p>
+              {characterName}
+              {storyboard?.variantName ? ` / ${storyboard.variantName}` : ''}
+              <span>
+                {' '}
+                ·{' '}
+                {storyboard
+                  ? overridden
+                    ? '当前分镜独立音色'
+                    : '使用角色默认音色'
+                  : '默认音色'}
+              </span>
+            </p>
+          </div>
+        </div>
       }
-      width={740}
+      width={1020}
       onCancel={() => {
         if (!busy.current) onClose();
       }}
       onOk={() => void submit()}
-      okText="确认"
+      okText="应用音色"
       cancelText="取消"
       confirmLoading={saving}
       okButtonProps={{
-        'aria-label': '确认',
+        'aria-label': '应用音色',
         disabled: disabled || (source === 'upload' ? !file : !selected),
       }}
       cancelButtonProps={{ disabled: saving }}
       closable={!saving}
-    >
-      <div className={styles.role}>
-        角色 · {characterName}
-        {storyboard?.variantName ? ` / ${storyboard.variantName}` : ''}
-        <span>
-          {currentFailed
-            ? '当前音色读取失败，可重新选择'
-            : current
-              ? `当前音色：${current.name}`
-              : current === null
-                ? '当前音色：未配置'
-                : '正在读取当前音色…'}
-        </span>
-      </div>
-      {storyboard ? (
-        <div className={styles.scopeHint}>
-          <span>
-            {overridden ? '当前分镜独立音色' : '使用角色默认音色'}
-            。仅影响当前分镜的该角色形态，不修改角色默认绑定。
-          </span>
-          {overridden ? (
-            <Button
-              size="small"
-              disabled={disabled || saving}
-              onClick={() => void resetToDefault()}
-            >
-              恢复角色默认音色
-            </Button>
-          ) : null}
+      footer={(_, { OkBtn, CancelBtn }) => (
+        <div className={styles.footerContent}>
+          <div className={styles.selection} aria-live="polite">
+            <span className={styles.selectionIcon} data-selected={hasSelection}>
+              <CheckOutlined />
+            </span>
+            <span>{hasSelection ? '已选 1 项' : '未选择音色'}</span>
+            {hasSelection ? (
+              <Button
+                type="text"
+                size="small"
+                disabled={saving || disabled}
+                onClick={clearSelection}
+              >
+                清除
+              </Button>
+            ) : null}
+          </div>
+          <div className={styles.actions}>
+            <CancelBtn />
+            <OkBtn />
+          </div>
         </div>
-      ) : null}
+      )}
+    >
       <div className={styles.sourceTabs} role="tablist" aria-label="音色来源">
         {(
           [
-            { key: 'upload', label: '本地上传' },
-            { key: 'system', label: '系统音频' },
-            { key: 'library', label: '项目音频库' },
+            { key: 'system', label: '系统音频', icon: <AudioOutlined /> },
+            { key: 'library', label: '项目音频库', icon: <FolderOutlined /> },
+            { key: 'upload', label: '本地上传', icon: <UploadOutlined /> },
           ] as const
         ).map((tab) => (
           <button
             type="button"
             key={tab.key}
             role="tab"
+            aria-label={tab.label}
             id={`voice-${tab.key}`}
             aria-controls={`voice-panel-${tab.key}`}
             aria-selected={source === tab.key}
@@ -391,359 +445,424 @@ function VoicePicker({
             onClick={() => {
               if (source === tab.key) return;
               setSource(tab.key);
-              setPreview(undefined);
-              setSelected(undefined);
+              clearSelection();
             }}
           >
+            {tab.icon}
             {tab.label}
           </button>
         ))}
       </div>
-      {source === 'system' ? (
-        <section
-          id="voice-panel-system"
-          role="tabpanel"
-          aria-labelledby="voice-system"
-          className={styles.panel}
-        >
-          <SystemAudioList
-            disabled={disabled || saving}
-            selectedId={
-              selected?.resourceType === 'SYSTEM_AUDIO_ASSET'
-                ? selected.resourceId
-                : undefined
-            }
-            onSelect={(audio) =>
-              setSelected({
-                sourceProjectId: projectId,
-                sourceProjectName: '系统音频',
-                resourceType: 'SYSTEM_AUDIO_ASSET',
-                resourceId: audio.id,
-                name: audio.name,
-                previewUrl: audio.previewUrl,
-                durationSeconds: audio.durationSeconds,
-              })
-            }
-          />
-        </section>
-      ) : source === 'upload' ? (
-        <section
-          id="voice-panel-upload"
-          role="tabpanel"
-          aria-labelledby="voice-upload"
-          className={styles.panel}
-        >
-          {file ? (
-            <div className={styles.uploaded}>
-              <div className={styles.fileInfo}>
-                <AudioOutlined />
-                <span>
-                  {file.name}
-                  <small>{(file.size / 1024 / 1024).toFixed(2)} MB</small>
-                </span>
-                <Button disabled={saving} onClick={() => setFile(undefined)}>
-                  移除
-                </Button>
-              </div>
-              {localUrl ? (
-                // biome-ignore lint/a11y/useMediaCaption: Uploaded reference clips do not have transcript files.
-                <audio
-                  key={localUrl}
-                  src={localUrl}
-                  controls
-                  preload="metadata"
-                  aria-label="本地参考音频试听"
-                />
-              ) : null}
-              {progress !== undefined ? (
-                <p role="status">
-                  {progress < 100 ? `上传中 ${progress}%` : '正在保存音频…'}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <label
-              className={`${styles.dropzone} ${dragging ? styles.dragging : ''}`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                chooseFile(event.dataTransfer.files[0]);
-              }}
+      <div className={styles.workspace}>
+        <div className={styles.browser}>
+          {source === 'system' ? (
+            <section
+              id="voice-panel-system"
+              role="tabpanel"
+              aria-labelledby="voice-system"
+              className={styles.panel}
             >
-              <AudioOutlined className={styles.uploadIcon} />
-              <span>点击或拖拽音频文件到此处上传</span>
-              <small>支持 MP3、WAV，单个文件不超过 10MB</small>
-              <input
-                type="file"
-                accept=".mp3,.wav,audio/mpeg,audio/wav"
-                aria-label="上传参考音频"
-                disabled={saving || disabled}
-                onChange={(event) => {
-                  chooseFile(event.target.files?.[0]);
-                  event.target.value = '';
+              <SystemAudioList
+                onPreview={(audio) =>
+                  startPreview({ ...audio, label: audio.category })
+                }
+                disabled={disabled || saving}
+                selectedId={
+                  selected?.resourceType === 'SYSTEM_AUDIO_ASSET'
+                    ? selected.resourceId
+                    : undefined
+                }
+                onSelect={(audio) => {
+                  setPreview(undefined);
+                  setPlaybackFailed(false);
+                  setPlaying(false);
+                  setSelectedLabel(audio.category);
+                  setSelected({
+                    sourceProjectId: projectId,
+                    sourceProjectName: '系统音频',
+                    resourceType: 'SYSTEM_AUDIO_ASSET',
+                    resourceId: audio.id,
+                    name: audio.name,
+                    previewUrl: audio.previewUrl,
+                    durationSeconds: audio.durationSeconds,
+                  });
                 }}
               />
-            </label>
-          )}
-        </section>
-      ) : (
-        <section
-          id="voice-panel-library"
-          role="tabpanel"
-          aria-labelledby="voice-library"
-          className={styles.panel}
-        >
-          <div className={styles.toolbar}>
-            <span>团队资产</span>
-            {project ? (
-              <div
-                role="tablist"
-                aria-label="音频库视图"
-                className={styles.viewTabs}
-              >
-                {(
-                  [
-                    { key: 'all', label: '所有音频' },
-                    { key: 'folders', label: '文件夹' },
-                  ] as const
-                ).map((tab) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    id={`voice-view-${tab.key}`}
-                    aria-controls="voice-library-content"
-                    key={tab.key}
-                    aria-selected={view === tab.key}
-                    disabled={saving}
-                    onClick={() => {
-                      setView(tab.key);
-                      setFolder(undefined);
-                      setPage(1);
-                      setPreview(undefined);
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <Input.Search
-            aria-label={project ? '搜索项目音频' : '搜索音频项目'}
-            placeholder={project ? '搜索当前项目音频' : '搜索项目名称'}
-            value={inputKeyword}
-            allowClear
-            disabled={saving}
-            onChange={(event) => {
-              setInputKeyword(event.target.value);
-              if (!event.target.value) {
-                setKeyword('');
-                setPage(1);
-              }
-            }}
-            onSearch={(value) => {
-              setKeyword(value.trim());
-              setPage(1);
-            }}
-          />
-          {project ? (
-            <nav className={styles.breadcrumb} aria-label="项目音频导航">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => chooseProject()}
-              >
-                所有项目
-              </button>
-              <span>›</span>
-              <span>{project.name}</span>
-              {folder ? (
-                <>
-                  <span>›</span>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setFolder(undefined);
-                      setPage(1);
-                    }}
-                  >
-                    {folders.find((item) => item.key === folder)?.label}
-                  </button>
-                </>
-              ) : null}
-            </nav>
-          ) : null}
-          <div
-            id="voice-library-content"
-            role="tabpanel"
-            aria-labelledby={project ? `voice-view-${view}` : 'voice-library'}
-          >
-            {failed ? (
-              <div className={styles.empty}>
-                <Empty description="音频库加载失败" />
-                <Button onClick={() => setRetry((value) => value + 1)}>
-                  重试
-                </Button>
-              </div>
-            ) : loading ? (
-              <div role="status" className={styles.empty}>
-                正在加载音频库…
-              </div>
-            ) : !project ? (
-              projects.length ? (
-                <div className={styles.projectGrid}>
-                  {projects.map((item) => (
-                    <button
-                      type="button"
-                      key={item.id}
+            </section>
+          ) : source === 'upload' ? (
+            <section
+              id="voice-panel-upload"
+              role="tabpanel"
+              aria-labelledby="voice-upload"
+              className={styles.panel}
+            >
+              {file ? (
+                <div className={styles.uploaded}>
+                  <div className={styles.fileInfo}>
+                    <AudioOutlined />
+                    <span>
+                      {file.name}
+                      <small>{(file.size / 1024 / 1024).toFixed(2)} MB</small>
+                    </span>
+                    <Button
                       disabled={saving}
-                      aria-label={`打开${item.name}音频库`}
-                      onClick={() => chooseProject(item)}
+                      onClick={() => setFile(undefined)}
                     >
-                      <FolderOutlined />
-                      <strong>{item.name}</strong>
-                      <small>
-                        {item.id === projectId ? '当前项目' : '项目音频'}
-                      </small>
-                    </button>
-                  ))}
+                      移除
+                    </Button>
+                  </div>
+                  {progress !== undefined ? (
+                    <p role="status">
+                      {progress < 100 ? `上传中 ${progress}%` : '正在保存音频…'}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
-                <Empty
-                  description={keyword ? '未找到相关项目' : '暂无可访问的项目'}
-                />
-              )
-            ) : showingFolders ? (
-              <div className={styles.projectGrid}>
-                {folders.map((item) => (
+                <label
+                  className={`${styles.dropzone} ${dragging ? styles.dragging : ''}`}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                    chooseFile(event.dataTransfer.files[0]);
+                  }}
+                >
+                  <AudioOutlined className={styles.uploadIcon} />
+                  <span>点击或拖入音频</span>
+                  <small>MP3 / WAV · 最大 10 MB</small>
+                  <input
+                    type="file"
+                    accept=".mp3,.wav,audio/mpeg,audio/wav"
+                    aria-label="上传参考音频"
+                    disabled={saving || disabled}
+                    onChange={(event) => {
+                      chooseFile(event.target.files?.[0]);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
+            </section>
+          ) : (
+            <section
+              id="voice-panel-library"
+              role="tabpanel"
+              aria-labelledby="voice-library"
+              className={styles.panel}
+            >
+              <div className={styles.toolbar}>
+                <span>{project ? '项目音频' : '选择项目'}</span>
+                {!project && !loading && !failed ? (
+                  <small>{total} 个项目</small>
+                ) : null}
+                {project ? (
+                  <div
+                    role="tablist"
+                    aria-label="音频库视图"
+                    className={styles.viewTabs}
+                  >
+                    {(
+                      [
+                        { key: 'all', label: '所有音频' },
+                        { key: 'folders', label: '文件夹' },
+                      ] as const
+                    ).map((tab) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        id={`voice-view-${tab.key}`}
+                        aria-controls="voice-library-content"
+                        key={tab.key}
+                        aria-selected={view === tab.key}
+                        disabled={saving}
+                        onClick={() => {
+                          setView(tab.key);
+                          setFolder(undefined);
+                          setPage(1);
+                          setPreview(undefined);
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <Input.Search
+                aria-label={project ? '搜索项目音频' : '搜索音频项目'}
+                placeholder={project ? '搜索当前项目音频' : '搜索项目名称'}
+                value={inputKeyword}
+                allowClear
+                disabled={saving}
+                onChange={(event) => {
+                  setInputKeyword(event.target.value);
+                  if (!event.target.value) {
+                    setKeyword('');
+                    setPage(1);
+                  }
+                }}
+                onSearch={(value) => {
+                  setKeyword(value.trim());
+                  setPage(1);
+                }}
+              />
+              {project ? (
+                <nav className={styles.breadcrumb} aria-label="项目音频导航">
                   <button
                     type="button"
-                    key={item.key}
                     disabled={saving}
-                    onClick={() => {
-                      setFolder(item.key);
-                      setPage(1);
-                      setPreview(undefined);
-                    }}
+                    onClick={() => chooseProject()}
                   >
-                    <FolderOutlined />
-                    <strong>{item.label}</strong>
-                    <small>{counts[item.key] || 0} 条音频</small>
+                    所有项目
                   </button>
-                ))}
-              </div>
-            ) : items.length ? (
+                  <span>›</span>
+                  <span>{project.name}</span>
+                  {folder ? (
+                    <>
+                      <span>›</span>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => {
+                          setFolder(undefined);
+                          setPage(1);
+                        }}
+                      >
+                        {folders.find((item) => item.key === folder)?.label}
+                      </button>
+                    </>
+                  ) : null}
+                </nav>
+              ) : null}
               <div
-                className={styles.audioList}
-                role="radiogroup"
-                aria-label="选择参考音频"
+                id="voice-library-content"
+                className={styles.libraryContent}
+                role="tabpanel"
+                aria-labelledby={
+                  project ? `voice-view-${view}` : 'voice-library'
+                }
               >
-                {items.map((item) => (
+                {failed ? (
+                  <div className={styles.empty}>
+                    <Empty description="音频库加载失败" />
+                    <Button onClick={() => setRetry((value) => value + 1)}>
+                      重试
+                    </Button>
+                  </div>
+                ) : loading ? (
+                  <div role="status" className={styles.empty}>
+                    正在加载音频库…
+                  </div>
+                ) : !project ? (
+                  projects.length ? (
+                    <div className={styles.projectGrid}>
+                      {projects.map((item) => (
+                        <button
+                          data-current={item.id === projectId}
+                          type="button"
+                          key={item.id}
+                          disabled={saving}
+                          aria-label={`打开${item.name}音频库`}
+                          onClick={() => chooseProject(item)}
+                        >
+                          <FolderOutlined />
+                          <strong>{item.name}</strong>
+                          {item.id === projectId ? (
+                            <small>当前项目</small>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty
+                      description={
+                        keyword ? '未找到相关项目' : '暂无可访问的项目'
+                      }
+                    />
+                  )
+                ) : showingFolders ? (
+                  <div className={styles.projectGrid}>
+                    {folders.map((item) => (
+                      <button
+                        type="button"
+                        key={item.key}
+                        disabled={saving}
+                        onClick={() => {
+                          setFolder(item.key);
+                          setPage(1);
+                          setPreview(undefined);
+                        }}
+                      >
+                        <FolderOutlined />
+                        <strong>{item.label}</strong>
+                        <small>{counts[item.key] || 0} 条音频</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : items.length ? (
                   <div
-                    className={styles.audioRow}
-                    data-selected={
-                      selected?.resourceType === item.resourceType &&
-                      selected?.resourceId === item.id
-                    }
-                    key={`${item.resourceType}-${item.id}`}
+                    className={styles.audioList}
+                    role="radiogroup"
+                    aria-label="选择参考音频"
                   >
-                    <label>
-                      <input
-                        type="radio"
-                        name="character-voice"
-                        checked={
+                    {items.map((item) => (
+                      <div
+                        className={styles.audioRow}
+                        data-selected={
                           selected?.resourceType === item.resourceType &&
                           selected?.resourceId === item.id
                         }
-                        disabled={saving}
-                        onChange={() => {
-                          if (
-                            item.resourceType === 'PROJECT_AUDIO_ASSET' ||
-                            item.resourceType === 'AI_VOICE_RESULT'
-                          )
-                            setSelected({
-                              sourceProjectId: project.id,
-                              sourceProjectName: project.name,
-                              resourceType: item.resourceType,
-                              resourceId: item.id,
-                              name: item.name,
-                              previewUrl: item.previewUrl,
-                              durationSeconds:
-                                item.durationSeconds ?? undefined,
-                            });
-                        }}
-                      />
-                      <span>
-                        <strong>{item.name}</strong>
-                        <small>{item.sourceType}</small>
-                      </span>
-                    </label>
-                    <span className={styles.duration}>
-                      {durationText(item.durationSeconds)}
-                    </span>
-                    <Button
-                      type="text"
-                      icon={<PlayCircleOutlined />}
-                      aria-label={`试听${item.name}`}
-                      onClick={() => setPreview(item)}
-                    />
+                        key={`${item.resourceType}-${item.id}`}
+                      >
+                        <label>
+                          <input
+                            type="radio"
+                            name="character-voice"
+                            checked={
+                              selected?.resourceType === item.resourceType &&
+                              selected?.resourceId === item.id
+                            }
+                            disabled={saving}
+                            onChange={() => {
+                              setPreview(undefined);
+                              setPlaybackFailed(false);
+                              setPlaying(false);
+                              setSelectedLabel(undefined);
+                              if (
+                                item.resourceType === 'PROJECT_AUDIO_ASSET' ||
+                                item.resourceType === 'AI_VOICE_RESULT'
+                              )
+                                setSelected({
+                                  sourceProjectId: project.id,
+                                  sourceProjectName: project.name,
+                                  resourceType: item.resourceType,
+                                  resourceId: item.id,
+                                  name: item.name,
+                                  previewUrl: item.previewUrl,
+                                  durationSeconds:
+                                    item.durationSeconds ?? undefined,
+                                });
+                            }}
+                          />
+                          <span>
+                            <strong>{item.name}</strong>
+                          </span>
+                        </label>
+                        <span className={styles.duration}>
+                          {durationText(item.durationSeconds)}
+                        </span>
+                        <Button
+                          type="text"
+                          icon={<PlayCircleOutlined />}
+                          aria-label={`试听${item.name}`}
+                          disabled={disabled || saving}
+                          onClick={() => startPreview(item)}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <Empty
+                    description={
+                      keyword ? '未找到相关音频' : '当前项目暂无音频'
+                    }
+                  />
+                )}
               </div>
-            ) : (
-              <Empty
-                description={keyword ? '未找到相关音频' : '当前项目暂无音频'}
-              />
-            )}
+              {!failed && !loading && !showingFolders && total > 12 ? (
+                <Pagination
+                  className={styles.pagination}
+                  current={page}
+                  pageSize={12}
+                  total={total}
+                  showSizeChanger={false}
+                  onChange={(value) => {
+                    setPage(value);
+                    setPreview(undefined);
+                  }}
+                />
+              ) : null}
+            </section>
+          )}
+        </div>
+        <aside
+          className={styles.audition}
+          aria-label="音色试听"
+          data-playing={playing && Boolean(audition)}
+          data-overridden={Boolean(storyboard && overridden)}
+        >
+          <span className={styles.asideTitle}>试听</span>
+          <div className={styles.soundOrb} aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
           </div>
-          {!failed && !loading && !showingFolders && total > 12 ? (
-            <Pagination
-              className={styles.pagination}
-              current={page}
-              pageSize={12}
-              total={total}
-              showSizeChanger={false}
-              onChange={(value) => {
-                setPage(value);
-                setPreview(undefined);
-              }}
-            />
+          <strong className={styles.audioName}>
+            {audition ? auditionLabel || audition.name : '选择一个音色'}
+          </strong>
+          {audition && auditionLabel && auditionLabel !== audition.name ? (
+            <span className={styles.audioCode}>{audition.name}</span>
           ) : null}
-          {preview ? (
-            <div className={styles.player}>
-              <span>{preview.name}</span>
-              {/* biome-ignore lint/a11y/useMediaCaption: Reference audio clips do not have transcript files. */}
+          <div className={styles.player}>
+            {audition ? (
+              // biome-ignore lint/a11y/useMediaCaption: Reference voice samples have no separate transcript files.
               <audio
-                key={preview.previewUrl}
-                src={preview.previewUrl}
+                key={`${audition.previewUrl}-${playbackAttempt}`}
+                src={audition.previewUrl}
                 controls
-                autoPlay
-                preload="none"
-                aria-label={`试听${preview.name}`}
-                onError={() =>
-                  message.error('音频播放失败，请重试或选择其他音频')
+                autoPlay={Boolean(preview) && source !== 'upload'}
+                preload="metadata"
+                aria-label={
+                  source === 'upload'
+                    ? '本地参考音频试听'
+                    : `试听${audition.name}`
                 }
+                onPlay={() => {
+                  setPlaying(true);
+                  setPlaybackFailed(false);
+                }}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+                onError={() => {
+                  setPlaying(false);
+                  setPlaybackFailed(true);
+                }}
               />
-            </div>
-          ) : null}
-        </section>
-      )}
-      <div className={styles.selection} aria-live="polite">
-        {source === 'upload'
-          ? file
-            ? `已选择：${file.name}`
-            : '未选择音频'
-          : selected
-            ? `已选择：${selected.name}${source === 'library' ? ` · ${selected.sourceProjectName}` : ''}`
-            : source === 'library' && !project
-              ? '请先选择项目'
-              : '未选择音频'}
+            ) : (
+              <span>选择后可在这里试听</span>
+            )}
+            {audition && playbackFailed ? (
+              <span role="alert">音频播放失败，请重试或选择其他音频</span>
+            ) : null}
+          </div>
+          <div className={styles.currentVoice}>
+            <span>
+              {currentFailed
+                ? '当前音色读取失败，可重新选择'
+                : current
+                  ? `当前音色：${current.name}`
+                  : current === null
+                    ? '当前音色：未配置'
+                    : '正在读取当前音色…'}
+            </span>
+            {storyboard && overridden ? (
+              <Button
+                type="link"
+                size="small"
+                disabled={disabled || saving}
+                onClick={() => void resetToDefault()}
+              >
+                恢复角色默认音色
+              </Button>
+            ) : null}
+          </div>
+        </aside>
       </div>
     </Modal>
   );

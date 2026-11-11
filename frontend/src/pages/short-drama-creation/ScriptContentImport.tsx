@@ -24,6 +24,7 @@ import {
 } from './service';
 
 type ScriptContentImportProps = {
+  buttonLabel?: string;
   className?: string;
   disabled?: boolean;
   localOnly?: boolean;
@@ -40,7 +41,7 @@ const supportedExtensions = new Set(['txt', 'md', 'docx']);
 
 const extensionOf = (fileName: string) => fileName.split('.').pop()?.toLowerCase() || '';
 
-const ScriptContentImport = ({ className, disabled = false, localOnly = false, currentContent, onImport }: ScriptContentImportProps) => {
+const ScriptContentImport = ({ buttonLabel, className, disabled = false, localOnly = false, currentContent, onImport }: ScriptContentImportProps) => {
   const { message, modal } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -160,12 +161,14 @@ const ScriptContentImport = ({ className, disabled = false, localOnly = false, c
         <Button
           disabled={disabled}
           onClick={localOnly ? () => fileInputRef.current?.click() : undefined}
-          aria-label="导入剧本内容"
+          aria-label={buttonLabel || '导入剧本内容'}
           className={className}
-          icon={<PlusOutlined />}
-          shape="circle"
-          type="text"
-        />
+          icon={buttonLabel ? <FolderOpenOutlined /> : <PlusOutlined />}
+          shape={buttonLabel ? 'default' : 'circle'}
+          type={buttonLabel ? 'default' : 'text'}
+        >
+          {buttonLabel}
+        </Button>
       </Dropdown>
       <input
         accept=".txt,.md,.docx"

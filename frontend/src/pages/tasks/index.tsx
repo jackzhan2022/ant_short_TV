@@ -1,10 +1,17 @@
 import DownloadButton from '@/pages/downloads/DownloadButton';
 import { type DownloadSource, sourceFromDownloadUrl } from '@/pages/downloads/service';
+import { type ProColumns, ProTable } from '@ant-design/pro-components';
 import {
-  PageContainer,
-  type ProColumns,
-  ProTable,
-} from '@ant-design/pro-components';
+  CheckOutlined,
+  DownOutlined,
+  FileTextOutlined,
+  FolderOutlined,
+  PictureOutlined,
+  ReloadOutlined,
+  RightOutlined,
+  SoundOutlined,
+  VideoCameraOutlined,
+} from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
 import {
   Alert,
@@ -90,6 +97,32 @@ const resultLabels: Record<string, string> = {
   dialogue: '对白', video_prompt: '视频提示词', source_file_name: '源文件', mime_type: '文件类型',
   duration_seconds: '时长（秒）', file_size: '文件大小', name: '名称', id: '编号',
 };
+const hasAdvancedFilters = (query: Query) => Boolean(
+  query.statusGroup || query.creatorId || query.createdFrom || query.createdTo,
+);
+function TaskStatusView({ task }: { task: Task }) {
+  const percent = task.progress != null && Number.isFinite(Number(task.progress))
+    ? Math.min(100, Math.max(0, Math.round(Number(task.progress)))) : undefined;
+  const showProgress = active(task) && percent !== undefined;
+  return <div className={styles.taskStatus}>
+    <div className={styles.statusLine}>
+      <Tag className={styles.statusTag} data-state={task.statusGroup} icon={task.statusGroup === 'SUCCEEDED' ? <CheckOutlined /> : <span className={styles.statusDot} />}>
+        {taskStatus(task)}
+      </Tag>
+      {showProgress && <span className={styles.percent}>{percent}%</span>}
+    </div>
+    {showProgress && <Progress percent={percent} showInfo={false} size={[100, 3]} strokeColor="var(--app-color-primary, #5252ff)" status={task.statusGroup === 'RUNNING' ? 'active' : 'normal'} />}
+  </div>;
+}
+function TaskTypeIcon({ type }: { type: string }) {
+  return <span className={styles.typeIcon} data-kind={type} title={types[type] || '分集任务'}>
+    {type === 'IMAGE' ? <PictureOutlined /> : ['VIDEO', 'VIDEO_DECOMPOSITION', 'SUBTITLE_ERASE', 'VIRTUAL_AVATAR'].includes(type) ? <VideoCameraOutlined /> : type === 'FREE_CREATION' ? <SoundOutlined /> : <FileTextOutlined />}
+  </span>;
+}
+function TaskTime({ value }: { value?: string }) {
+  const [date, time] = displayTime(value).split(' ');
+  return <time className={styles.taskTime} dateTime={value}><span>{date}</span>{time && <span> {time}</span>}</time>;
+}
 function ContentSectionView({ section, tenant, taskKey }: { section: ContentSection; tenant: number; taskKey: string }) {
   const media = ['IMAGE', 'VIDEO', 'AUDIO'].includes(section.kind);
   const references = section.key.startsWith('references');
@@ -153,16 +186,20 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
       if (!abort.signal.aborted) setExpanding(false);
     }
   };
-  return <section className={styles.contentSection} aria-label={section.title}>
-    <div className={styles.sectionHeading}>
+  const settings = section.key === 'settings';
+  const Section = settings ? 'details' : 'section';
+  const Heading = settings ? 'summary' : 'div';
+  return <Section className={`${styles.contentSection} ${settings ? styles.settingsSection : ''}`} aria-label={section.title}>
+    <Heading className={styles.sectionHeading}>
       <Typography.Title level={5}><span>{section.title}</span></Typography.Title>
       {media && items.length > 0 && <Tag>{items.length} 项{itemsMore ? '+' : ''}</Tag>}
       {section.availability !== 'AVAILABLE' && <Tag>{availability[section.availability]}</Tag>}
-    </div>
+      {settings && <DownOutlined className={styles.settingsChevron} />}
+    </Heading>
     {section.sourceVersion && <p className={styles.sourceVersion}>来源版本：{displaySourceVersion(section.sourceVersion)}</p>}
     {sectionError && <Alert type="warning" title={sectionError} />}
     {displayText && <Typography.Paragraph copyable={textMore ? false : { text: displayText }} className={styles.textContent}>{displayText}</Typography.Paragraph>}
-    {section.kind === 'TEXT' && (textMore || section.hasMore) && <div><Typography.Text type="secondary">内容较长，按需读取后续内容。</Typography.Text>{textMore && <Button type="link" size="small" loading={expanding} onClick={expandText}>继续展开</Button>}<Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
+    {section.kind === 'TEXT' && (textMore || section.hasMore) && <div>{textMore && <Button type="link" size="small" loading={expanding} onClick={expandText}>继续展开</Button>}<Button type="link" size="small" loading={copying} onClick={copyFullText}>复制全文</Button></div>}
     {section.hasMore && !textMore && <Typography.Text type="secondary">仅展示前 20 项结果。</Typography.Text>}
     {section.fields.length > 0 && <Descriptions className={styles.fieldTable} bordered layout="vertical" size="small" column={{ xs: 1, sm: 2 }} items={section.fields.map((field) => ({ key: field.label, label: field.label, children: displayField(field.label, field.value) }))} />}
     {media && items.length > 0 && <div className={references ? styles.mediaGrid + ' ' + styles.referenceGrid : styles.mediaGrid}>
@@ -175,7 +212,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
         const download = typeof item.downloadUrl === 'string' ? item.downloadUrl : '';
         const downloadSource = item.downloadSource as DownloadSource | undefined ?? sourceFromDownloadUrl(download);
         return <article className={styles.mediaCard} key={String(item.id ?? index)}>
-          <div className={styles.mediaPreview}>
+          <div className={styles.mediaPreview} style={kind === 'VIDEO' && Number(item.width) > 0 && Number(item.height) > 0 ? { aspectRatio: `${item.width} / ${item.height}` } : undefined}>
             {kind === 'IMAGE' ? <LazyMediaImage width="100%" height="100%" src={thumbnail} alt={alt}
               imageStyle={{ objectFit: 'contain' }} preview={url ? { src: url } : false}
               placeholderFallback={<span className={styles.mediaFallback}>缩略图暂不可用</span>} />
@@ -197,7 +234,7 @@ function ContentSectionView({ section, tenant, taskKey }: { section: ContentSect
     </div>}
     {itemsMore && !textMore && <Button type="link" loading={loadingItems} onClick={loadMoreItems}>加载更多结果</Button>}
     {!media && items.length > 0 && <List size="small" bordered dataSource={items} renderItem={(item) => <List.Item><Typography.Text>{Object.entries(item).filter(([key]) => !['id', 'url', 'thumbnailUrl', 'downloadUrl'].includes(key)).map(([key, value]) => `${resultLabels[key] ?? key}: ${displayField(resultLabels[key] ?? key, value)}`).join(' · ')}</Typography.Text></List.Item>} />}
-  </section>;
+  </Section>;
 }
 function queryFromUrl(): Query {
   const p = new URLSearchParams(window.location.search);
@@ -220,6 +257,7 @@ function queryFromUrl(): Query {
 function TasksForTeam({ tenant }: { tenant: number }) {
   const [query, setQuery] = useState<Query>(queryFromUrl);
   const [draftQuery, setDraftQuery] = useState<Query>(queryFromUrl);
+  const [advanced, setAdvanced] = useState(() => hasAdvancedFilters(queryFromUrl()));
   const [selected, setSelected] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('task'),
   );
@@ -266,6 +304,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       const next = queryFromUrl();
       setQuery(next);
       setDraftQuery(next);
+      setAdvanced(hasAdvancedFilters(next));
       setSelected(new URLSearchParams(window.location.search).get('task'));
       setParentTask(new URLSearchParams(window.location.search).get('parent'));
       setChildPage(Math.max(1, Number(new URLSearchParams(window.location.search).get('childPage')) || 1));
@@ -288,7 +327,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       try {
         const [next, counts] = await Promise.all([
           listTasks(tenant, query, abort.signal),
-          taskSummary(tenant, query, abort.signal),
+          taskSummary(tenant, { ...query, statusGroup: undefined }, abort.signal),
         ]);
         if (abort.signal.aborted) return;
         setPage(next);
@@ -409,194 +448,124 @@ function TasksForTeam({ tenant }: { tenant: number }) {
       if (mounted.current) setBusy(false);
     }
   };
+  const filterStatus = (statusGroup: string) => {
+    const state = statusGroup || undefined;
+    setQuery((current) => ({ ...current, statusGroup: state, page: 1 }));
+    setDraftQuery((current) => ({ ...current, statusGroup: state }));
+    setSelected(null);
+  };
   const columns: ProColumns<Task>[] = [
     {
-      title: '任务',
-      key: 'title',
-      render: (_: unknown, t: Task) => (
-        <Button type="link" onClick={() => select(t)}>
-          {t.title}
-        </Button>
-      ),
+      title: '任务', key: 'title', width: '34%',
+      render: (_: unknown, task: Task) => <div className={styles.taskCell}>
+        <TaskTypeIcon type={task.type} />
+        <button type="button" className={styles.taskName} onClick={() => select(task)} title={task.title}>{task.title}</button>
+      </div>,
     },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      render: (_: unknown, record) => types[record.type] || '分集任务',
-    },
-    {
-      title: '项目',
-      dataIndex: 'projectName',
-      render: (_: unknown, record) => record.projectName || '—',
-    },
-    { title: '创建人', dataIndex: 'creatorName' },
-    {
-      title: '状态',
-      dataIndex: 'statusGroup',
-      render: (_: unknown, record) => taskStatus(record),
-    },
-    {
-      title: '进度',
-      key: 'progress',
-      render: (_: unknown, t: Task) =>
-        t.progress != null ? (
-          <Progress percent={Number(t.progress)} size="small" />
-        ) : (
-          displayEnum(t.phase)
-        ),
-    },
-    { title: '创建时间', dataIndex: 'createdAt' },
+    { title: '项目', key: 'project', width: '22%', render: (_: unknown, task: Task) => <span className={styles.projectName} title={task.projectName}>{task.projectName || '—'}</span> },
+    { title: '状态', key: 'status', width: '18%', render: (_: unknown, task: Task) => <TaskStatusView task={task} /> },
+    { title: '创建时间', key: 'createdAt', width: '22%', render: (_: unknown, task: Task) => <TaskTime value={task.createdAt} /> },
+    { title: <span className={styles.srOnly}>查看详情</span>, key: 'actions', width: 44, align: 'right', render: (_: unknown, task: Task) => <Button type="text" size="small" className={styles.detailButton} icon={<RightOutlined />} aria-label={`查看${task.title}详情`} onClick={() => select(task)} /> },
   ];
   const childColumns = [
     { title: '任务', key: 'title', render: (_: unknown, task: Task) => <Button type="link" onClick={() => select(task, true)}>{task.title}</Button> },
     { title: '类型', render: (_: unknown, task: Task) => types[task.type] || '分集任务' },
-    { title: '状态', render: (_: unknown, task: Task) => taskStatus(task) },
-    { title: '进度', render: (_: unknown, task: Task) => task.progress != null ? <Progress percent={Number(task.progress)} size="small" /> : displayEnum(task.phase) },
-    { title: '创建时间', dataIndex: 'createdAt' },
+    { title: '状态', render: (_: unknown, task: Task) => <TaskStatusView task={task} /> },
+    { title: '创建时间', render: (_: unknown, task: Task) => <TaskTime value={task.createdAt} /> },
   ];
+  const closeDetail = () => { setSelected(null); setParentTask(null); };
   return (
-    <PageContainer title="任务中心" content="查看后台生产进度、提交内容与实际产出。">
-      <Tabs
-        activeKey={query.scope}
-        onChange={(scope) => {
-          const next = { ...draftQuery, scope, creatorId: undefined, page: 1 };
-          setDraftQuery(next);
-          setQuery(next);
-          setSelected(null);
-        }}
-        items={[
-          { key: 'mine', label: '我的任务' },
-          ...(page?.canViewTeamTasks
-            ? [{ key: 'team', label: '团队任务' }]
-            : []),
-        ]}
-      />
-      <div
-        style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}
-      >
-        <Select
-          aria-label="任务类型"
-          placeholder="全部类型"
-          allowClear
-          value={draftQuery.type}
-          style={{ width: 170 }}
-          options={Object.entries(types).map(([value, label]) => ({
-            value,
-            label,
-          }))}
-          onChange={(type) => updateDraft({ type })}
+    <div className={styles.page}>
+      <header className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <h1>任务中心</h1>
+          {page?.canViewTeamTasks ? <Tabs
+            className={styles.scopeTabs}
+            activeKey={query.scope}
+            onChange={(scope) => {
+              const next = { ...draftQuery, scope, creatorId: undefined, page: 1 };
+              setDraftQuery(next); setQuery(next); setSelected(null);
+            }}
+            items={[{ key: 'mine', label: '我的任务' }, { key: 'team', label: '团队任务' }]}
+          /> : <span className={styles.scopeLabel}>{query.scope === 'team' ? '团队任务' : '我的任务'}</span>}
+        </div>
+        <Button icon={<ReloadOutlined />} onClick={() => setRevision((n) => n + 1)}>刷新</Button>
+      </header>
+      <section className={styles.listPanel} aria-label="任务列表">
+        <fieldset className={styles.statusFilters}>
+          <legend className={styles.srOnly}>任务状态筛选</legend>
+          {[['', '全部'], ['RUNNING', '处理中'], ['WAITING_USER', '待处理'], ['SUCCEEDED', '完成'], ['FAILED', '失败']].map(([state, label]) => {
+            const count = summary ? state ? summary.counts[state] ?? 0 : summary.total : undefined;
+            return <button type="button" key={state} aria-pressed={(query.statusGroup || '') === state} onClick={() => filterStatus(state)}>
+              <span>{label}</span><span className={styles.statusCount}>{count === undefined ? '—' : count.toLocaleString()}</span>
+            </button>;
+          })}
+        </fieldset>
+        <form className={styles.filters} onSubmit={(event) => { event.preventDefault(); submitQuery(); }}>
+          <div className={styles.filterRow}>
+            <Select className={styles.typeFilter} variant="outlined" aria-label="任务类型" placeholder="全部类型" allowClear value={draftQuery.type}
+              options={Object.entries(types).map(([value, label]) => ({ value, label }))}
+              onChange={(type) => updateDraft({ type })} />
+            <Input className={styles.projectFilter} variant="outlined" aria-label="项目编号" placeholder="项目编号" prefix={<FolderOutlined />} type="number" min={1}
+              value={draftQuery.projectId || ''} onChange={(e) => updateDraft({ projectId: e.target.value || undefined })} />
+            <Button type="primary" htmlType="submit">查询</Button>
+            <Button type="text" onClick={() => {
+              const reset: Query = { scope: query.scope, page: 1, pageSize: 20 };
+              setDraftQuery(reset); setQuery(reset); setSelected(null);
+            }}>重置</Button>
+            <Button className={styles.moreButton} type="text" aria-label="更多" aria-expanded={advanced} aria-controls="task-advanced-filters" onClick={() => setAdvanced((value) => !value)}>
+              更多<DownOutlined rotate={advanced ? 180 : 0} />
+            </Button>
+          </div>
+          {advanced && <div className={styles.advancedFilters} id="task-advanced-filters">
+            <Select className={styles.stateFilter} variant="outlined" aria-label="任务状态" placeholder="全部状态" allowClear value={draftQuery.statusGroup}
+              options={Object.entries(statuses).map(([value, label]) => ({ value, label }))}
+              onChange={(statusGroup) => updateDraft({ statusGroup })} />
+            {page?.canViewTeamTasks && query.scope === 'team' && <Input variant="outlined" aria-label="创建人编号" placeholder="创建人编号" type="number" min={1} className={styles.creatorFilter}
+              value={draftQuery.creatorId || ''} onChange={(e) => updateDraft({ creatorId: e.target.value || undefined })} />}
+            <Input variant="outlined" aria-label="开始时间" type="datetime-local" value={draftQuery.createdFrom || ''}
+              onChange={(e) => updateDraft({ createdFrom: e.target.value || undefined })} />
+            <span className={styles.rangeDivider}>至</span>
+            <Input variant="outlined" aria-label="结束时间" type="datetime-local" value={draftQuery.createdTo || ''}
+              onChange={(e) => updateDraft({ createdTo: e.target.value || undefined })} />
+          </div>}
+        </form>
+        {error && <Alert className={styles.listError} type="error" title={error} action={<Button onClick={() => setRevision((n) => n + 1)}>重试</Button>} />}
+        <ProTable<Task>
+          className={styles.taskTable}
+          rowKey="taskKey"
+          columns={columns}
+          dataSource={page?.items || []}
+          loading={loading}
+          search={false}
+          options={false}
+          cardProps={false}
+          toolBarRender={false}
+          size="middle"
+          scroll={{ x: 680, y: advanced ? 'max(220px, calc(100dvh - 402px))' : 'max(220px, calc(100dvh - 330px))' }}
+          pagination={{
+            current: query.page, pageSize: query.pageSize, total: page?.total || 0, showSizeChanger: true,
+            showTotal: (total) => `共 ${total.toLocaleString()} 项`,
+            onChange: (pageNumber, pageSize) => setQuery((current) => ({ ...current, page: pageNumber, pageSize })),
+          }}
         />
-        <Select
-          aria-label="任务状态"
-          placeholder="全部状态"
-          allowClear
-          value={draftQuery.statusGroup}
-          style={{ width: 140 }}
-          options={Object.entries(statuses).map(([value, label]) => ({
-            value,
-            label,
-          }))}
-          onChange={(statusGroup) => updateDraft({ statusGroup })}
-        />
-        <Input
-          aria-label="项目编号"
-          placeholder="项目编号"
-          type="number"
-          min={1}
-          value={draftQuery.projectId || ''}
-          style={{ width: 130 }}
-          onChange={(e) =>
-            updateDraft({ projectId: e.target.value || undefined })
-          }
-        />
-        {page?.canViewTeamTasks && query.scope === 'team' && (
-          <Input
-            aria-label="创建人编号"
-            placeholder="创建人编号"
-            type="number"
-            min={1}
-            value={draftQuery.creatorId || ''}
-            style={{ width: 130 }}
-            onChange={(e) =>
-              updateDraft({ creatorId: e.target.value || undefined })
-            }
-          />
-        )}
-        <label>
-          开始时间{' '}
-          <input
-            aria-label="开始时间"
-            type="datetime-local"
-            value={draftQuery.createdFrom || ''}
-            onChange={(e) =>
-              updateDraft({ createdFrom: e.target.value || undefined })
-            }
-          />
-        </label>
-        <label>
-          结束时间{' '}
-          <input
-            aria-label="结束时间"
-            type="datetime-local"
-            value={draftQuery.createdTo || ''}
-            onChange={(e) =>
-              updateDraft({ createdTo: e.target.value || undefined })
-            }
-          />
-        </label>
-        <Button type="primary" onClick={submitQuery}>查询</Button>
-        <Button onClick={() => {
-          const reset: Query = { scope: query.scope, page: 1, pageSize: 20 };
-          setDraftQuery(reset); setQuery(reset); setSelected(null);
-        }}>重置</Button>
-        <Button onClick={() => {
-          setRevision((n) => n + 1);
-        }}>
-          刷新
-        </Button>
-      </div>
-      {error && (
-        <Alert
-          type="error"
-          title={error}
-          action={
-            <Button onClick={() => setRevision((n) => n + 1)}>重试</Button>
-          }
-        />
-      )}
-      {summary && (
-        <p>
-          共 {summary.total} 项 ·{' '}
-          {Object.entries(summary.counts)
-            .filter(([, count]) => count > 0)
-            .map(([state, count]) => `${statuses[state]} ${count}`)
-            .join(' · ')}
-        </p>
-      )}
-      <ProTable<Task>
-        rowKey="taskKey"
-        columns={columns}
-        dataSource={page?.items || []}
-        loading={loading}
-        search={false}
-        options={false}
-        toolBarRender={() => [<Button key="refresh" onClick={() => setRevision((n) => n + 1)}>刷新</Button>]}
-        scroll={{ x: 900 }}
-        pagination={{
-          current: query.page,
-          pageSize: query.pageSize,
-          total: page?.total || 0,
-          showSizeChanger: true,
-          onChange: (pageNumber, pageSize) =>
-            setQuery((current) => ({ ...current, page: pageNumber, pageSize })),
-        }}
-      />
+      </section>
       <Drawer
         title={detail?.title || '任务详情'}
         open={Boolean(selected)}
-        size={760}
-        classNames={{ body: styles.drawerBody }}
-        onClose={() => { setSelected(null); setParentTask(null); }}
+        size={660}
+        classNames={{ body: styles.drawerBody, footer: styles.drawerFooter }}
+        onClose={closeDetail}
+        footer={detail && <div className={styles.taskActions}>
+          {parentTask && <Button className={styles.parentAction} onClick={() => { setSelected(parentTask); setParentTask(null); }}>返回批次</Button>}
+          <Button onClick={closeDetail}>关闭</Button>
+          {detail.destination && <Button type="primary" onClick={() => { if (detail.destination) history.push(detail.destination); }}>返回业务</Button>}
+          {detail.allowedActions.filter((action) => actions[action]).map((action) => <PointEstimateButton
+            tenantId={tenant}
+            operations={action === 'CANCEL' || ['VIRTUAL_AVATAR', 'SUBTITLE_ERASE'].includes(detail.type) ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
+            key={action} loading={busy} onClick={() => void run(detail, action)}
+          >{actions[action]}</PointEstimateButton>)}
+        </div>}
       >
         {detailError && (
           <Alert
@@ -609,46 +578,22 @@ function TasksForTeam({ tenant }: { tenant: number }) {
         )}
         {detail && (
           <>
-            <Descriptions className={styles.fieldTable} title="任务信息" bordered layout="vertical" size="small" column={{ xs: 1, sm: 2 }} items={[
-              { key: 'status', label: '任务状态', children: <Tag color={detail.statusGroup === 'SUCCEEDED' ? 'success' : active(detail) ? 'processing' : 'default'}>{taskStatus(detail)}</Tag> },
-              { key: 'phase', label: '当前阶段', children: displayEnum(detail.phase) },
-              { key: 'project', label: '所属项目', children: detail.projectName || '—' },
-              { key: 'creator', label: '创建人', children: detail.creatorName || '—' },
-              { key: 'created', label: '创建时间', children: displayTime(detail.createdAt) },
-              { key: 'completed', label: '完成时间', children: displayTime(detail.completedAt) },
-            ]} />
-            {detail.progress != null && <Progress percent={Number(detail.progress)} />}
+            <section className={styles.overview} aria-label="任务信息">
+              <div className={styles.overviewHeading}><h3>{types[detail.type] || '任务信息'}</h3><TaskStatusView task={detail} /></div>
+              <dl className={styles.overviewFields}>
+                <div><dt>项目</dt><dd>{detail.projectName || '—'}</dd></div>
+                <div><dt>创建人</dt><dd>{detail.creatorName || '—'}</dd></div>
+                <div><dt>创建时间</dt><dd>{displayTime(detail.createdAt)}</dd></div>
+                {detail.completedAt && <div><dt>完成时间</dt><dd>{displayTime(detail.completedAt)}</dd></div>}
+                {active(detail) && detail.phase && <div><dt>当前阶段</dt><dd>{displayEnum(detail.phase)}</dd></div>}
+              </dl>
+            </section>
             {detail.resultSummary && <Typography.Paragraph style={{ marginTop: 12 }}>{detail.resultSummary}</Typography.Paragraph>}
             {detail.warningSummary && <Alert type="warning" title={detail.warningSummary} />}
             {detail.restricted && <p>当前无项目访问权限，仅展示任务状态和时间。</p>}
             {detail.type === 'FREE_CREATION' && <p>重试和重新生成会按原参数新建任务并确认积分。取消后停止跟踪结果，供应商已产生的用量仍会结算。</p>}
-            <div className={styles.taskActions}>
-              {parentTask && <Button onClick={() => { setSelected(parentTask); setParentTask(null); }}>返回批次</Button>}
-              {detail.destination && (
-                <Button
-                  onClick={() => {
-                    if (detail.destination) history.push(detail.destination);
-                  }}
-                >
-                  返回业务
-                </Button>
-              )}
-              {detail.allowedActions
-                .filter((a) => actions[a])
-                .map((action) => (
-                  <PointEstimateButton
-                    tenantId={tenant}
-                    operations={action === 'CANCEL' || ['VIRTUAL_AVATAR', 'SUBTITLE_ERASE'].includes(detail.type) ? [] : [{ url: `/api/tenants/${tenant}/production-tasks/${encodeURIComponent(detail.taskKey)}/${action.toLowerCase()}` }]}
-                    key={action}
-                    loading={busy}
-                    onClick={() => void run(detail, action)}
-                  >
-                    {actions[action]}
-                  </PointEstimateButton>
-                ))}
-            </div>
             {contentError && <Alert type="warning" title={contentError} />}
-            {content?.sections.map((section) => <ContentSectionView key={section.key} section={section} tenant={tenant} taskKey={selected ?? detail.taskKey} />)}
+            {[...(content?.sections || [])].sort((a, b) => (a.key === 'results' ? 0 : a.key === 'settings' ? 2 : 1) - (b.key === 'results' ? 0 : b.key === 'settings' ? 2 : 1)).map((section) => <ContentSectionView key={section.key} section={section} tenant={tenant} taskKey={selected ?? detail.taskKey} />)}
             {detail.childCounts.total > 0 && (
               <>
                 <p>
@@ -675,7 +620,7 @@ function TasksForTeam({ tenant }: { tenant: number }) {
           </>
         )}
       </Drawer>
-    </PageContainer>
+    </div>
   );
 }
 export default function Tasks() {

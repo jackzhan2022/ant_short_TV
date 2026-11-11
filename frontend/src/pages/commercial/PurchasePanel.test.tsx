@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import PurchasePanel, { initialPurchaseSelection, type PurchaseSelection } from './PurchasePanel';
@@ -66,6 +66,20 @@ const renderPanel = (catalog: CommercialCatalogItem[], options: PanelOptions = {
 };
 
 describe('PurchasePanel', () => {
+  it('updates the order summary and its actual amount on selection without creating an order', () => {
+    const first = item(21, { name: '创作月卡', price: 49.9 });
+    const next = item(22, { name: '专业月卡', price: 129 });
+    const { onPurchase } = renderPanel([first, next]);
+    const summary = screen.getByRole('complementary', { name: '订单摘要' });
+    expect(within(summary).getByText('¥49.90')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '选择专业月卡' }));
+    expect(within(summary).getByText('¥129.00')).toBeInTheDocument();
+    expect(within(summary).getByText('新禾文创')).toBeInTheDocument();
+    expect(within(summary).getByText('1 个月')).toBeInTheDocument();
+    expect(onPurchase).not.toHaveBeenCalled();
+    fireEvent.click(within(summary).getByRole('button', { name: '确认付款' }));
+    expect(onPurchase).toHaveBeenCalledWith(next);
+  });
   it('defaults to membership monthly and keeps its entry when only points are for sale', () => {
     const points = item(1, { packageType: 'POINT_PACKAGE', billingPeriod: 'YEAR', name: '积分包', entitlements: [{ type: 'ONE_TIME_POINTS', value: 1000 }] });
     renderPanel([points]);

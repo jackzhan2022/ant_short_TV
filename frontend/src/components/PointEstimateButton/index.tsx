@@ -11,6 +11,7 @@ export type PointEstimateButtonProps = ButtonProps & {
   tenantId?: number;
   estimateEnabled?: boolean;
   showEstimate?: boolean;
+  compact?: boolean;
 };
 
 export default function PointEstimateButton({
@@ -18,6 +19,7 @@ export default function PointEstimateButton({
   tenantId,
   estimateEnabled = true,
   showEstimate = true,
+  compact = false,
   children,
   disabled,
   loading,
@@ -36,6 +38,7 @@ export default function PointEstimateButton({
       onClick={onClick}
       quote={quote}
       showEstimate={showEstimate}
+      compact={compact}
     >
       {children}
     </PointEstimateButtonView>
@@ -48,11 +51,13 @@ export function PointEstimateButtonView({
   disabled,
   loading,
   showEstimate = true,
+  compact = false,
   onClick,
   ...props
 }: ButtonProps & {
   quote: ReturnType<typeof usePointEstimate>;
   showEstimate?: boolean;
+  compact?: boolean;
 }) {
   const descriptionId = useId();
   const suffix = quote.loading
@@ -74,9 +79,9 @@ export function PointEstimateButtonView({
           {...props}
           style={{
             ...props.style,
-            flexWrap: 'wrap',
-            whiteSpace: 'normal',
-            height: 'auto',
+            flexWrap: compact ? 'nowrap' : 'wrap',
+            whiteSpace: compact ? 'nowrap' : 'normal',
+            height: compact ? undefined : 'auto',
           }}
           disabled={disabled || quote.disabled || Boolean(loading)}
           loading={loading || quote.loading}
@@ -94,18 +99,35 @@ export function PointEstimateButtonView({
           }}
         >
           {children}
-          {suffix ? (
+          {suffix && !compact ? (
             <span
               id={descriptionId}
               aria-live="polite"
-              hidden={!showEstimate}
+              hidden={!showEstimate || compact}
               style={{ fontSize: '0.9em' }}
             >
               {' '}
               · {suffix}
             </span>
           ) : null}
+          {compact &&
+          showEstimate &&
+          quote.estimate &&
+          !quote.loading &&
+          !quote.error ? (
+            <span className="point-estimate-compact" aria-hidden="true">
+              ✦{' '}
+              {Math.round(quote.estimate.estimatedPoints).toLocaleString(
+                'zh-CN',
+              )}
+            </span>
+          ) : null}
         </Button>
+        {compact && suffix ? (
+          <span id={descriptionId} hidden>
+            {suffix}
+          </span>
+        ) : null}
         {(quote.error || quote.estimate?.sufficient === false) &&
         !disabled &&
         !loading ? (
@@ -115,7 +137,7 @@ export function PointEstimateButtonView({
             aria-label="重新预估积分"
             onClick={quote.refresh}
           >
-            重新预估
+            {compact ? '重试' : '重新预估'}
           </Button>
         ) : null}
       </span>
