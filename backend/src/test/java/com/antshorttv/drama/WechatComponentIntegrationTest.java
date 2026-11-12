@@ -339,7 +339,7 @@ class WechatComponentIntegrationTest extends com.antshorttv.support.Registration
         assertTrue(tenantId > 0);
         mvc.perform(get("/api/auth/bootstrap").cookie(session).header("X-Tenant-Id", tenantId))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.selectedTenant.permissions",
-                org.hamcrest.Matchers.hasItems("DRAMA:VIEW", "DRAMA:MANAGE", "DRAMA:PUBLISH", "MINIAPP:MANAGE")));
+                org.hamcrest.Matchers.hasItem("MENU:DRAMA_LIBRARY")));
         // 团队 OWNER 已有全部剧库功能权限；再授予非管理员平台角色的功能权限。
         db.update("insert into platform_role (code,name,status,created_at,updated_at) values ('DRAMA_OPERATOR_TEST','测试操作员','ACTIVE',?,?)", LocalDateTime.now(), LocalDateTime.now());
         long operator = db.queryForObject("select id from platform_role where code='DRAMA_OPERATOR_TEST'", Long.class);
@@ -352,6 +352,9 @@ class WechatComponentIntegrationTest extends com.antshorttv.support.Registration
             get("/api/drama-library/1/episodes"),
             post("/api/drama-library/1/episodes").content("{\"episodeNo\":1,\"title\":\"测试\"}"),
             delete("/api/drama-library/1/episodes/1"), get("/api/team-miniapps"),
+            put("/api/drama-library/1/episodes/1").content("{\"title\":\"新标题\"}"),
+            post("/api/drama-library/1/episodes/1/inspect"), get("/api/drama-library/1/episodes/1/preview"),
+            post("/api/team-miniapps/1/dramas/1/preflight").content("{\"episodeIds\":[1]}"),
             post("/api/team-miniapps").content("{\"appid\":\"wx1234567890abcdef\",\"name\":\"测试\"}"),
             patch("/api/team-miniapps/1").content("{\"enabled\":true}"), get("/api/team-miniapps/1/dramas"),
             put("/api/team-miniapps/1/dramas/1").content("{\"episodeIds\":[1]}"), delete("/api/team-miniapps/1/dramas/1"),

@@ -1,0 +1,9 @@
+.search-input {
+  flex:1;
+  min-width:0;
+  margin:0 12rpx 0 0;
+  height:52rpx}
+.header button {
+  padding:14rpx 18rpx;
+  font-size:25rpx}
+

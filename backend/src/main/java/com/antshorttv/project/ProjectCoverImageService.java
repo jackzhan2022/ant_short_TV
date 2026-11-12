@@ -73,7 +73,7 @@ public class ProjectCoverImageService {
     }
 
     private ProjectAccessContext authorized(Long id) {
-        ProjectEntity project = projects.selectById(id);
+        ProjectEntity project = projects.selectIdentityById(id);
         if (project == null || project.deletedAt != null) throw denied();
         return access.requireView(project.tenantId, id);
     }

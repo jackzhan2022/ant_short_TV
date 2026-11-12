@@ -1,0 +1,6 @@
+<import src="../../templates/catalog.wxml" />
+<view class="page">
+  <view class="header"><input class="search-box search-input" value="{{keyword}}" placeholder="输入短剧名称" confirm-type="search" bindinput="input" bindconfirm="submit" focus maxlength="200"/><button class="ghost" bindtap="submit">搜索</button><button class="ghost" bindtap="clear">清空</button></view>
+  <view wx:if="{{!hasSearched}}" class="state">搜一搜，找到你的下一部好剧</view>
+  <template is="catalog" data="{{items,loading,error,total,hasSearched,search}}" />
+</view>

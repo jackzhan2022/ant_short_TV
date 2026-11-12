@@ -17,15 +17,19 @@ import {
   getAuthorizationRequest,
   getCodeTemplates,
   getDrama,
+  getEpisodePreview,
   getTrialQrCode,
   importEpisode,
+  inspectEpisode,
   listDramas,
   listEpisodes,
   listMiniapps,
   listReleases,
+  preflightDrama,
   publishDrama,
   saveDrama,
   unpublishDrama,
+  updateEpisode,
 } from './service';
 
 describe('体验版接口契约', () => {
@@ -243,6 +247,58 @@ describe('剧库接口契约', () => {
       method: 'PUT',
       data,
     });
+  });
+  it('元数据、私有视频预览和媒体分析沿用真实服务端契约', async () => {
+    const metadata = {
+      title: '剧集',
+      coverUrl: 'https://cdn.example/cover.jpg',
+      category: '都市',
+      completionStatus: 'COMPLETED' as const,
+      totalEpisodes: 20,
+    };
+    await saveDrama(metadata, 3);
+    await updateEpisode(3, 11, {
+      title: '第一集',
+      posterUrl: 'https://cdn.example/poster.jpg',
+    });
+    await getEpisodePreview(3, 11);
+    await inspectEpisode(3, 11);
+    expect(request.mock.calls).toEqual([
+      ['/api/drama-library/3', { method: 'PUT', data: metadata }],
+      [
+        '/api/drama-library/3/episodes/11',
+        {
+          method: 'PUT',
+          data: {
+            title: '第一集',
+            posterUrl: 'https://cdn.example/poster.jpg',
+          },
+        },
+      ],
+      [
+        '/api/drama-library/3/episodes/11/preview',
+        { method: 'GET', data: undefined },
+      ],
+      [
+        '/api/drama-library/3/episodes/11/inspect',
+        { method: 'POST', data: undefined },
+      ],
+    ]);
+  });
+  it('预检和发布携带同一组跳集、排序及推荐设置', async () => {
+    const options = { sortOrder: 12, recommended: true };
+    await preflightDrama(8, 3, [11, 13, 15], options);
+    await publishDrama(8, 3, [11, 13, 15], options);
+    expect(request.mock.calls).toEqual([
+      [
+        '/api/team-miniapps/8/dramas/3/preflight',
+        { method: 'POST', data: { episodeIds: [11, 13, 15], ...options } },
+      ],
+      [
+        '/api/team-miniapps/8/dramas/3',
+        { method: 'PUT', data: { episodeIds: [11, 13, 15], ...options } },
+      ],
+    ]);
   });
   it('两个导入来源使用互斥的真实契约', async () => {
     const local = {

@@ -47,6 +47,18 @@ public class DramaLibraryController {
         @PathVariable Long episodeId, HttpServletRequest request) {
         service.deleteEpisode(context(request, "MANAGE").tenantId(), id, episodeId); return ApiResponse.ok();
     }
+    @PutMapping("/{id}/episodes/{episodeId}") public ApiResponse<Episode> updateEpisode(@PathVariable Long id,
+        @PathVariable Long episodeId, @Valid @RequestBody EpisodeUpdate body, HttpServletRequest request) {
+        return ApiResponse.success(service.updateEpisode(context(request, "MANAGE").tenantId(), id, episodeId, body));
+    }
+    @PostMapping("/{id}/episodes/{episodeId}/inspect") public ApiResponse<Episode> inspect(@PathVariable Long id,
+        @PathVariable Long episodeId, HttpServletRequest request) {
+        return ApiResponse.success(service.inspectEpisode(context(request, "MANAGE").tenantId(), id, episodeId));
+    }
+    @GetMapping("/{id}/episodes/{episodeId}/preview") public ApiResponse<PlayResponse> preview(@PathVariable Long id,
+        @PathVariable Long episodeId, HttpServletRequest request) {
+        return ApiResponse.success(service.preview(context(request, "VIEW").tenantId(), id, episodeId));
+    }
     private TenantContext context(HttpServletRequest request, String action) {
         platform.requireAdministrator();
         return permissions.require(TenantRequestSupport.tenantId(request), "DRAMA:" + action);

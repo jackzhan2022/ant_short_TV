@@ -86,6 +86,11 @@ public class CommercialSubscriptionGrantService {
             int periodNo = nextPeriodNo(subscription.id);
             if (!grantPeriod(subscription, periodNo)) return;
             LocalDateTime next = subscription.startsAt.plusMonths(periodNo);
+            if (!next.isAfter(subscription.nextGrantAt)) {
+                LOGGER.error("Commercial subscription grant date did not advance: subscriptionId={}, periodNo={}, currentGrantAt={}, nextGrantAt={}",
+                    subscription.id, periodNo, subscription.nextGrantAt, next);
+                return;
+            }
             subscription.nextGrantAt = next.isBefore(subscription.endsAt) ? next : null;
             subscription.updatedAt = LocalDateTime.now();
             subscriptionMapper.update(null,
@@ -111,7 +116,17 @@ public class CommercialSubscriptionGrantService {
             new QueryWrapper<CommercialEntitlementEntity>()
                 .eq("package_version_id", subscription.packageVersionId)
                 .eq("entitlement_type", "PERIODIC_POINTS"));
-        if (entitlement == null) return true;
+        if (entitlement == null) {
+            subscription.nextGrantAt = null;
+            subscription.updatedAt = LocalDateTime.now();
+            subscriptionMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<TeamSubscriptionEntity>()
+                    .eq("id", subscription.id).set("next_grant_at", null)
+                    .set("updated_at", subscription.updatedAt));
+            LOGGER.warn("Cleared subscription grant date without periodic entitlement: subscriptionId={}, packageVersionId={}",
+                subscription.id, subscription.packageVersionId);
+            return false;
+        }
         CommercialOrderEntity order = subscription.sourceOrderId == null ? null : orderMapper.selectById(subscription.sourceOrderId);
         AdminTenantGrantEntity adminGrant = subscription.sourceAdminGrantId == null ? null : adminGrants.selectById(subscription.sourceAdminGrantId);
         Long operatorId = adminGrant != null ? adminGrant.operatorId : order == null ? null : order.userId;

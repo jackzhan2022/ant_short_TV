@@ -1,0 +1,5 @@
+<view class="page">
+  <view class="header"><view class="heading">观看足迹</view><button wx:if="{{items.length}}" class="ghost" loading="{{clearing}}" disabled="{{clearing}}" bindtap="clear">清空</button></view>
+  <view wx:if="{{loading}}" class="state">正在加载…</view><view wx:elif="{{error}}" class="state">{{error}}<button class="ghost" bindtap="load">重新加载</button></view><view wx:elif="{{!items.length}}" class="state">还没有观看记录<view class="empty-sub">看过的故事会留在这里</view></view>
+  <view wx:for="{{items}}" wx:key="dramaId" class="resume" data-index="{{index}}" bindtap="resume"><image src="{{item.coverUrl}}" mode="aspectFill"/><view class="resume-info"><view class="resume-title">{{item.title}}</view><view class="muted">第 {{item.episodeNo}} 集 · {{item.completed ? '已看完' : '未看完'}}</view></view><text class="resume-action">继续看 ›</text></view>
+</view>

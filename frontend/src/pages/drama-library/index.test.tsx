@@ -70,6 +70,83 @@ vi.mock('./service', () => ({
 import DramaLibraryPage from './index';
 
 describe('团队小程序官方入口', () => {
+  it('目录展示运营元数据和批量导入入口', async () => {
+    mocks.canManageDramas = true;
+    const drama = {
+      id: 7,
+      title: '测试短剧',
+      category: '都市',
+      completionStatus: 'COMPLETED',
+      totalEpisodes: 12,
+      episodeCount: 8,
+      publishedAppCount: 2,
+      coverUrl: 'https://example.com/cover.jpg',
+    };
+    mocks.list.mockResolvedValue([drama]);
+    mocks.detail.mockResolvedValue(drama);
+    mocks.episodes.mockResolvedValue([]);
+    render(
+      <App>
+        <DramaLibraryPage />
+      </App>,
+    );
+    await screen.findByText('测试短剧');
+    expect(screen.getByText('都市 · 已完结')).toBeInTheDocument();
+    expect(screen.getByText('8 / 12 集')).toBeInTheDocument();
+    expect(screen.getByAltText('测试短剧封面')).toHaveAttribute(
+      'src',
+      drama.coverUrl,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '单集目录' }));
+    expect(
+      await screen.findByRole('button', { name: '批量本地导入' }),
+    ).toBeInTheDocument();
+  });
+  it('新建剧集校验 HTTPS 封面并保存运营元数据', async () => {
+    mocks.canManageDramas = true;
+    mocks.save.mockResolvedValue({ id: 9 });
+    render(
+      <App>
+        <DramaLibraryPage />
+      </App>,
+    );
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: /新建剧集/ }))[0],
+    );
+    fireEvent.change(screen.getByLabelText('剧名'), {
+      target: { value: '元数据短剧' },
+    });
+    fireEvent.change(screen.getByLabelText('封面 HTTPS 地址'), {
+      target: { value: 'http://example.com/cover.jpg' },
+    });
+    fireEvent.change(screen.getByLabelText('分类'), {
+      target: { value: '悬疑' },
+    });
+    fireEvent.change(screen.getByLabelText('总集数'), {
+      target: { value: '24' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    await screen.findByText('请输入有效的 HTTPS 地址');
+    expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('封面 HTTPS 地址'), {
+      target: { value: 'https://example.com/cover.jpg' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith(
+        {
+          title: '元数据短剧',
+          description: '',
+          coverUrl: 'https://example.com/cover.jpg',
+          category: '悬疑',
+          totalEpisodes: 24,
+          completionStatus: 'ONGOING',
+        },
+        undefined,
+      ),
+    );
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.team = 1;

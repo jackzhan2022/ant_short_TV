@@ -39,6 +39,7 @@ class ProjectReadPerformanceIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ProjectMapper projects;
     @Autowired private ProjectAccessResolver accessResolver;
+    @Autowired private ProjectCoverImageService covers;
     @Autowired private ScriptVersionMapper versions;
     @Autowired private QueryCapture queries;
     @MockBean private TenantContextResolver tenants;
@@ -64,6 +65,37 @@ class ProjectReadPerformanceIntegrationTest {
         assertThat(projects.selectByTenantIdAndId(TENANT + 1, projectId)).isNull();
         assertThat(queries.sql.get().get(0)).contains("tenant_id", "deleted_at").doesNotContain("initial_script_content");
         assertThat(projects.selectByTenantIdAndId(TENANT, projectId).initialScriptContent).isEqualTo(BODY);
+    }
+
+    @Test
+    void coverAuthorizationAvoidsScriptBody() {
+        long projectId = insertProject();
+        queries.sql.get().clear();
+
+        assertThat(covers.status(projectId).status()).isEqualTo("MISSING");
+
+        List<String> projectQueries = queries.sql.get().stream()
+            .map(sql -> sql.replaceAll("\\s+", " "))
+            .filter(sql -> sql.contains(" from project "))
+            .toList();
+        assertThat(projectQueries).hasSize(2).allSatisfy(sql ->
+            assertThat(sql).doesNotContain("initial_script_content"));
+    }
+
+    @Test
+    void identityLookupOmitsScriptAndCoverDataWhileRetainingDeletionState() {
+        long projectId = insertProject();
+        jdbc.update("update project set cover_url=?,deleted_at=? where id=?",
+            "https://example.com/covers/project.png", java.time.LocalDateTime.of(2026, 11, 12, 10, 0), projectId);
+
+        ProjectEntity identity = projects.selectIdentityById(projectId);
+
+        assertThat(identity.id).isEqualTo(projectId);
+        assertThat(identity.tenantId).isEqualTo(TENANT);
+        assertThat(identity.deletedAt).isEqualTo(java.time.LocalDateTime.of(2026, 11, 12, 10, 0));
+        assertThat(identity.initialScriptContent).isNull();
+        assertThat(identity.coverUrl).isNull();
+        assertThat(identity.name).isNull();
     }
 
     @Test

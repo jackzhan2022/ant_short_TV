@@ -1,12 +1,20 @@
 import { request } from '@umijs/max';
 import type { ApiResponse } from '@/services/account-team/types';
 
-export type Drama = {
+export type DramaMetadata = {
+  coverUrl?: string | null;
+  category?: string | null;
+  completionStatus?: 'ONGOING' | 'COMPLETED';
+  totalEpisodes?: number | null;
+};
+export type Drama = DramaMetadata & {
   id: number;
   tenantId: number;
   title: string;
   description?: string | null;
   createdAt: string;
+  episodeCount?: number;
+  publishedAppCount?: number;
 };
 export type Episode = {
   id: number;
@@ -17,6 +25,10 @@ export type Episode = {
   sourceProjectId?: number | null;
   sourceVersionId?: number | null;
   fileSize?: number | null;
+  posterUrl?: string | null;
+  durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
   createdAt: string;
 };
 export type Miniapp = {
@@ -28,7 +40,7 @@ export type Miniapp = {
   enabled: boolean;
   createdAt: string;
 };
-export type Release = {
+export type Release = DramaMetadata & {
   id: number;
   miniappId: number;
   dramaId: number;
@@ -36,8 +48,31 @@ export type Release = {
   description?: string | null;
   published: boolean;
   createdAt: string;
+  sortOrder?: number;
+  recommended?: boolean;
+  episodeCount?: number;
 };
-export type DramaInput = { title: string; description?: string };
+export type DramaInput = DramaMetadata & {
+  title: string;
+  description?: string;
+};
+export type PublishOptions = { sortOrder?: number; recommended?: boolean };
+export type PublishPreflight = {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  added: number[];
+  removed: number[];
+  changed: number[];
+  metadataChanged: boolean;
+  previousReleaseId: number | null;
+};
+export type EpisodePreview = {
+  dramaId: number;
+  episodeId: number;
+  url: string;
+  expiresAt: string;
+};
 export type EpisodeInput = { episodeNo: number; title: string } & (
   | { uploadSessionToken: string; projectId?: never; sourceVersionId?: never }
   | { projectId: number; sourceVersionId: number; uploadSessionToken?: never }
@@ -228,6 +263,15 @@ export const importEpisode = (id: number, data: EpisodeInput) =>
   call<Episode>(`${library}/${id}/episodes`, 'POST', data);
 export const deleteEpisode = (id: number, episodeId: number) =>
   call<void>(`${library}/${id}/episodes/${episodeId}`, 'DELETE');
+export const updateEpisode = (
+  id: number,
+  episodeId: number,
+  data: { title: string; posterUrl?: string | null },
+) => call<Episode>(`${library}/${id}/episodes/${episodeId}`, 'PUT', data);
+export const getEpisodePreview = (id: number, episodeId: number) =>
+  call<EpisodePreview>(`${library}/${id}/episodes/${episodeId}/preview`);
+export const inspectEpisode = (id: number, episodeId: number) =>
+  call<Episode>(`${library}/${id}/episodes/${episodeId}/inspect`, 'POST');
 export const listMiniapps = () => call<Miniapp[]>(miniapps);
 export const bindMiniapp = (data: { appid: string; name: string }) =>
   call<Miniapp>(miniapps, 'POST', data);
@@ -239,7 +283,22 @@ export const publishDrama = (
   id: number,
   dramaId: number,
   episodeIds: number[],
+  options: PublishOptions = {},
 ) =>
-  call<Release>(`${miniapps}/${id}/dramas/${dramaId}`, 'PUT', { episodeIds });
+  call<Release>(`${miniapps}/${id}/dramas/${dramaId}`, 'PUT', {
+    episodeIds,
+    ...options,
+  });
+export const preflightDrama = (
+  id: number,
+  dramaId: number,
+  episodeIds: number[],
+  options: PublishOptions = {},
+) =>
+  call<PublishPreflight>(
+    `${miniapps}/${id}/dramas/${dramaId}/preflight`,
+    'POST',
+    { episodeIds, ...options },
+  );
 export const unpublishDrama = (id: number, dramaId: number) =>
   call<void>(`${miniapps}/${id}/dramas/${dramaId}`, 'DELETE');

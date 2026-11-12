@@ -18,7 +18,9 @@ import {
   Dropdown,
   Empty,
   Form,
+  Image,
   Input,
+  InputNumber,
   Modal,
   Pagination,
   Popconfirm,
@@ -34,9 +36,12 @@ import {
 import dayjs from 'dayjs';
 import type { Key } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import BatchImportEpisode from './BatchImportEpisode';
+import EpisodeEditor from './EpisodeEditor';
 import ImportEpisode from './ImportEpisode';
 import { useStyles } from './index.style';
 import OfficialAuthorization from './OfficialAuthorization';
+import PublishDrama from './PublishDrama';
 import {
   canManageCode,
   canUseMiniapp,
@@ -52,7 +57,6 @@ import {
   listMiniapps,
   listReleases,
   type Miniapp,
-  publishDrama,
   type Release,
   saveDrama,
   unpublishDrama,
@@ -75,6 +79,8 @@ function DramaLibraryContent() {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [category, setCategory] = useState<string>();
+  const [completion, setCompletion] = useState<string>();
   const [sort, setSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState('library');
@@ -85,6 +91,9 @@ function DramaLibraryContent() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFailed, setDetailFailed] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [batchImporting, setBatchImporting] = useState(false);
+  const [episodeEditor, setEpisodeEditor] = useState<Episode>();
+  const [publishing, setPublishing] = useState(false);
   const [selected, setSelected] = useState<Key[]>([]);
   const [publishAppId, setPublishAppId] = useState<number>();
   const [releaseApp, setReleaseApp] = useState<Miniapp>();
@@ -185,6 +194,9 @@ function DramaLibraryContent() {
     ++detailGeneration.current;
     setDetail(undefined);
     setImporting(false);
+    setBatchImporting(false);
+    setEpisodeEditor(undefined);
+    setPublishing(false);
     setEpisodes([]);
     setSelected([]);
   };
@@ -194,13 +206,20 @@ function DramaLibraryContent() {
     dramaForm.setFieldsValue({
       title: drama?.title ?? '',
       description: drama?.description ?? '',
+      coverUrl: drama?.coverUrl ?? '',
+      category: drama?.category ?? '',
+      completionStatus: drama?.completionStatus ?? 'ONGOING',
+      totalEpisodes: drama?.totalEpisodes ?? undefined,
     });
   };
   const filteredDramas = dramas
-    .filter((drama) =>
-      `${drama.title} ${drama.description || ''}`
-        .toLowerCase()
-        .includes(keyword.trim().toLowerCase()),
+    .filter(
+      (drama) =>
+        `${drama.title} ${drama.description || ''}`
+          .toLowerCase()
+          .includes(keyword.trim().toLowerCase()) &&
+        (!category || drama.category === category) &&
+        (!completion || (drama.completionStatus ?? 'ONGOING') === completion),
     )
     .sort((a, b) => {
       const difference =
@@ -225,6 +244,18 @@ function DramaLibraryContent() {
         if (!ok) throw new Error('删除失败');
       },
     });
+  };
+  const submitDrama = async () => {
+    const values = await dramaForm.validateFields();
+    const ok = await mutate(async () => {
+      const saved = await saveDrama(
+        { ...values, title: values.title.trim() },
+        editor && editor !== 'new' ? editor.id : undefined,
+      );
+      if (mounted.current)
+        setDetail((current) => (current?.id === saved.id ? saved : current));
+    }, reload);
+    if (ok) setEditor(undefined);
   };
   const manualNotice = (
     <Alert
@@ -317,6 +348,46 @@ function DramaLibraryContent() {
                         />
                       </Space>
                     </div>
+                    <Space wrap style={{ marginBottom: 16 }}>
+                      <Select
+                        allowClear
+                        style={{ minWidth: 140 }}
+                        aria-label={t('categoryFilter', '筛选分类')}
+                        placeholder={t('categoryFilter', '筛选分类')}
+                        value={category}
+                        onChange={(value) => {
+                          setCategory(value);
+                          setPage(1);
+                        }}
+                        options={[
+                          ...new Set(
+                            dramas
+                              .map((drama) => drama.category)
+                              .filter((value): value is string =>
+                                Boolean(value),
+                              ),
+                          ),
+                        ].map((value) => ({ value, label: value }))}
+                      />
+                      <Select
+                        allowClear
+                        style={{ minWidth: 140 }}
+                        aria-label={t('completionFilter', '筛选完结状态')}
+                        placeholder={t('completionFilter', '筛选完结状态')}
+                        value={completion}
+                        onChange={(value) => {
+                          setCompletion(value);
+                          setPage(1);
+                        }}
+                        options={[
+                          { value: 'ONGOING', label: t('ongoing', '连载中') },
+                          {
+                            value: 'COMPLETED',
+                            label: t('completed', '已完结'),
+                          },
+                        ]}
+                      />
+                    </Space>
                     <Spin spinning={loading}>
                       {!loading && !filteredDramas.length ? (
                         <div className={styles.empty}>
@@ -387,7 +458,21 @@ function DramaLibraryContent() {
                                 )}
                                 <header className={styles.cardTop}>
                                   <div className={styles.identity}>
-                                    <PlaySquareOutlined />
+                                    {drama.coverUrl ? (
+                                      <Image
+                                        src={drama.coverUrl}
+                                        width={40}
+                                        height={54}
+                                        preview={false}
+                                        alt={`${drama.title}封面`}
+                                        style={{
+                                          objectFit: 'cover',
+                                          borderRadius: 6,
+                                        }}
+                                      />
+                                    ) : (
+                                      <PlaySquareOutlined />
+                                    )}
                                   </div>
                                   <div className={styles.cardTitle}>
                                     <h2>
@@ -399,7 +484,12 @@ function DramaLibraryContent() {
                                         {drama.title}
                                       </button>
                                     </h2>
-                                    <span>剧集目录</span>
+                                    <span>
+                                      {drama.category || '未分类'} ·{' '}
+                                      {drama.completionStatus === 'COMPLETED'
+                                        ? '已完结'
+                                        : '连载中'}
+                                    </span>
                                   </div>
                                 </header>
                                 <p
@@ -409,6 +499,20 @@ function DramaLibraryContent() {
                                   {drama.description ||
                                     t('noDescription', '暂无简介')}
                                 </p>
+                                <Space
+                                  size={8}
+                                  wrap
+                                  style={{ marginBottom: 12 }}
+                                >
+                                  <Tag>
+                                    {drama.episodeCount ?? 0} /{' '}
+                                    {drama.totalEpisodes || '—'} 集
+                                  </Tag>
+                                  <Typography.Text type="secondary">
+                                    已上架 {drama.publishedAppCount ?? 0}{' '}
+                                    个小程序
+                                  </Typography.Text>
+                                </Space>
                                 <footer className={styles.cardBottom}>
                                   <time dateTime={drama.createdAt}>
                                     <ClockCircleOutlined
@@ -468,6 +572,17 @@ function DramaLibraryContent() {
                     {access.canManageMiniapps && (
                       <OfficialAuthorization onAuthorized={reload} />
                     )}
+                    <Alert
+                      type="info"
+                      title={t(
+                        'wechatFormalRelease',
+                        '正式版需在微信后台提交审核并发布',
+                      )}
+                      description={t(
+                        'wechatFormalReleaseHint',
+                        '本系统发布记录表示内容目录版本。体验版验证后，请在微信公众平台提交小程序代码审核，审核通过后手动发布正式版。',
+                      )}
+                    />
                     <div className={styles.surface}>
                       <header className={styles.surfaceHeader}>
                         <h2>
@@ -614,20 +729,7 @@ function DramaLibraryContent() {
         closable={!busy}
         mask={{ closable: !busy }}
         keyboard={!busy}
-        onOk={async () => {
-          const values = await dramaForm.validateFields();
-          const ok = await mutate(async () => {
-            const saved = await saveDrama(
-              { ...values, title: values.title.trim() },
-              editor && editor !== 'new' ? editor.id : undefined,
-            );
-            if (mounted.current)
-              setDetail((current) =>
-                current?.id === saved.id ? saved : current,
-              );
-          }, reload);
-          if (ok) setEditor(undefined);
-        }}
+        onOk={() => void submitDrama().catch(() => undefined)}
       >
         <Form form={dramaForm} layout="vertical">
           <Form.Item
@@ -644,6 +746,53 @@ function DramaLibraryContent() {
           >
             <Input.TextArea maxLength={4000} showCount rows={5} />
           </Form.Item>
+          <Form.Item
+            name="coverUrl"
+            label={t('coverUrl', '封面 HTTPS 地址')}
+            rules={[
+              { max: 1024 },
+              {
+                type: 'url',
+                message: t('httpsRequired', '请输入有效的 HTTPS 地址'),
+              },
+              {
+                pattern: /^https:\/\/\S+$/,
+                message: t('httpsRequired', '请输入有效的 HTTPS 地址'),
+              },
+            ]}
+          >
+            <Input placeholder="https://" maxLength={1024} />
+          </Form.Item>
+          <Form.Item
+            name="category"
+            label={t('category', '分类')}
+            rules={[{ max: 40 }]}
+          >
+            <Input maxLength={40} />
+          </Form.Item>
+          <Form.Item
+            name="completionStatus"
+            label={t('completion', '完结状态')}
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: 'ONGOING', label: t('ongoing', '连载中') },
+                { value: 'COMPLETED', label: t('completed', '已完结') },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="totalEpisodes"
+            label={t('totalEpisodes', '总集数')}
+            extra={t(
+              'totalEpisodesHint',
+              '填写计划总集数（1—10000），上架前必填。',
+            )}
+            rules={[{ type: 'number', min: 1, max: 10000 }]}
+          >
+            <InputNumber min={1} max={10000} precision={0} />
+          </Form.Item>
         </Form>
       </Modal>
       {detail && (
@@ -652,7 +801,13 @@ function DramaLibraryContent() {
             type="text"
             className={styles.back}
             icon={<ArrowLeftOutlined aria-hidden />}
-            disabled={busy || importing}
+            disabled={
+              busy ||
+              importing ||
+              batchImporting ||
+              Boolean(episodeEditor) ||
+              publishing
+            }
             onClick={closeDetail}
           >
             全部剧集
@@ -689,6 +844,12 @@ function DramaLibraryContent() {
                     onClick={() => setImporting(true)}
                   >
                     {t('import', '导入单集')}
+                  </Button>
+                  <Button
+                    disabled={detailLoading || detailFailed || busy}
+                    onClick={() => setBatchImporting(true)}
+                  >
+                    {t('batchImport', '批量本地导入')}
                   </Button>
                 </>
               )}
@@ -752,6 +913,23 @@ function DramaLibraryContent() {
                 },
                 { title: t('episodeTitle', '单集标题'), dataIndex: 'title' },
                 {
+                  title: t('mediaInfo', '媒体信息'),
+                  render: (_, episode) => (
+                    <Space orientation="vertical">
+                      <span>
+                        {episode.width && episode.height
+                          ? `${episode.width} × ${episode.height}`
+                          : t('unknownResolution', '待分析分辨率')}
+                      </span>
+                      <span>
+                        {episode.durationSeconds
+                          ? `${episode.durationSeconds} ${t('seconds', '秒')}`
+                          : t('unknownDuration', '待分析时长')}
+                      </span>
+                    </Space>
+                  ),
+                },
+                {
                   title: t('source', '来源'),
                   render: (_, episode) => (
                     <Space orientation="vertical">
@@ -780,28 +958,41 @@ function DramaLibraryContent() {
                 },
                 {
                   title: t('actions', '操作'),
-                  render: (_, episode) =>
-                    access.canManageDramas && (
-                      <Popconfirm
-                        title={t('deleteEpisode', '删除该单集？')}
-                        description={t(
-                          'deleteHint',
-                          '已发布资源须先从所有小程序下架。',
-                        )}
-                        onConfirm={() => {
-                          if (!detail) return;
-                          const id = detail.id;
-                          return mutate(
-                            () => deleteEpisode(id, episode.id),
-                            () => loadDetail(id),
-                          );
-                        }}
+                  render: (_, episode) => (
+                    <Space>
+                      <Button
+                        type="link"
+                        disabled={busy}
+                        onClick={() => setEpisodeEditor(episode)}
                       >
-                        <Button danger type="link" disabled={busy}>
-                          {t('delete', '删除')}
-                        </Button>
-                      </Popconfirm>
-                    ),
+                        {t('previewEdit', '预览 / 编辑')}
+                      </Button>
+                      {access.canManageDramas && (
+                        <Popconfirm
+                          title={t('deleteEpisode', '删除该单集？')}
+                          description={t(
+                            'deleteHint',
+                            '已发布资源须先从所有小程序下架。',
+                          )}
+                          onConfirm={() => {
+                            if (!detail) return;
+                            const id = detail.id;
+                            return mutate(
+                              () => deleteEpisode(id, episode.id),
+                              async () => {
+                                await loadDetail(id);
+                                await reload();
+                              },
+                            );
+                          }}
+                        >
+                          <Button danger type="link" disabled={busy}>
+                            {t('delete', '删除')}
+                          </Button>
+                        </Popconfirm>
+                      )}
+                    </Space>
+                  ),
                 },
               ]}
             />
@@ -828,62 +1019,26 @@ function DramaLibraryContent() {
                     disabled: !app.enabled || !canUseMiniapp(app),
                   }))}
                 />
-                <Popconfirm
-                  title={t(
-                    'publishConfirm',
-                    '确认将所选单集上架至目标小程序？',
-                  )}
-                  description={t(
-                    'publishSnapshot',
-                    '剧名、简介及单集将生成新的发布快照。',
-                  )}
+                <Button
+                  type="primary"
+                  loading={busy}
+                  onClick={() => setPublishing(true)}
                   disabled={
                     !publishAppId ||
+                    !apps.some(
+                      (app) =>
+                        app.id === publishAppId &&
+                        app.enabled &&
+                        canUseMiniapp(app),
+                    ) ||
                     selected.length === 0 ||
-                    selected.length > 500
+                    selected.length > 500 ||
+                    detailLoading ||
+                    detailFailed
                   }
-                  onConfirm={() => {
-                    if (
-                      !publishAppId ||
-                      !detail ||
-                      !apps.some(
-                        (app) =>
-                          app.id === publishAppId &&
-                          app.enabled &&
-                          canUseMiniapp(app),
-                      )
-                    )
-                      return;
-                    const appId = publishAppId;
-                    const dramaId = detail.id;
-                    return mutate(
-                      () => publishDrama(appId, dramaId, selected.map(Number)),
-                      async () => {
-                        setSelected([]);
-                      },
-                    );
-                  }}
                 >
-                  <Button
-                    type="primary"
-                    loading={busy}
-                    disabled={
-                      !publishAppId ||
-                      !apps.some(
-                        (app) =>
-                          app.id === publishAppId &&
-                          app.enabled &&
-                          canUseMiniapp(app),
-                      ) ||
-                      selected.length === 0 ||
-                      selected.length > 500 ||
-                      detailLoading ||
-                      detailFailed
-                    }
-                  >
-                    {t('publish', '上架所选单集')} ({selected.length}/500)
-                  </Button>
-                </Popconfirm>
+                  {t('publish', '上架所选单集')} ({selected.length}/500)
+                </Button>
               </Space>
             </footer>
           )}
@@ -908,9 +1063,55 @@ function DramaLibraryContent() {
             Math.max(0, ...episodes.map((episode) => episode.episodeNo)) + 1
           }
           onClose={() => setImporting(false)}
-          onImported={() => loadDetail(detail.id)}
+          onImported={async () => {
+            await loadDetail(detail.id);
+            await reload();
+          }}
         />
       )}
+      {batchImporting && detail && (
+        <BatchImportEpisode
+          dramaId={detail.id}
+          nextNo={
+            Math.max(0, ...episodes.map((episode) => episode.episodeNo)) + 1
+          }
+          onClose={() => setBatchImporting(false)}
+          onImported={async () => {
+            await loadDetail(detail.id);
+            await reload();
+          }}
+        />
+      )}
+      {episodeEditor && detail && (
+        <EpisodeEditor
+          key={episodeEditor.id}
+          dramaId={detail.id}
+          episode={episodeEditor}
+          canEdit={access.canManageDramas}
+          onClose={() => setEpisodeEditor(undefined)}
+          onSaved={() => loadDetail(detail.id)}
+        />
+      )}
+      {publishing &&
+        detail &&
+        apps
+          .filter(
+            (app) =>
+              app.id === publishAppId && app.enabled && canUseMiniapp(app),
+          )
+          .map((app) => (
+            <PublishDrama
+              key={`${app.id}:${detail.id}`}
+              dramaId={detail.id}
+              app={app}
+              episodeIds={selected.map(Number)}
+              onClose={() => setPublishing(false)}
+              onPublished={async () => {
+                setSelected([]);
+                await reload();
+              }}
+            />
+          ))}
       <Modal
         open={Boolean(releaseApp)}
         width={900}
@@ -939,9 +1140,45 @@ function DramaLibraryContent() {
             rowKey="id"
             loading={releaseLoading}
             dataSource={releases}
-            scroll={{ x: 650 }}
+            scroll={{ x: 1050 }}
             columns={[
+              {
+                title: t('contentVersion', '内容版本'),
+                dataIndex: 'id',
+                render: (value) => `#${value}`,
+              },
               { title: t('dramaTitle', '剧名'), dataIndex: 'title' },
+              {
+                title: t('cover', '封面'),
+                render: (_, release) =>
+                  release.coverUrl ? (
+                    <Image
+                      src={release.coverUrl}
+                      width={36}
+                      height={48}
+                      alt={`${release.title}${t('cover', '封面')}`}
+                      style={{ objectFit: 'cover' }}
+                      preview={false}
+                    />
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
+                title: t('episodeCount', '集数'),
+                dataIndex: 'episodeCount',
+                render: (value) => value ?? '—',
+              },
+              {
+                title: t('sortOrder', '目录排序'),
+                dataIndex: 'sortOrder',
+                render: (value) => value ?? 0,
+              },
+              {
+                title: t('recommended', '首页推荐'),
+                dataIndex: 'recommended',
+                render: (value) => (value ? t('yes', '是') : t('no', '否')),
+              },
               {
                 title: t('description', '简介'),
                 dataIndex: 'description',
@@ -970,7 +1207,10 @@ function DramaLibraryContent() {
                         const app = releaseApp;
                         return mutate(
                           () => unpublishDrama(app.id, release.dramaId),
-                          () => loadReleases(app),
+                          async () => {
+                            await loadReleases(app);
+                            await reload();
+                          },
                         );
                       }}
                     >
