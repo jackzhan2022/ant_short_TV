@@ -54,4 +54,4 @@
 - 管理端：8个文件、99项相关测试通过；TypeScript、Biome及Ant Design检查通过，生产构建成功。全项目原有Biome警告及requestErrorConfig.ts的9条Ant Design usage提示仍保留。
 - 后端：drama包13个测试类共111项，以及商业订阅和项目读取4个测试类39项测试通过。两项旧权限断言按当前MENU:DRAMA_LIBRARY授权模型更新，并增加新管理接口的非管理员拒绝用例。
 - 小程序：16项Node行为测试、5页面/16个JavaScript/7个WXML静态检查及Biome通过。
-- 已完成独立需求审查和代码复查；尚未进行真实微信编译与真机验收。
+- 已完成独立需求审查和代码复查；微信开发者工具原生预览与 1.1.0 源码上传成功，真机验收尚未完成。CDN 微信 Referer 视频 Range 联调返回 206；具体发布状态见发布记录。
