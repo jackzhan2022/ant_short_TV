@@ -17,6 +17,17 @@ it('disables capture when there is no permission or resolvable video version', (
   expect(screen.getByRole('button', { name: '取视频帧' })).toBeDisabled();
 });
 
+it('extracts the displayed video without starting playback and requires audio permission', () => {
+  const parent = vi.fn(), extract = vi.fn();
+  const view = render(<div onClick={parent}><StoryboardVideoTools enabled resultId={22} onCapture={vi.fn()} canExtractAudio onExtractAudio={extract} /></div>);
+  fireEvent.click(screen.getByRole('button', { name: '提取音色' }));
+  expect(extract).toHaveBeenCalledOnce(); expect(parent).not.toHaveBeenCalled();
+  view.rerender(<StoryboardVideoTools enabled resultId={22} onCapture={vi.fn()} onExtractAudio={extract} />);
+  expect(screen.getByRole('button', { name: '提取音色' })).toBeDisabled();
+  view.rerender(<StoryboardVideoTools enabled onCapture={vi.fn()} canExtractAudio onExtractAudio={extract} />);
+  expect(screen.getByRole('button', { name: '提取音色' })).toBeDisabled();
+});
+
 it('erases the displayed version without triggering parent playback and respects its own permission', () => {
   const parent = vi.fn(), erase = vi.fn();
   const view = render(<div onClick={parent}><StoryboardVideoTools enabled resultId={44} onCapture={vi.fn()} canErase onErase={erase} /></div>);

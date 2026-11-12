@@ -1,0 +1,8 @@
+<import src="../../templates/catalog.wxml" />
+<view class="page">
+  <view class="header"><view><view class="heading">好剧，随时入戏</view><view class="muted">每一集都有新故事</view></view><button class="ghost" bindtap="openHistory">足迹</button></view>
+  <view class="search-box" bindtap="openSearch">搜索你想看的短剧</view>
+  <view wx:if="{{resume}}" class="resume" bindtap="resume"><image src="{{resume.coverUrl}}" mode="aspectFill"/><view class="resume-info"><view class="resume-title">{{resume.title}}</view><view class="muted">上次看到第 {{resume.episodeNo}} 集</view></view><text class="resume-action">继续看 ›</text></view>
+  <scroll-view scroll-x class="chips"><view class="chip {{category === '' ? 'active' : ''}}" data-value="" bindtap="chooseCategory">全部</view><view wx:for="{{categories}}" wx:key="*this" class="chip {{category === item ? 'active' : ''}}" data-value="{{item}}" bindtap="chooseCategory">{{item}}</view></scroll-view>
+  <template is="catalog" data="{{items,loading,error,total,hasSearched,search}}" />
+</view>

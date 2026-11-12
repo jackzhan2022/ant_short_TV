@@ -1,0 +1,14 @@
+<template name="catalog">
+  <view wx:if="{{!loading && !error && hasSearched && !items.length}}" class="state">暂无{{search ? '匹配的短剧' : '已上架短剧'}}<view class="empty-sub">{{search ? '换个剧名试试' : '精彩内容即将上线'}}</view></view>
+  <view class="grid">
+    <view wx:for="{{items}}" wx:key="id" bindtap="openDrama" data-id="{{item.dramaId}}">
+      <image class="poster" src="{{item.coverUrl}}" mode="aspectFill" lazy-load />
+      <view class="card-title">{{item.title}}</view>
+      <view class="card-meta"><text>{{item.category}}</text><text>·</text><text>{{item.completionStatus === 'COMPLETED' ? '已完结' : '连载中'}}</text></view>
+      <view class="card-meta"><text class="badge" wx:if="{{item.recommended}}">精选</text><text>已上架 {{item.episodeCount}} / {{item.totalEpisodes}} 集</text></view>
+    </view>
+  </view>
+  <view wx:if="{{error}}" class="state">{{error}}<button class="ghost" bindtap="retry">重新加载</button></view>
+  <view wx:if="{{loading}}" class="footer">正在加载…</view>
+  <view wx:elif="{{items.length && items.length >= total}}" class="footer">已经到底了</view>
+</template>

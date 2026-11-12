@@ -121,6 +121,9 @@ public interface ProjectMapper extends BaseMapper<ProjectEntity> {
     ProjectCoverObject selectOwnedCoverObject(@Param("tenantId") Long tenantId,
         @Param("projectId") Long projectId, @Param("key") String key);
 
+    @Select("select id, tenant_id, deleted_at from project where id = #{id}")
+    ProjectEntity selectIdentityById(@Param("id") Long id);
+
     default ProjectEntity selectMetadataByTenantIdAndId(Long tenantId, Long id) {
         return selectOne(new QueryWrapper<ProjectEntity>()
             .select(ProjectEntity.class, field -> !"initialScriptContent".equals(field.getProperty()))

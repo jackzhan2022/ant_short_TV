@@ -1,267 +1,89 @@
-import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { FileDoneOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { PageContainer } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { Button, Descriptions, Drawer, Space, Tag, Typography } from 'antd';
-import { createStyles } from 'antd-style';
-import { useRef, useState } from 'react';
-import {
-  getPlatformCommercialOrder,
-  queryPlatformCommercialOrders,
-  type CommercialOrderStatus,
-  type PlatformCommercialOrderDetail,
-  type PlatformCommercialOrderQuery,
-  type PlatformCommercialOrderSummary,
-} from './service';
-
-const orderStatusText = (status?: CommercialOrderStatus) => (Object({
-  PENDING_PAYMENT: '待支付', PAID: '已支付', ENTITLEMENT_PENDING: '权益发放中',
-  COMPLETED: '已完成', CLOSED: '已关闭', PAYMENT_EXCEPTION: '支付异常',
-}) as Record<CommercialOrderStatus, string>)[status ?? 'PENDING_PAYMENT'] ?? '-';
-
-const orderStatusColor = (status?: CommercialOrderStatus) => (
-  status === 'COMPLETED' ? 'success' : status === 'PAYMENT_EXCEPTION' ? 'error' : status === 'PENDING_PAYMENT' ? 'warning' : 'default'
-);
-
-const packageTypeText = (type?: string) => type === 'SUBSCRIPTION' ? '会员订阅' : type === 'POINT_PACKAGE' ? '积分包' : '-';
-const dateTime = (value?: string) => {
-  const date = value ? new Date(value) : undefined;
-  return date && !Number.isNaN(date.getTime())
-    ? date.toLocaleString('zh-CN', { hour12: false })
-    : '-';
-};
-
-const useStyles = createStyles(({ css, token }) => ({
-  drawerBody: css`
-    padding: 0;
-  `,
-  summary: css`
-    padding: ${token.paddingLG}px ${token.paddingLG}px ${token.padding}px;
-    background: ${token.colorFillQuaternary};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
-  `,
-  orderNumber: css`
-    display: block;
-    color: ${token.colorTextDescription};
-    font-family: ${token.fontFamilyCode};
-    font-size: ${token.fontSizeSM}px;
-    overflow-wrap: anywhere;
-  `,
-  summaryMetrics: css`
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: ${token.marginLG}px;
-    margin-top: ${token.marginLG}px;
-  `,
-  metricLabel: css`
-    color: ${token.colorTextDescription};
-    font-size: ${token.fontSizeSM}px;
-  `,
-  amount: css`
-    margin-top: ${token.marginXXS}px;
-    color: ${token.colorText};
-    font-size: ${token.fontSizeHeading2}px;
-    font-weight: ${token.fontWeightStrong};
-    line-height: ${token.lineHeightHeading2};
-  `,
-  currency: css`
-    margin-left: ${token.marginXXS}px;
-    color: ${token.colorTextSecondary};
-    font-size: ${token.fontSizeSM}px;
-    font-weight: ${token.fontWeightStrong};
-  `,
-  status: css`
-    text-align: right;
-  `,
-  content: css`
-    padding: ${token.paddingLG}px;
-  `,
-  group: css`
-    & + & {
-      margin-top: ${token.marginXL}px;
-      padding-top: ${token.paddingLG}px;
-      border-top: 1px solid ${token.colorBorderSecondary};
-    }
-
-    .ant-descriptions-title {
-      margin-bottom: ${token.marginLG}px;
-      font-size: ${token.fontSizeLG}px;
-    }
-
-    .ant-descriptions-item-label {
-      color: ${token.colorTextDescription};
-    }
-
-    .ant-descriptions-item-content {
-      color: ${token.colorTextSecondary};
-      overflow-wrap: anywhere;
-    }
-  `,
-}));
+import { Alert, Button, Empty, Input, Select, Table, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
+import { useEffect, useState } from 'react';
+import OrderDetailsDrawer from './OrderDetailsDrawer';
+import { useStyles } from './index.style';
+import { DateCell, OrderAmount, OrderStatus, orderStatuses, packageTypeText } from './presentation';
+import { queryPlatformCommercialOrders, type CommercialOrderStatus, type CommercialPackageType, type PlatformCommercialOrderQuery, type PlatformCommercialOrderSummary } from './service';
 
 const PlatformCommercialOrderPage = () => {
   const access = useAccess();
   const { styles } = useStyles();
-  const actionRef = useRef<ActionType>(undefined);
-  const [detail, setDetail] = useState<PlatformCommercialOrderDetail>();
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [query, setQuery] = useState<PlatformCommercialOrderQuery>({ current: 1, pageSize: 20 });
+  const [data, setData] = useState<PlatformCommercialOrderSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [selectedOrder, setSelectedOrder] = useState<number>();
+  const filtered = Boolean(keyword.trim() || query.status || query.packageType);
 
-  const loadDetail = async (orderId: number) => {
-    setDetailLoading(true);
-    try {
-      const response = await getPlatformCommercialOrder(orderId);
-      setDetail(response.data);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+  useEffect(() => {
+    const value = keyword.trim();
+    if (value === (query.keyword ?? '')) return;
+    const timer = setTimeout(() => setQuery((previous) => ({ ...previous, current: 1, keyword: value || undefined })), 300);
+    return () => clearTimeout(timer);
+  }, [keyword, query.keyword]);
 
-  const columns: ProColumns<PlatformCommercialOrderSummary>[] = [
-    { title: '订单号或租户名称', dataIndex: 'keyword', hideInTable: true },
-    { title: '订单状态', dataIndex: 'status', hideInTable: true, valueType: 'select', valueEnum: { PENDING_PAYMENT: { text: '待支付' }, PAID: { text: '已支付' }, ENTITLEMENT_PENDING: { text: '权益发放中' }, COMPLETED: { text: '已完成' }, CLOSED: { text: '已关闭' }, PAYMENT_EXCEPTION: { text: '支付异常' } } },
-    { title: '套餐类型', dataIndex: 'packageType', hideInTable: true, valueType: 'select', valueEnum: { POINT_PACKAGE: { text: '积分包' }, SUBSCRIPTION: { text: '会员订阅' } } },
-    { title: '订单号', dataIndex: 'merchantOrderNo', search: false },
-    { title: '租户', search: false, render: (_, record) => <Space orientation="vertical" size={0}><Typography.Text strong>{record.tenantName ?? '-'}</Typography.Text><Typography.Text type="secondary">{record.tenantCode ?? '-'}</Typography.Text></Space> },
-    { title: '套餐', search: false, render: (_, record) => <Space orientation="vertical" size={0}><Typography.Text>{record.packageName}</Typography.Text><Typography.Text type="secondary">V{record.packageVersionNo} · {packageTypeText(record.packageType)}</Typography.Text></Space> },
-    { title: '实付金额', search: false, render: (_, record) => `${record.amount} ${record.currency}` },
-    { title: '订单状态', dataIndex: 'status', search: false, render: (value) => <Tag color={orderStatusColor(value as CommercialOrderStatus)}>{orderStatusText(value as CommercialOrderStatus)}</Tag> },
-    { title: '支付时间', dataIndex: 'paidAt', search: false, render: (value) => dateTime(value as string | undefined) },
-    { title: '创建时间', dataIndex: 'createdAt', search: false, render: (value) => dateTime(value as string | undefined) },
-    { title: '操作', valueType: 'option', search: false, render: (_, record) => <Button type="link" onClick={() => void loadDetail(record.id)}>查看详情</Button> },
+  useEffect(() => {
+    if (!access.canViewCommercialOrders) { setData([]); setTotal(0); setLoading(false); return; }
+    let active = true;
+    setLoading(true);
+    setFailed(false);
+    const params: PlatformCommercialOrderQuery = {
+      current: query.current, pageSize: query.pageSize,
+      ...(query.keyword ? { keyword: query.keyword } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.packageType ? { packageType: query.packageType } : {}),
+    };
+    void queryPlatformCommercialOrders(params).then((response) => {
+      if (!response.success) throw new Error('订单加载失败');
+      if (active) { setData(response.data.records); setTotal(response.data.total); }
+    }).catch(() => { if (active) { setFailed(true); setData([]); setTotal(0); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [access.canViewCommercialOrders, query, revision]);
+
+  const reset = () => { setKeyword(''); setQuery({ current: 1, pageSize: query.pageSize }); };
+  const columns: TableColumnsType<PlatformCommercialOrderSummary> = [
+    { title: '订单号', dataIndex: 'merchantOrderNo', width: '24%', render: (value: string, record) => <Typography.Text className={styles.orderNumber} copyable={{ text: value, tooltips: ['复制订单号', '已复制'] }}><Button type="text" title={value} onClick={() => setSelectedOrder(record.id)}>{value}</Button></Typography.Text> },
+    { title: '租户', key: 'tenant', width: '12%', render: (_, record) => <div className={styles.identity}><strong>{record.tenantName || '—'}</strong><code>{record.tenantCode || '—'}</code></div> },
+    { title: '套餐 / 版本', key: 'package', width: '15%', render: (_, record) => <div className={styles.identity}><strong>{record.packageName}</strong><div className={styles.packageMeta}><span className={styles.version}>V{record.packageVersionNo}</span><span>{packageTypeText(record.packageType)}</span></div></div> },
+    { title: '实付金额', key: 'amount', width: '10%', align: 'right', render: (_, record) => <OrderAmount amount={record.amount} currency={record.currency} /> },
+    { title: '订单状态', dataIndex: 'status', width: '10%', render: (value: CommercialOrderStatus) => <OrderStatus status={value} /> },
+    { title: '支付时间', dataIndex: 'paidAt', width: '11%', render: (value?: string) => <DateCell value={value} /> },
+    { title: '创建时间', dataIndex: 'createdAt', width: '11%', render: (value: string) => <DateCell value={value} /> },
+    { title: '操作', key: 'actions', width: '7%', align: 'right', render: (_, record) => <Button type="link" aria-label="查看详情" onClick={() => setSelectedOrder(record.id)}>详情</Button> },
   ];
 
-  return (
-    <PageContainer title="订单管理">
-      <ProTable<PlatformCommercialOrderSummary, PlatformCommercialOrderQuery>
-        actionRef={actionRef}
-        rowKey="id"
-        columns={columns}
-        search={{ labelWidth: 'auto' }}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-        request={async (params) => {
-          if (!access.canViewCommercialOrders)
-            return { data: [], total: 0, success: false };
-          const response = await queryPlatformCommercialOrders(params);
-          return {
-            data: response.data.records,
-            total: response.data.total,
-            success: response.success,
-          };
-        }}
-      />
-      <Drawer
-        title="订单详情"
-        open={Boolean(detail)}
-        loading={detailLoading}
-        size="large"
-        destroyOnHidden
-        classNames={{ body: styles.drawerBody }}
-        onClose={() => setDetail(undefined)}
-      >
-        {detail && (
-          <>
-            <section className={styles.summary} aria-label="订单摘要">
-              <Typography.Text className={styles.orderNumber}>
-                {detail.merchantOrderNo}
-              </Typography.Text>
-              <div className={styles.summaryMetrics}>
-                <div>
-                  <div className={styles.metricLabel}>实付金额</div>
-                  <div className={styles.amount}>
-                    {detail.amount}
-                    <span className={styles.currency}>{detail.currency}</span>
-                  </div>
-                </div>
-                <div className={styles.status}>
-                  <div className={styles.metricLabel}>订单状态</div>
-                  <Tag color={orderStatusColor(detail.status)}>
-                    {orderStatusText(detail.status)}
-                  </Tag>
-                </div>
-              </div>
-            </section>
-            <div className={styles.content}>
-              <Descriptions
-                className={styles.group}
-                title="订单信息"
-                column={{ xs: 1, sm: 2 }}
-                items={[
-                  {
-                    key: 'tenant',
-                    label: '租户',
-                    children: detail.tenantName ?? '-',
-                  },
-                  {
-                    key: 'createdAt',
-                    label: '创建时间',
-                    children: dateTime(detail.createdAt),
-                  },
-                  {
-                    key: 'completedAt',
-                    label: '完成时间',
-                    children: dateTime(detail.completedAt),
-                  },
-                ]}
-              />
-              <Descriptions
-                className={styles.group}
-                title="套餐版本"
-                column={{ xs: 1, sm: 2 }}
-                items={[
-                  {
-                    key: 'packageName',
-                    label: '套餐名称',
-                    children: detail.packageName,
-                  },
-                  {
-                    key: 'version',
-                    label: '版本',
-                    children: `V${detail.packageVersionNo}`,
-                  },
-                  {
-                    key: 'type',
-                    label: '套餐类型',
-                    children: packageTypeText(detail.packageType),
-                  },
-                  {
-                    key: 'expiresAt',
-                    label: '支付截止时间',
-                    children: dateTime(detail.expiresAt),
-                  },
-                ]}
-              />
-              <Descriptions
-                className={styles.group}
-                title="支付信息"
-                column={{ xs: 1, sm: 2 }}
-                items={[
-                  {
-                    key: 'provider',
-                    label: '支付渠道',
-                    children: detail.payment?.provider ?? '-',
-                  },
-                  {
-                    key: 'paymentStatus',
-                    label: '支付状态',
-                    children: detail.payment?.status ?? '-',
-                  },
-                  {
-                    key: 'tradeNo',
-                    label: '微信支付单号',
-                    children: detail.payment?.providerTradeNo ?? '-',
-                  },
-                  {
-                    key: 'paidAt',
-                    label: '支付时间',
-                    children: dateTime(detail.payment?.paidAt),
-                  },
-                ]}
-              />
-            </div>
-          </>
-        )}
-      </Drawer>
-    </PageContainer>
-  );
+  return <PageContainer pageHeaderRender={false}>
+    <div className={styles.page}>
+      <header className={styles.heading}><div><h1>订单管理</h1><p>查看订单、支付记录与套餐版本</p></div><span className={styles.headingMark}><FileDoneOutlined />商业管理</span></header>
+      <section className={styles.surface} aria-label="订单列表">
+        <div className={styles.toolbar}>
+          <Input variant="outlined" prefix={<SearchOutlined />} allowClear aria-label="搜索订单号或租户名称" placeholder="搜索订单号或租户名称" value={keyword} disabled={!access.canViewCommercialOrders} onChange={(event) => { const value = event.target.value; setKeyword(value); if (!value.trim()) setQuery((previous) => ({ ...previous, current: 1, keyword: undefined })); }} onPressEnter={() => setQuery((previous) => ({ ...previous, current: 1, keyword: keyword.trim() || undefined }))} />
+          <Select variant="outlined" aria-label="套餐类型" value={query.packageType ?? 'all'} disabled={!access.canViewCommercialOrders} options={[{ value: 'all', label: '全部套餐类型' }, { value: 'POINT_PACKAGE', label: '积分包' }, { value: 'SUBSCRIPTION', label: '会员订阅' }]} onChange={(value) => setQuery((previous) => ({ ...previous, current: 1, packageType: value === 'all' ? undefined : value as CommercialPackageType }))} />
+          <div className={styles.spacer} />
+          {filtered && <Button type="link" onClick={reset}>清除筛选</Button>}
+          {!failed && <span className={styles.count}>{total} 笔订单</span>}
+          <Button type="text" icon={<ReloadOutlined spin={loading} />} aria-label="刷新订单" title="刷新订单" disabled={loading || !access.canViewCommercialOrders} onClick={() => setRevision((value) => value + 1)} />
+        </div>
+        <fieldset className={styles.filters} aria-label="订单状态">{[{ value: undefined, label: '全部订单' }, ...orderStatuses].map((item) => <Button type="text" key={item.value ?? 'all'} aria-pressed={query.status === item.value} disabled={!access.canViewCommercialOrders} onClick={() => setQuery((previous) => ({ ...previous, current: 1, status: item.value }))}>{item.label}</Button>)}</fieldset>
+        {failed ? <div className={styles.error}><Alert type="error" showIcon title="订单加载失败" action={<Button onClick={() => setRevision((value) => value + 1)}>重试</Button>} /></div> : <Table<PlatformCommercialOrderSummary>
+          className={styles.table} rowKey="id" columns={columns} dataSource={data} loading={loading}
+          rowClassName={(record) => record.id === selectedOrder ? styles.selectedRow : ''}
+          scroll={{ x: 1110, y: 'calc(100dvh - 390px)', scrollToFirstRowOnChange: true }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={access.canViewCommercialOrders ? '没有匹配的订单' : '暂无订单查看权限'}>{filtered && <Button onClick={reset}>清除筛选</Button>}</Empty> }}
+          pagination={{ current: query.current, pageSize: query.pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50], showTotal: (count, range) => `第 ${range[0]}–${range[1]} 条，共 ${count} 条`, onChange: (current, pageSize) => setQuery((previous) => ({ ...previous, current: pageSize === previous.pageSize ? current : 1, pageSize })) }}
+        />}
+      </section>
+    </div>
+    <OrderDetailsDrawer orderId={access.canViewCommercialOrders ? selectedOrder : undefined} onClose={() => setSelectedOrder(undefined)} />
+  </PageContainer>;
 };
 
 export default PlatformCommercialOrderPage;

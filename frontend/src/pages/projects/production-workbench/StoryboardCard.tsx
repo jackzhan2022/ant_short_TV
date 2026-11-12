@@ -305,6 +305,7 @@ const StoryboardCardView = ({
   const {
     projectId,
     canCaptureVideo,
+    canExtractAudio,
     characters,
     scenes,
     props,
@@ -352,6 +353,7 @@ const StoryboardCardView = ({
     copy,
     remove,
     capture: onCaptureVideo,
+    extractAudio: onExtractAudio,
     erase: onEraseVideo,
     uploaded: onImageUploaded,
     generateReferenceImage: onGenerateReferenceImage,
@@ -1325,6 +1327,11 @@ const StoryboardCardView = ({
                 enabled={canCaptureVideo}
                 resultId={video.resultId}
                 canErase={canCaptureVideo}
+                canExtractAudio={canExtractAudio}
+                onExtractAudio={() => {
+                  if (video.resultId)
+                    onExtractAudio(video.resultId, item.storyboardNo || item.shotNo);
+                }}
                 eraseRunning={eraseTasks.some(
                   (task) =>
                     task.sourceResultId === video.resultId &&

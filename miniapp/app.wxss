@@ -1,0 +1,141 @@
+page {
+  background:#f7f8fa;
+  color:#182131;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  font-size:28rpx;
+  line-height:1.5}
+
+button {
+  font-size:28rpx;
+  border-radius:20rpx;
+  margin:0}
+button::after {
+  border:0}
+.page {
+  padding:32rpx 32rpx calc(44rpx + env(safe-area-inset-bottom))}
+.header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:28rpx}
+.heading {
+  font-size:44rpx;
+  font-weight:700;
+  letter-spacing:-1rpx}
+.muted {
+  color:#738096;
+  font-size:24rpx}
+.primary {
+  background:#5265eb;
+  color:#fff;
+  padding:22rpx 32rpx;
+  font-weight:600}
+.ghost {
+  background:#fff;
+  color:#5265eb;
+  padding:16rpx 28rpx}
+.search-box {
+  background:#eaeef5;
+  border-radius:20rpx;
+  padding:22rpx 24rpx;
+  color:#738096;
+  margin-bottom:28rpx}
+.chips {
+  white-space:nowrap;
+  margin:0 0 30rpx;
+  width:100%}
+.chip {
+  display:inline-block;
+  padding:14rpx 26rpx;
+  border-radius:40rpx;
+  background:#fff;
+  color:#69758c;
+  margin-right:14rpx;
+  font-size:26rpx}
+.chip.active {
+  background:#182131;
+  color:#fff}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:28rpx 22rpx}
+.poster {
+  width:100%;
+  height:450rpx;
+  background:#e6eaf2;
+  border-radius:22rpx;
+  display:block}
+.card-title {
+  font-size:29rpx;
+  font-weight:600;
+  margin-top:14rpx;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap}
+.card-meta {
+  display:flex;
+  gap:10rpx;
+  color:#738096;
+  font-size:23rpx;
+  margin-top:5rpx}
+.badge {
+  color:#5265eb}
+.state {
+  text-align:center;
+  color:#738096;
+  padding:80rpx 28rpx}
+.state button {
+  margin:28rpx auto;
+  max-width:280rpx}
+.section-title {
+  font-size:34rpx;
+  font-weight:600;
+  margin:36rpx 0 22rpx}
+.resume {
+  display:flex;
+  align-items:center;
+  gap:20rpx;
+  background:#fff;
+  padding:22rpx;
+  border-radius:24rpx;
+  margin-bottom:28rpx}
+.resume image {
+  width:88rpx;
+  height:116rpx;
+  border-radius:12rpx;
+  background:#e6eaf2}
+.resume-info {
+  flex:1;
+  min-width:0}
+.resume-title {
+  font-weight:600;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap}
+.resume-action {
+  color:#5265eb;
+  font-weight:600}
+.footer {
+  text-align:center;
+  padding:36rpx;
+  color:#738096;
+  font-size:24rpx}
+.episode-grid {
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:14rpx}
+.episode {
+  background:#fff;
+  border-radius:14rpx;
+  text-align:center;
+  padding:20rpx 4rpx;
+  font-size:25rpx}
+.episode.current {
+  background:#5265eb;
+  color:#fff}
+.watched {
+  color:#5265eb}
+.empty-sub {
+  font-size:24rpx;
+  margin-top:10rpx}
+

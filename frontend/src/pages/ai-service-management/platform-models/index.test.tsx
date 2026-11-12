@@ -15,7 +15,10 @@ vi.mock('@ant-design/pro-components', () => ({
     return null;
   },
 }));
-vi.mock('antd', () => ({ App: { useApp: () => ({ message: {} }) } }));
+vi.mock('antd', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('antd')>()),
+  App: { useApp: () => ({ message: {} }) },
+}));
 vi.mock('../platform-service', () => ({
   queryPlatformModels: mocks.queryPlatformModels,
   queryPlatformProviders: mocks.queryPlatformProviders,

@@ -12,10 +12,22 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { App, Button, Form, Space, Switch, Tag, Typography } from 'antd';
-import type { ReactElement } from 'react';
-import { useEffect, useRef } from 'react';
 import { useAccess } from '@umijs/max';
+import {
+  App,
+  Button,
+  Form,
+  Input,
+  Select,
+  Space,
+  Switch,
+  Tag,
+  Typography,
+} from 'antd';
+import type { ReactElement } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
+import { AdminHeading, useAdminStyles } from '../admin-ui';
 import type {
   PlatformProvider,
   PlatformProviderFormValues,
@@ -28,7 +40,6 @@ import {
   updatePlatformProvider,
   updatePlatformProviderStatus,
 } from '../platform-service';
-import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
 
 const defaultFormValues: PlatformProviderFormValues = {
   name: '',
@@ -73,6 +84,7 @@ const ProviderEditor = ({
   trigger: ReactElement;
   onDone: () => void;
 }) => {
+  const { styles } = useAdminStyles();
   const [form] = Form.useForm<PlatformProviderFormValues>();
   const { message } = App.useApp();
   const isEdit = Boolean(record);
@@ -99,7 +111,7 @@ const ProviderEditor = ({
       title={isEdit ? '编辑模型服务商' : '新增模型服务商'}
       form={form}
       trigger={trigger}
-      modalProps={{ destroyOnHidden: true }}
+      modalProps={{ destroyOnHidden: true, rootClassName: styles.overlay }}
       onFinish={async (values) => {
         const payload: PlatformProviderPayload = {
           ...values,
@@ -158,6 +170,9 @@ const ProviderEditor = ({
 };
 
 const PlatformProvidersPage = () => {
+  const { styles } = useAdminStyles();
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<string>();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
   const access = useAccess();
@@ -167,84 +182,79 @@ const PlatformProvidersPage = () => {
     {
       title: '模型服务商',
       dataIndex: 'name',
-      width: 180,
+      width: 210,
       render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{record.name}</Typography.Text>
-          <Typography.Text type="secondary">{record.code}</Typography.Text>
-        </Space>
+        <div className={styles.name}>
+          <span className={styles.mark}>{record.name.slice(0, 1)}</span>
+          <div>
+            <Typography.Text strong>{record.name}</Typography.Text>
+            <div className={styles.secondary}>{record.code}</div>
+            <div className={styles.secondary}>{record.updatedAt}</div>
+          </div>
+        </div>
       ),
     },
     {
       title: '支持类型',
       dataIndex: 'supportedTypes',
       search: false,
-      width: 180,
+      width: 145,
       render: (_, record) =>
         splitSupportedTypes(record.supportedTypes).map((item) => (
           <Tag key={item}>{displayServiceTypeText(item)}</Tag>
         )),
     },
     {
-      title: '接口地址',
+      title: '接口连接 / 访问密钥',
       dataIndex: 'baseUrl',
       search: false,
-      ellipsis: true,
       width: 260,
+      render: (_, record) => (
+        <div className={styles.summary}>
+          <Typography.Text ellipsis={{ tooltip: record.baseUrl }}>
+            {record.baseUrl || '-'}
+          </Typography.Text>
+          <small>密钥：{record.apiKey || '未配置'}</small>
+        </div>
+      ),
     },
     {
-      title: '访问密钥',
-      dataIndex: 'apiKey',
-      search: false,
-      width: 180,
-      renderText: (value) => value || '未配置',
-    },
-    {
-      title: '状态',
+      title: '状态 / 测试',
       dataIndex: 'status',
-      width: 110,
+      width: 115,
       render: (_, record) => (
-        <Switch
-          checked={record.status === 'ENABLED'}
-          checkedChildren="启用"
-          unCheckedChildren="停用"
-          disabled={!access.canEnablePlatformAiProviders}
-          onChange={async (checked) => {
-            await updatePlatformProviderStatus(record.id, checked);
-            message.success(checked ? '模型服务商已启用' : '模型服务商已停用');
-            reload();
-          }}
-        />
+        <Space orientation="vertical" size={8}>
+          <Switch
+            size="small"
+            checked={record.status === 'ENABLED'}
+            checkedChildren="启用"
+            unCheckedChildren="停用"
+            disabled={!access.canEnablePlatformAiProviders}
+            onChange={async (checked) => {
+              await updatePlatformProviderStatus(record.id, checked);
+              message.success(
+                checked ? '模型服务商已启用' : '模型服务商已停用',
+              );
+              reload();
+            }}
+          />
+          <Tag color={testStatusColor[record.lastTestStatus || 'UNTESTED']}>
+            {record.lastTestStatus === 'SUCCESS'
+              ? '测试成功'
+              : record.lastTestStatus === 'FAILED'
+                ? '测试失败'
+                : '未测试'}
+          </Tag>
+        </Space>
       ),
-    },
-    {
-      title: '测试',
-      dataIndex: 'lastTestStatus',
-      search: false,
-      width: 130,
-      render: (_, record) => (
-        <Tag color={testStatusColor[record.lastTestStatus || 'UNTESTED']}>
-          {record.lastTestStatus === 'SUCCESS'
-            ? '成功'
-            : record.lastTestStatus === 'FAILED'
-              ? '失败'
-              : '未测试'}
-        </Tag>
-      ),
-    },
-    {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      valueType: 'dateTime',
-      search: false,
-      width: 180,
     },
     {
       title: '操作',
       valueType: 'option',
-      width: 180,
+      width: 160,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
+        <Space size={0}>
           {access.canEditPlatformAiProviders && (
             <ProviderEditor
               record={record}
@@ -279,21 +289,59 @@ const PlatformProvidersPage = () => {
   ];
 
   return (
-    <ProTable<PlatformProvider>
+    <div className={styles.page}>
+      <AdminHeading
+        title="模型服务商"
+        description="管理服务商连接、模型能力与访问状态。"
+      />
+      <ProTable<PlatformProvider>
+        className={styles.compactTable}
+        params={{ search, status }}
+        toolbar={{
+          filter: (
+            <Space wrap>
+              <Input.Search
+                allowClear
+                placeholder="搜索服务商名称或编码"
+                onSearch={setSearch}
+                style={{ width: 260 }}
+              />
+              <Select
+                allowClear
+                placeholder="全部状态"
+                aria-label="服务商状态"
+                value={status}
+                onChange={setStatus}
+                style={{ width: 120 }}
+                options={[
+                  { label: '启用', value: 'ENABLED' },
+                  { label: '停用', value: 'DISABLED' },
+                ]}
+              />
+            </Space>
+          ),
+        }}
         actionRef={actionRef}
         rowKey="id"
-        headerTitle="模型服务商"
+        headerTitle={false}
         columns={columns}
         search={false}
         tableLayout="fixed"
-        scroll={{ x: 1300 }}
+        scroll={{ x: 890 }}
         request={async () => {
           if (!access.canViewPlatformAiProviders) {
             return { data: [], success: true };
           }
           const response = await queryPlatformProviders();
           return {
-            data: response.data,
+            data: (response.data ?? []).filter(
+              (provider) =>
+                (!search ||
+                  `${provider.name} ${provider.code}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase())) &&
+                (!status || provider.status === status),
+            ),
             success: response.success,
           };
         }}
@@ -312,9 +360,15 @@ const PlatformProvidersPage = () => {
               ]
             : []
         }
-        options={{ density: true, fullScreen: true, reload: true }}
+        options={{
+          density: false,
+          fullScreen: false,
+          reload: true,
+          setting: false,
+        }}
         pagination={{ pageSize: 10 }}
-    />
+      />
+    </div>
   );
 };
 

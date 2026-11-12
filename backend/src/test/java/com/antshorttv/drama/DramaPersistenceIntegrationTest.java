@@ -45,7 +45,7 @@ class DramaPersistenceIntegrationTest {
         environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("drama-test-ownership",
             java.util.Map.of("miniapp.apps.wx1234567890abcdef.tenant-id", tenant.toString(),
                 "miniapp.apps.wxfedcba0987654321.tenant-id", tenant.toString())));
-        Drama drama = library.create(tenant, new DramaRequest("原始剧名", "介绍"));
+        Drama drama = library.create(tenant, new DramaRequest("原始剧名", "介绍", "https://cdn.example.com/cover.jpg", "都市", "ONGOING", 5));
         Miniapp app = library.bind(tenant, new BindingRequest("wx1234567890abcdef", "应用一"));
         Miniapp other = library.bind(tenant, new BindingRequest("wxfedcba0987654321", "应用二"));
         assertEquals("MANUAL", app.bindingType);
@@ -54,6 +54,7 @@ class DramaPersistenceIntegrationTest {
         episode.episodeNo = 1; episode.title = "第一集"; episode.sourceType = "LOCAL_UPLOAD";
         episode.storagePath = "materials/" + tenant + "/drama/202610/1/v1/original.mp4";
         episode.fileSize = 100L; episode.createdAt = LocalDateTime.now(); episodes.insert(episode);
+        episode.durationSeconds = 20.0; episode.width = 720; episode.height = 1280; episodes.updateById(episode);
         when(storage.metadata(episode.storagePath)).thenReturn(new com.antshorttv.storage.StoredObject(
             episode.storagePath, 100, "video/mp4", "etag", "INTELLIGENT_TIERING"));
         library.publish(tenant, app.id, drama.id, new PublishRequest(List.of(episode.id)));
@@ -89,11 +90,17 @@ class DramaPersistenceIntegrationTest {
             () -> protection.beforeVersionDelete(1L, 2L, 3L));
         assertThrows(com.antshorttv.common.BusinessException.class,
             () -> protection.beforeObjectDelete(episode.storagePath));
-        assertEquals(4, jdbc.queryForObject("select count(*) from permission where code in ('DRAMA:VIEW','DRAMA:MANAGE','DRAMA:PUBLISH','MINIAPP:MANAGE')", Integer.class));
+        assertEquals(1, jdbc.queryForObject("select count(*) from permission where code='MENU:DRAMA_LIBRARY'", Integer.class));
+        for (String operation : List.of("DRAMA:VIEW", "DRAMA:MANAGE", "DRAMA:PUBLISH", "MINIAPP:MANAGE")) {
+            assertTrue(com.antshorttv.rbac.MenuAuthorization.allows(java.util.Set.of("MENU:DRAMA_LIBRARY"), operation));
+        }
     }
 
     @Test void playbackRequiresIndependentCredentialsAndAdminRequiresLogin() throws Exception {
         mvc.perform(get("/api/miniapp/dramas")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/miniapp/catalog")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/miniapp/history")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/miniapp/dramas/1")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/miniapp/dramas").header("Authorization", "Bearer wx1234567890abcdef"))
             .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/drama-library").header("X-Tenant-Id", "1")).andExpect(status().isUnauthorized());

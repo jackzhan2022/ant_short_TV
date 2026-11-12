@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AiCallLogsPage from './index';
 
@@ -7,128 +13,110 @@ const mocks = vi.hoisted(() => ({
   lastProTableProps: undefined as any,
   queryAiCallLogs: vi.fn(),
 }));
-
-vi.mock('antd', () => ({
-  Empty: ({ description }: any) => <div>{description}</div>,
-  Tag: ({ children }: any) => <span>{children}</span>,
-}));
-
 vi.mock('@ant-design/pro-components', () => ({
-  PageContainer: ({ children }: any) => <main>{children}</main>,
-  ProTable: ({ columns, headerTitle, request, scroll }: any) => {
+  ProTable: ({ columns, request, scroll }: any) => {
     mocks.lastProTableProps = { columns, scroll };
-    request?.(
-      {
-        current: 1,
-        pageSize: 20,
-        serviceType: 'TEXT',
-        status: 'SUCCESS',
-        businessScene: 'chatbot',
-      },
-      {},
-      {},
-    );
+    void request({
+      current: 1,
+      pageSize: 20,
+      serviceType: 'TEXT',
+      status: 'SUCCESS',
+      businessScene: 'chatbot',
+    });
+    const action = columns.find((column: any) => column.title === '操作');
     return (
       <section>
-        <h1>{headerTitle}</h1>
-        <div>
-          {columns.map((column: any) => (
-            <span key={column.dataIndex || column.title}>{column.title}</span>
-          ))}
-        </div>
+        {columns.map((column: any) => (
+          <span key={column.title}>{column.title}</span>
+        ))}
+        {action.render(undefined, {
+          id: 42,
+          tenantId: 10,
+          userId: 3,
+          businessScene: 'chatbot',
+          serviceType: 'TEXT',
+          status: 'SUCCESS',
+          model: '真实模型',
+          provider: '真实服务商',
+          requestSummary: '完整请求摘要',
+          responseSummary: '完整响应摘要',
+          errorMessage: '完整错误信息',
+          promptTokens: 9631,
+          cachedInputTokens: 8960,
+          cacheWriteTokens: 512,
+          completionTokens: 100,
+          totalTokens: 9731,
+          promptCacheKey: 'cache-key-42',
+          durationMs: 120,
+          createdAt: '2026-11-11 12:00:00',
+        })}
       </section>
     );
   },
 }));
-
 vi.mock('@/services/account-team/auth', () => ({
   getCurrentTenantId: mocks.getCurrentTenantId,
 }));
-
-vi.mock('./service', () => ({
-  queryAiCallLogs: mocks.queryAiCallLogs,
-}));
+vi.mock('./service', () => ({ queryAiCallLogs: mocks.queryAiCallLogs }));
 
 describe('AiCallLogsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.lastProTableProps = undefined;
     mocks.getCurrentTenantId.mockReturnValue(10);
     mocks.queryAiCallLogs.mockResolvedValue({
       success: true,
-      data: {
-        records: [],
-        total: 0,
-        current: 1,
-        pageSize: 20,
-      },
+      data: { records: [], total: 0, current: 1, pageSize: 20 },
     });
   });
 
-  it('renders AI call log table and requests tenant logs', async () => {
+  it('keeps tenant filters and opens complete log and cache details from the compact table', async () => {
     render(<AiCallLogsPage />);
-
-    expect(screen.getByText('AI调用日志')).toBeInTheDocument();
-    expect(screen.getByText('业务场景')).toBeInTheDocument();
-    expect(screen.getByText('服务类型')).toBeInTheDocument();
-    expect(screen.getByText('调用状态')).toBeInTheDocument();
-    expect(screen.getByText('输入 Token')).toBeInTheDocument();
-    expect(screen.getByText('缓存 Token')).toBeInTheDocument();
-    expect(screen.getByText('缓存写入')).toBeInTheDocument();
-    expect(screen.getByText('输出 Token')).toBeInTheDocument();
-    expect(screen.getByText('缓存命中率')).toBeInTheDocument();
-    expect(screen.getByText('耗时')).toBeInTheDocument();
-
-    await waitFor(() => {
+    expect(
+      screen.getByRole('heading', { name: '调用日志' }),
+    ).toBeInTheDocument();
+    expect(mocks.lastProTableProps.columns).toHaveLength(8);
+    await waitFor(() =>
       expect(mocks.queryAiCallLogs).toHaveBeenCalledWith(10, {
         current: 1,
         pageSize: 20,
         serviceType: 'TEXT',
         status: 'SUCCESS',
         businessScene: 'chatbot',
-      });
-    });
-    expect(mocks.lastProTableProps.scroll).toEqual({ x: 2050 });
-
-    const cacheRateColumn = mocks.lastProTableProps.columns.find(
-      (column: any) => column.title === '缓存命中率',
-    );
-    expect(
-      cacheRateColumn.renderText(undefined, {
-        promptTokens: 9631,
-        cachedInputTokens: 8960,
       }),
-    ).toBe('93.0%');
-    expect(cacheRateColumn.renderText(undefined, { promptTokens: 9631 })).toBe(
-      '-',
     );
-
-    const ordinaryInputColumn = mocks.lastProTableProps.columns.find(
-      (column: any) => column.title === '输入 Token',
-    );
-    expect(
-      ordinaryInputColumn.renderText(undefined, {
-        promptTokens: 9631,
-        cachedInputTokens: 8960,
-        cacheWriteTokens: 512,
-      }),
-    ).toBe('159');
-
-    for (const title of ['缓存 Token', '缓存写入', '输出 Token']) {
-      const column = mocks.lastProTableProps.columns.find(
-        (candidate: any) => candidate.title === title,
-      );
-      expect(column.renderText(undefined)).toBe('-');
-    }
+    fireEvent.click(screen.getByRole('button', { name: '详情' }));
+    const detail = within(await screen.findByRole('dialog'));
+    for (const value of [
+      '完整请求摘要',
+      '完整响应摘要',
+      '完整错误信息',
+      '159',
+      '8,960',
+      '512',
+      '100',
+      '9,731',
+      '93.0%',
+      'cache-key-42',
+      '真实模型',
+      '真实服务商',
+    ])
+      expect(detail.getByText(value)).toBeInTheDocument();
+    for (const label of [
+      '输入 Token',
+      '缓存 Token',
+      '缓存写入',
+      '输出 Token',
+      '缓存命中率',
+    ])
+      expect(detail.getByText(label)).toBeInTheDocument();
   });
 
   it('prompts users to select a team when there is no current tenant', () => {
     mocks.getCurrentTenantId.mockReturnValue(undefined);
-
     render(<AiCallLogsPage />);
-
     expect(
       screen.getByText('请先在我的团队中选择当前创作团队'),
     ).toBeInTheDocument();
+    expect(mocks.queryAiCallLogs).not.toHaveBeenCalled();
   });
 });

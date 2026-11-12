@@ -22,6 +22,7 @@ import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
 import { useEffect, useMemo, useState } from 'react';
 import { ExecutionTimelineDetails } from './ExecutionTimelineDetails';
+import { useStyles } from './index.style';
 import { AlertActionDialog, RuleEditor, SettingsPanel } from './Management';
 import {
   columns,
@@ -110,6 +111,7 @@ const redisLabels: Record<Resource['redisStatus'], string> = {
 };
 
 function OperationsWorkspace() {
+  const { styles } = useStyles();
   const access = useAccess();
   const [tab, setTab] = useState<Tab>('overview');
   const [form] = Form.useForm<Filters>();
@@ -803,9 +805,9 @@ function OperationsWorkspace() {
     ),
   };
   return (
-    <div className="p-4">
+    <div className={styles.page}>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className={styles.heading}>
           <Typography.Title level={3} style={{ margin: 0 }}>
             平台运维中心
           </Typography.Title>
@@ -822,7 +824,7 @@ function OperationsWorkspace() {
             </Button>
           </Space>
         </div>
-        <Card size="small">
+        <Card size="small" className={styles.filters}>
           <Form
             form={form}
             layout="inline"
@@ -888,7 +890,7 @@ function OperationsWorkspace() {
         </Card>
         {snapshot && (
           <>
-            <Space wrap>
+            <Space wrap className={styles.freshness}>
               <Tag
                 color={
                   snapshot.health.status === 'NORMAL'
@@ -953,6 +955,7 @@ function OperationsWorkspace() {
           />
         ))}
         <Tabs
+          className={styles.tabs}
           activeKey={tab}
           destroyOnHidden
           onChange={(key) => {

@@ -43,13 +43,17 @@ public class MiniappSessionService {
     }
 
     public Miniapp authenticate(String authorization) {
+        return viewer(authorization).app();
+    }
+
+    public Viewer viewer(String authorization) {
         String token = token(authorization);
         ViewerSession session = sessions.selectOne(new QueryWrapper<ViewerSession>().eq("token_hash", hash(token))
             .gt("expires_at", LocalDateTime.now()));
         if (session == null) throw WechatMiniappIdentity.unauthorized();
         Miniapp app = apps.selectOne(new QueryWrapper<Miniapp>().eq("id", session.miniappId).eq("enabled", true));
         requireActiveTeam(app);
-        return app;
+        return new Viewer(app, session.openid);
     }
 
     public void logout(String authorization) {

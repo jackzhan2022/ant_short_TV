@@ -162,6 +162,39 @@ class CommercialSubscriptionLifecycleTest {
     }
 
     @Test
+    void missingPeriodicEntitlementClearsLegacyDueDateWithoutBlockingOtherSubscriptions() {
+        CommercialPackageVersionResponse draft = packageService.createDraft(new CommercialPackageDraftCommand(
+            "DISCOUNT_ONLY_LEGACY", "SUBSCRIPTION", "Discount only", null, "MONTH", 12,
+            new BigDecimal("30.00"), null, "CNY", LocalDateTime.of(2026, 1, 1, 0, 0), null,
+            List.of(new CommercialEntitlementInput("GLOBAL_DISCOUNT", new BigDecimal("0.90"))), 1L));
+        CommercialPackageVersionResponse discountOnly = packageService.publish(draft.packageId(), draft.versionId(), 1L);
+        LocalDateTime paidAt = LocalDateTime.of(2026, 8, 27, 23, 42, 17);
+        pay(115L, 215L, discountOnly, paidAt);
+        jdbc.update("update team_subscription set next_grant_at=? where tenant_id=115", paidAt.plusMonths(1));
+        CommercialPackageVersionResponse healthy = publishedSubscription("AFTER_LEGACY_DUE_DATE", 12, "100");
+        pay(116L, 216L, healthy, paidAt.plusHours(1));
+
+        LocalDateTime now = paidAt.plusMonths(1).plusHours(1);
+        processDue(now);
+        processDue(now);
+
+        assertThat(jdbc.queryForObject("select next_grant_at from team_subscription where tenant_id=115", LocalDateTime.class))
+            .isNull();
+        assertThat(jdbc.queryForObject("select status from team_subscription where tenant_id=115", String.class))
+            .isEqualTo("ACTIVE");
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=115", Integer.class))
+            .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from point_ledger where tenant_id=115", Integer.class))
+            .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from commercial_entitlement_grant where tenant_id=116", Integer.class))
+            .isEqualTo(2);
+        assertThat(jdbc.queryForObject("select balance from team_point_account where tenant_id=116", BigDecimal.class))
+            .isEqualByComparingTo("200");
+        assertThat(jdbc.queryForObject("select next_grant_at from team_subscription where tenant_id=116", LocalDateTime.class))
+            .isEqualTo(paidAt.plusMonths(2).plusHours(1));
+    }
+
+    @Test
     void differentPackagesSwitchImmediatelyAndPreservePurchasedPeriodicPoints() {
         var active = publishedSubscription("SWITCH_ACTIVE", 3, "100");
         var next = publishedSubscription("SWITCH_NEXT", 1, "300");

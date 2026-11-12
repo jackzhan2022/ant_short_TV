@@ -1,3 +1,8 @@
+import {
+  ApartmentOutlined,
+  SafetyOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import { useAccess } from '@umijs/max';
 import { Alert, App, Button, Card, Form, InputNumber, Spin } from 'antd';
 import { useEffect, useRef, useState } from 'react';
@@ -11,11 +16,13 @@ import {
 
 const groups: Array<{
   title: string;
+  icon: typeof TeamOutlined;
   description: string;
   fields: Array<{ name: keyof ConcurrencySettings; label: string }>;
 }> = [
   {
     title: '团队分类上限',
+    icon: TeamOutlined,
     description:
       '以下上限对每个团队分别生效，所有团队使用相同的上限。视频在途数包含已提交、等待生成结果的任务，不等于本机正在提交或查询的并行数。',
     fields: [
@@ -26,6 +33,7 @@ const groups: Array<{
   },
   {
     title: '本机资源池',
+    icon: ApartmentOutlined,
     description:
       '控制当前服务器同时处理的任务数。视频提交与结果查询分别分配处理能力，等待生成结果的视频不持续占用提交资源。',
     fields: [
@@ -37,6 +45,7 @@ const groups: Array<{
   },
   {
     title: '共享保护',
+    icon: SafetyOutlined,
     description:
       '当前服务器上，同一服务商的各类请求共享服务商总并发上限；同一模型的执行任务共享模型配额。',
     fields: [
@@ -101,55 +110,69 @@ const ConfigForm = ({
         setSaveError(undefined);
       }}
     >
-      {groups.map((group) => (
-        <Card key={group.title} title={group.title}>
-          <p className={styles.description}>{group.description}</p>
-          <div className={styles.fields}>
-            {group.fields.map(({ name, label }) => (
-              <Form.Item
-                key={name}
-                name={name}
-                label={label}
-                extra={`1–${settingMaximums[name]}`}
-                rules={[
-                  {
-                    type: 'integer',
-                    required: true,
-                    min: 1,
-                    max: settingMaximums[name],
-                    message: `请输入 1–${settingMaximums[name]} 的正整数`,
-                  },
-                ]}
-              >
-                <InputNumber
-                  changeOnBlur={false}
-                  onInput={(text) => {
-                    // InputNumber does not emit onChange for unparseable input.
-                    // Clear the stored value so a save cannot submit the old one.
-                    if (text.trim() && !Number.isFinite(Number(text))) {
-                      form.setFieldValue(name, null);
-                      setSaved(false);
-                      setSaveError(undefined);
-                    }
-                  }}
-                />
-              </Form.Item>
-            ))}
-          </div>
-          {group.title === '本机资源池' && (
-            <p className={styles.database}>
-              数据库连接池最大连接数（只读）
-              <output aria-label="数据库连接池最大连接数">
-                {databaseMaxConnections}
-              </output>
-            </p>
-          )}
-        </Card>
-      ))}
+      <div className={styles.groups}>
+        {groups.map((group) => (
+          <Card
+            key={group.title}
+            className={styles.group}
+            title={
+              <span className={styles.groupTitle}>
+                <group.icon />
+                {group.title}
+              </span>
+            }
+          >
+            <p className={styles.description}>{group.description}</p>
+            <div className={styles.fields}>
+              {group.fields.map(({ name, label }) => (
+                <Form.Item
+                  key={name}
+                  name={name}
+                  label={label}
+                  extra={`1–${settingMaximums[name]}`}
+                  rules={[
+                    {
+                      type: 'integer',
+                      required: true,
+                      min: 1,
+                      max: settingMaximums[name],
+                      message: `请输入 1–${settingMaximums[name]} 的正整数`,
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    changeOnBlur={false}
+                    onInput={(text) => {
+                      // InputNumber does not emit onChange for unparseable input.
+                      // Clear the stored value so a save cannot submit the old one.
+                      if (text.trim() && !Number.isFinite(Number(text))) {
+                        form.setFieldValue(name, null);
+                        setSaved(false);
+                        setSaveError(undefined);
+                      }
+                    }}
+                  />
+                </Form.Item>
+              ))}
+            </div>
+            {group.title === '本机资源池' && (
+              <p className={styles.database}>
+                数据库连接池最大连接数（只读）
+                <output aria-label="数据库连接池最大连接数">
+                  {databaseMaxConnections}
+                </output>
+              </p>
+            )}
+          </Card>
+        ))}
+      </div>
       {saveError && (
         <Alert type="error" showIcon title="保存失败" description={saveError} />
       )}
       <div className={styles.actions}>
+        <p>
+          保存后对新任务生效；降低上限不会取消正在运行的任务。未保存时继续使用现有配置。
+        </p>
         {canEdit && (
           <Button
             type="primary"
@@ -165,9 +188,6 @@ const ConfigForm = ({
             配置已保存
           </span>
         )}
-        <p>
-          保存后对新任务生效；降低上限不会取消正在运行的任务。未保存时继续使用现有配置。
-        </p>
       </div>
     </Form>
   );
@@ -209,6 +229,10 @@ const ConcurrencyConfigPage = () => {
   if (!canView) return null;
   return (
     <div className={styles.page}>
+      <div className={styles.heading}>
+        <h2>并行配置</h2>
+        <p>统一配置团队任务额度、本机处理能力与服务商共享保护。</p>
+      </div>
       {loading ? (
         <div role="status">
           <Spin /> 正在读取配置

@@ -1,0 +1,18 @@
+{
+	"pages": [
+		"pages/home/index",
+		"pages/search/index",
+		"pages/detail/index",
+		"pages/player/index",
+		"pages/history/index"
+	],
+	"window": {
+		"navigationBarTitleText": "短剧",
+		"navigationBarTextStyle": "black",
+		"navigationBarBackgroundColor": "#f7f8fa",
+		"backgroundColor": "#f7f8fa"
+	},
+	"style": "v2",
+	"lazyCodeLoading": "requiredComponents",
+	"sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,11 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">正在加载…</view><view wx:elif="{{error}}" class="state">{{error}}<button class="ghost" bindtap="load">重试</button></view>
+  <block wx:elif="{{drama}}">
+    <view class="intro"><image class="detail-poster" src="{{drama.coverUrl}}" mode="aspectFill"/><view class="intro-info"><view class="heading">{{drama.title}}</view><view class="muted">{{drama.category}} · {{drama.completionStatus === 'COMPLETED' ? '已完结' : '连载中'}}</view><view class="muted">已上架 {{episodes.length}} / {{drama.totalEpisodes}} 集</view><view wx:if="{{drama.recommended}}" class="badge">精选短剧</view></view></view>
+    <view class="section-title">剧情简介</view><view class="synopsis {{expanded ? '' : 'collapsed'}}">{{drama.description || '暂无简介'}}</view><view class="expand" bindtap="expand">{{expanded ? '收起' : '展开简介'}}</view>
+    <button class="primary" bindtap="start">{{resume ? '继续观看 · 第 ' + resume.episodeNo + ' 集' : '开始观看'}}</button>
+    <view class="section-title">选集 <text class="muted">共 {{episodes.length}} 集 · 按上架顺序播放</text></view>
+    <scroll-view scroll-x class="chips"><view wx:for="{{groups}}" wx:key="start" class="chip {{group === index ? 'active' : ''}}" data-index="{{index}}" bindtap="chooseGroup">{{item.label}}</view></scroll-view>
+    <view class="episode-grid"><view wx:for="{{visibleEpisodes}}" wx:key="episodeId" class="episode {{item.current ? 'current' : ''}} {{item.watched ? 'watched' : ''}}" data-id="{{item.episodeId}}" bindtap="choose">{{item.episodeNo}}<text wx:if="{{item.watched}}"> ✓</text></view></view>
+  </block>
+</view>

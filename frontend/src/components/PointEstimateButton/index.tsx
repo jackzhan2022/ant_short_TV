@@ -12,6 +12,7 @@ export type PointEstimateButtonProps = ButtonProps & {
   estimateEnabled?: boolean;
   showEstimate?: boolean;
   compact?: boolean;
+  displayMode?: 'label' | 'points';
 };
 
 export default function PointEstimateButton({
@@ -20,6 +21,7 @@ export default function PointEstimateButton({
   estimateEnabled = true,
   showEstimate = true,
   compact = false,
+  displayMode = 'label',
   children,
   disabled,
   loading,
@@ -39,6 +41,8 @@ export default function PointEstimateButton({
       quote={quote}
       showEstimate={showEstimate}
       compact={compact}
+      displayMode={displayMode}
+      free={operations?.length === 0}
     >
       {children}
     </PointEstimateButtonView>
@@ -52,23 +56,42 @@ export function PointEstimateButtonView({
   loading,
   showEstimate = true,
   compact = false,
+  displayMode = 'label',
+  free = false,
   onClick,
   ...props
 }: ButtonProps & {
   quote: ReturnType<typeof usePointEstimate>;
   showEstimate?: boolean;
   compact?: boolean;
+  displayMode?: 'label' | 'points';
+  free?: boolean;
 }) {
   const descriptionId = useId();
+  const pointsOnly = displayMode === 'points';
+  const amount = quote.estimate
+    ? formatPoints(Math.ceil(quote.estimate.estimatedPoints))
+    : free
+      ? '0'
+      : '—';
   const suffix = quote.loading
     ? '预估中'
     : quote.error
       ? '预估失败'
       : quote.estimate
-        ? `预计 ${formatPoints(quote.estimate.estimatedPoints)} 积分${quote.estimate.sufficient ? '' : ' · 积分不足'}`
+        ? `${pointsOnly ? amount : `预计 ${formatPoints(quote.estimate.estimatedPoints)}`} 积分${quote.estimate.sufficient ? '' : ' · 积分不足'}`
         : undefined;
   return (
-    <Tooltip title={quote.reason || (!showEstimate ? suffix : undefined)}>
+    <Tooltip
+      title={
+        quote.reason ||
+        (pointsOnly
+          ? `${typeof children === 'string' ? children : '开始创作'} · ${quote.loading ? '积分计算中' : quote.error ? '积分获取失败' : `${amount} 积分`}`
+          : !showEstimate
+            ? suffix
+            : undefined)
+      }
+    >
       <span
         style={{
           display: props.block ? 'block' : 'inline-flex',
@@ -79,9 +102,9 @@ export function PointEstimateButtonView({
           {...props}
           style={{
             ...props.style,
-            flexWrap: compact ? 'nowrap' : 'wrap',
-            whiteSpace: compact ? 'nowrap' : 'normal',
-            height: compact ? undefined : 'auto',
+            flexWrap: compact || pointsOnly ? 'nowrap' : 'wrap',
+            whiteSpace: compact || pointsOnly ? 'nowrap' : 'normal',
+            height: compact || pointsOnly ? props.style?.height : 'auto',
           }}
           disabled={disabled || quote.disabled || Boolean(loading)}
           loading={loading || quote.loading}
@@ -98,8 +121,8 @@ export function PointEstimateButtonView({
             if (!quote.disabled && !disabled && !loading) onClick?.(event);
           }}
         >
-          {children}
-          {suffix && !compact ? (
+          {pointsOnly ? amount : children}
+          {suffix && !compact && !pointsOnly ? (
             <span
               id={descriptionId}
               aria-live="polite"
@@ -111,6 +134,7 @@ export function PointEstimateButtonView({
             </span>
           ) : null}
           {compact &&
+          !pointsOnly &&
           showEstimate &&
           quote.estimate &&
           !quote.loading &&
@@ -123,7 +147,7 @@ export function PointEstimateButtonView({
             </span>
           ) : null}
         </Button>
-        {compact && suffix ? (
+        {(compact || pointsOnly) && suffix ? (
           <span id={descriptionId} hidden>
             {suffix}
           </span>

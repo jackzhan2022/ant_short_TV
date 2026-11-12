@@ -30,6 +30,8 @@ class DramaLibraryServiceTest {
         service = new DramaLibraryService(dramas, episodes, apps, releases, items, sources, uploads,
             storage, new ObjectStorageKeyFactory(), projects, new MiniappOwnership(environment));
         Drama drama = new Drama(); drama.id = 10L; drama.tenantId = 1L; drama.title = "剧集";
+        drama.coverUrl = "https://cdn.example.com/cover.jpg"; drama.category = "都市";
+        drama.completionStatus = "ONGOING"; drama.totalEpisodes = 5;
         when(dramas.lock(1L, 10L)).thenReturn(drama);
         when(episodes.selectCount(any())).thenReturn(0L);
     }
@@ -111,6 +113,7 @@ class DramaLibraryServiceTest {
         when(apps.lock(1L, 40L)).thenReturn(app);
         Episode episode = new Episode(); episode.id = 50L; episode.episodeNo = 1; episode.title = "固定标题";
         episode.storagePath = "materials/1/video/original.mp4"; episode.sourceVersionId = 60L;
+        episode.durationSeconds = 12.5; episode.width = 720; episode.height = 1280;
         when(episodes.selectList(any())).thenReturn(List.of(episode));
         when(storage.metadata(episode.storagePath)).thenReturn(new StoredObject(episode.storagePath, 50, "video/mp4", "etag", "INTELLIGENT_TIERING"));
         doAnswer(call -> { ((Release)call.getArgument(0)).id = 70L; return 1; }).when(releases).insert(any(Release.class));

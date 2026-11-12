@@ -18,10 +18,12 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AdminEmpty, AdminHeading, useAdminStyles } from '../admin-ui';
 import type { WorkflowSkill } from '../workflow-service';
 import {
   copyWorkflowSkill,
@@ -73,6 +75,7 @@ const errorMessage = (error: unknown, fallback: string) => {
 };
 
 const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
+  const { styles } = useAdminStyles();
   const access = useAccess();
   const tenantMode = tenantId !== undefined;
   const editable = Boolean(
@@ -321,17 +324,27 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       {
         title: 'Skill',
         dataIndex: 'name',
+        width: 190,
         render: (_, record) => (
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.name}</Typography.Text>
-            <Typography.Text type="secondary">{record.code}</Typography.Text>
+            <Typography.Text
+              type="secondary"
+              style={{ maxWidth: 165 }}
+              ellipsis={{
+                tooltip: `${record.code} · 内容 revision：${record.revision}`,
+              }}
+            >
+              {record.code}
+            </Typography.Text>
           </Space>
         ),
       },
-      { title: '描述', dataIndex: 'description' },
+      { title: '描述', dataIndex: 'description', ellipsis: true, width: 175 },
       {
         title: '系统内置',
         dataIndex: 'scope',
+        width: 90,
         render: (scope) => (
           <Tag color={scope === 'TENANT' ? 'blue' : 'default'}>
             {scope === 'TENANT' ? '租户级' : '系统内置'}
@@ -341,6 +354,8 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       {
         title: '所属租户',
         dataIndex: 'tenantName',
+        width: 110,
+        ellipsis: true,
         render: (_, record) =>
           record.scope === 'TENANT'
             ? `${record.tenantName || record.tenantId}（${record.tenantId}）`
@@ -348,28 +363,33 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
       },
       {
         title: '优先级',
+        width: 65,
         render: (_, record) =>
           record.priority ?? (record.scope === 'TENANT' ? 200 : 100),
       },
       {
         title: '引用 Agent',
         dataIndex: 'referencingAgentCodes',
+        width: 140,
         render: (codes: string[]) => (
-          <Space wrap>
-            {codes.map((code) => (
-              <Tag key={code} title={code}>
-                {agentNames.get(code) || code}
-              </Tag>
-            ))}
-          </Space>
+          <Tooltip title={codes.map(referenceLabel).join('、')}>
+            <div className={styles.tagGroup}>
+              {codes.slice(0, 2).map((code) => (
+                <Tag key={code} title={code}>
+                  {agentNames.get(code) || code}
+                </Tag>
+              ))}
+              {codes.length > 2 && <small>另 {codes.length - 2} 项</small>}
+            </div>
+          </Tooltip>
         ),
       },
-      { title: '内容 revision', dataIndex: 'revision', ellipsis: true },
       {
         title: '操作',
-        width: 240,
+        width: 190,
+        fixed: 'right',
         render: (_, record) => (
-          <Space>
+          <Space size={0} wrap>
             {!canEditRow(record) && (
               <Button type="link" onClick={() => openEditor('view', record)}>
                 查看
@@ -452,105 +472,123 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
 
   return (
     <>
-      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-        <Alert
-          type="info"
-          showIcon
-          title={
+      <div className={styles.page}>
+        <AdminHeading
+          title={tenantMode ? '团队 Skill' : 'Skill 管理'}
+          description={
             tenantMode
-              ? '仅展示本团队 Skill。生成时系统规则与团队规则并存，团队优先级 200，高于系统优先级 100；未冲突的系统规则继续生效，现有素材标签及占位方式继续保留。'
-              : 'Skill 以完整 SKILL.md 文件保存；修改成功后无需发布或重启，后续 Agent 运行立即读取新内容。租户级版本仅由所属团队所有者或管理员维护。'
+              ? '团队规则优先级 200，系统规则优先级 100；未冲突的系统规则、素材标签与占位方式继续生效。'
+              : '管理完整 SKILL.md 创作规则，保存后由引用的 Agent 立即读取；团队版本由所属团队所有者或管理员维护。'
           }
         />
-        <Space wrap>
-          <Input.Search
-            allowClear
-            placeholder="搜索 Skill 名称或 code"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onSearch={setSearch}
-            style={{ width: 320 }}
+        <div className={styles.surface}>
+          <div className={styles.filters}>
+            <Space wrap>
+              <Input.Search
+                allowClear
+                placeholder="搜索 Skill 名称或 code"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onSearch={setSearch}
+                style={{ width: 320 }}
+              />
+              <Select
+                aria-label="按 Agent 筛选"
+                placeholder="全部 Agent"
+                allowClear
+                showSearch={{ optionFilterProp: 'label' }}
+                value={agentFilter}
+                onChange={setAgentFilter}
+                style={{ width: 240 }}
+                options={[...agentNames]
+                  .filter(
+                    ([code]) =>
+                      !tenantMode || code === 'short-drama-storyboard',
+                  )
+                  .map(([value, name]) => ({
+                    value,
+                    label: `${name}（${value}）`,
+                  }))}
+              />
+              {!tenantMode && (
+                <Select
+                  aria-label="按系统内置筛选"
+                  placeholder="全部级别"
+                  allowClear
+                  value={scopeFilter}
+                  onChange={setScopeFilter}
+                  style={{ width: 150 }}
+                  options={[
+                    { value: 'SYSTEM', label: '系统内置' },
+                    { value: 'TENANT', label: '租户级' },
+                  ]}
+                />
+              )}
+              {!tenantMode && (
+                <Select
+                  aria-label="按所属租户筛选"
+                  placeholder="全部租户"
+                  allowClear
+                  showSearch={{ optionFilterProp: 'label' }}
+                  value={tenantFilter}
+                  onChange={setTenantFilter}
+                  style={{ width: 200 }}
+                  options={[...tenantNames].map(([value, name]) => ({
+                    value,
+                    label: `${name}（${value}）`,
+                  }))}
+                />
+              )}
+              {editable && !tenantMode && (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => openEditor('create')}
+                >
+                  新增系统 Skill
+                </Button>
+              )}
+              {editable && tenantMode && (
+                <Button
+                  type="primary"
+                  aria-label="新增团队 Skill"
+                  icon={<PlusOutlined />}
+                  loading={templateLoading}
+                  onClick={createTenantSkill}
+                  disabled={skills.some(
+                    (skill) => skill.code === tenantSkillCode,
+                  )}
+                >
+                  新增团队 Skill
+                </Button>
+              )}
+            </Space>
+          </div>
+          <Table
+            className={styles.compactTable}
+            size="small"
+            scroll={{ x: 960 }}
+            locale={{
+              emptyText: (
+                <AdminEmpty
+                  title="暂无 Skill"
+                  description="可调整筛选条件，或创建新的 Skill 规则。"
+                />
+              ),
+            }}
+            rowKey={(record) =>
+              `${record.scope || 'SYSTEM'}:${record.tenantId || 'system'}:${record.code}`
+            }
+            loading={loading}
+            columns={columns}
+            dataSource={skills}
+            pagination={{ pageSize: 20 }}
           />
-          <Select
-            aria-label="按 Agent 筛选"
-            placeholder="全部 Agent"
-            allowClear
-            showSearch={{ optionFilterProp: 'label' }}
-            value={agentFilter}
-            onChange={setAgentFilter}
-            style={{ width: 240 }}
-            options={[...agentNames]
-              .filter(
-                ([code]) => !tenantMode || code === 'short-drama-storyboard',
-              )
-              .map(([value, name]) => ({
-                value,
-                label: `${name}（${value}）`,
-              }))}
-          />
-          {!tenantMode && (
-            <Select
-              aria-label="按系统内置筛选"
-              placeholder="全部级别"
-              allowClear
-              value={scopeFilter}
-              onChange={setScopeFilter}
-              style={{ width: 150 }}
-              options={[
-                { value: 'SYSTEM', label: '系统内置' },
-                { value: 'TENANT', label: '租户级' },
-              ]}
-            />
-          )}
-          {!tenantMode && (
-            <Select
-              aria-label="按所属租户筛选"
-              placeholder="全部租户"
-              allowClear
-              showSearch={{ optionFilterProp: 'label' }}
-              value={tenantFilter}
-              onChange={setTenantFilter}
-              style={{ width: 200 }}
-              options={[...tenantNames].map(([value, name]) => ({
-                value,
-                label: `${name}（${value}）`,
-              }))}
-            />
-          )}
-          {editable && !tenantMode && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openEditor('create')}
-            >
-              新增系统 Skill
-            </Button>
-          )}
-          {editable && tenantMode && (
-            <Button
-              type="primary"
-              aria-label="新增团队 Skill"
-              icon={<PlusOutlined />}
-              loading={templateLoading}
-              onClick={createTenantSkill}
-              disabled={skills.some((skill) => skill.code === tenantSkillCode)}
-            >
-              新增团队 Skill
-            </Button>
-          )}
-        </Space>
-        <Table
-          rowKey={(record) =>
-            `${record.scope || 'SYSTEM'}:${record.tenantId || 'system'}:${record.code}`
-          }
-          loading={loading}
-          columns={columns}
-          dataSource={skills}
-          pagination={{ pageSize: 20 }}
-        />
-      </Space>
+        </div>
+      </div>
 
       <Drawer
+        rootClassName={styles.overlay}
         title={
           mode === 'create'
             ? tenantMode

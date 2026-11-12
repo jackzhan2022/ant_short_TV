@@ -1,0 +1,23 @@
+<view class="player">
+  <swiper class="viewport" vertical current="{{currentIndex}}" duration="240" bindchange="swipe" bindtouchstart="touchStart" bindtouchend="touchEnd" bindtouchcancel="touchCancel">
+    <swiper-item wx:for="{{episodes}}" wx:key="episodeId">
+      <view class="screen">
+        <video wx:if="{{item.episodeId === current.episodeId && src}}" class="video" id="episode-{{item.episodeId}}" data-id="{{item.episodeId}}" src="{{src}}" poster="{{item.posterUrl || drama.coverUrl}}" initial-time="{{initialTime}}" autoplay="{{false}}" muted="{{muted}}" controls="{{false}}" show-center-play-btn="{{false}}" show-play-btn="{{false}}" enable-progress-gesture="{{false}}" enable-play-gesture="{{false}}" show-fullscreen-btn="{{false}}" object-fit="contain" bindtap="togglePlay" bindloadedmetadata="metadata" bindplay="onPlay" bindpause="onPause" bindtimeupdate="timeUpdate" bindwaiting="waiting" binderror="videoError" bindended="ended" />
+        <image wx:else class="video poster" src="{{item.posterUrl || drama.coverUrl}}" mode="aspectFit"/>
+      </view>
+    </swiper-item>
+  </swiper>
+  <view class="topbar" style="padding-top:{{top + 10}}px"><view class="back" bindtap="back">‹</view><text wx:if="{{!clean && controlsVisible && drama}}" class="top-title">{{drama.title}}</text></view>
+  <view wx:if="{{loading || buffering}}" class="center-status">{{loading ? '正在准备播放…' : '缓冲中…'}}</view>
+  <view wx:if="{{error}}" class="error-card"><view>{{error}}</view><button wx:if="{{!unavailable}}" bindtap="retry">重新播放</button><button wx:else bindtap="library">返回剧库</button></view>
+  <view wx:if="{{paused && !loading && !error && !drawer}}" class="play" bindtap="togglePlay">▷</view>
+  <view wx:if="{{clean}}" class="exit-clean" bindtap="clean">退出清屏</view>
+  <view wx:if="{{!clean && !controlsVisible && current && !error}}" class="quick-select" bindtap="openDrawer">选集 {{currentIndex + 1}}/{{episodes.length}} ›</view>
+  <view wx:if="{{!clean && controlsVisible && current && !error}}" class="bottom-panel">
+    <view class="title">{{drama.title}}<text class="episode-no">第 {{current.episodeNo}} 集</text></view><view class="episode-title">{{current.title}}</view>
+    <view class="tools"><view bindtap="mute">{{muted ? '开启声音' : '静音'}}</view><view bindtap="rate">{{rate}}× 倍速</view><view bindtap="clean">清屏</view><view class="select-button" bindtap="openDrawer">选集 {{currentIndex + 1}}/{{episodes.length}} ›</view></view>
+    <view class="timeline"><text>{{timeLabel}}</text><slider value="{{progress}}" min="0" max="100" step="0.1" activeColor="#fff" backgroundColor="#ffffff50" block-size="12" bindchanging="seekStart" bindchange="seek"/><text>{{durationLabel}}</text></view>
+    <view class="gesture-hint">上下滑动切换本剧单集</view>
+  </view>
+  <view wx:if="{{drawer}}" class="drawer-mask" catchtap="closeDrawer" catchtouchmove="noop"><view class="drawer" catchtap="noop"><view class="drawer-head"><view>选集 <text class="drawer-count">已上架 {{episodes.length}} 集</text></view><view bindtap="closeDrawer">关闭</view></view><view class="auto"><text>自动播放下一集</text><switch checked="{{autoNext}}" color="#7486ff" bindchange="autoNext"/></view><scroll-view scroll-x class="chips"><view wx:for="{{groups}}" wx:key="start" class="chip {{group === index ? 'active' : ''}}" bindtap="chooseGroup" data-index="{{index}}">{{item.label}}</view></scroll-view><scroll-view scroll-y class="episode-scroll" scroll-into-view="{{scrollInto}}"><view class="episode-grid"><view wx:for="{{visibleEpisodes}}" wx:key="episodeId" id="choice-{{item.episodeId}}" class="episode {{item.current ? 'current' : ''}} {{item.watched ? 'watched' : ''}}" data-id="{{item.episodeId}}" bindtap="chooseEpisode">{{item.episodeNo}}<text wx:if="{{item.watched}}"> ✓</text></view></view></scroll-view></view></view>
+</view>

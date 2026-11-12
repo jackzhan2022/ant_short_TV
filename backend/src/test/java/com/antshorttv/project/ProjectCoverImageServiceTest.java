@@ -46,7 +46,7 @@ class ProjectCoverImageServiceTest {
         project.id = 7L;
         project.tenantId = 3L;
         project.coverUrl = "data:image/png;base64," + Base64.getEncoder().encodeToString(png);
-        when(projects.selectById(7L)).thenReturn(project);
+        when(projects.selectIdentityById(7L)).thenReturn(project);
         when(projects.claimCover(any(), anyString(), anyString(), anyBoolean())).thenReturn(1);
         when(access.requireView(3L, 7L)).thenReturn(new ProjectAccessContext(
             new TenantContext(9L, 3L, 1L, "OWNER"), project, ProjectAccessSource.TENANT_WIDE,
@@ -84,6 +84,24 @@ class ProjectCoverImageServiceTest {
         assertThat(request.getValue().userId()).isEqualTo(9L);
         verify(access).requireView(3L, 7L);
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    void missingProjectIsRejectedBeforeAuthorizationAndMediaReads() {
+        when(projects.selectIdentityById(7L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.delivery(7L)).isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(access, storage, renditions, grants);
+    }
+
+    @Test
+    void deletedProjectIsRejectedBeforeAuthorizationAndMediaReads() {
+        project.deletedAt = java.time.LocalDateTime.now();
+
+        assertThatThrownBy(() -> service.delivery(7L)).isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(access, storage, renditions, grants);
     }
 
     @Test

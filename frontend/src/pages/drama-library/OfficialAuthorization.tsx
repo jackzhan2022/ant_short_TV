@@ -1,6 +1,7 @@
 import { useIntl } from '@umijs/max';
 import { Alert, Button, Modal, Space } from 'antd';
 import { useEffect, useRef, useState } from 'react';
+import { useStyles } from './index.style';
 import {
   type AuthorizationAvailability,
   type AuthorizationCreated,
@@ -36,6 +37,7 @@ export default function OfficialAuthorization({
   onAuthorized: () => Promise<void>;
 }) {
   const intl = useIntl();
+  const { styles } = useStyles();
   const t = (key: string, text: string) =>
     intl.formatMessage({
       id: `drama.authorization.${key}`,
@@ -201,7 +203,7 @@ export default function OfficialAuthorization({
     ),
   };
   return (
-    <Space orientation="vertical" style={{ width: '100%' }}>
+    <div className={styles.authorization}>
       <Alert
         showIcon
         type={availability?.status === 'READY' ? 'info' : 'warning'}
@@ -298,6 +300,6 @@ export default function OfficialAuthorization({
             )}
         </Space>
       </Modal>
-    </Space>
+    </div>
   );
 }

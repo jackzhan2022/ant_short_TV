@@ -39,6 +39,10 @@ public class TeamMiniappController {
         @PathVariable Long dramaId, HttpServletRequest request) {
         service.unpublish(tenant(request, "DRAMA:PUBLISH"), id, dramaId); return ApiResponse.ok();
     }
+    @PostMapping("/{id}/dramas/{dramaId}/preflight") public ApiResponse<Preflight> preflight(@PathVariable Long id,
+        @PathVariable Long dramaId, @Valid @RequestBody PublishRequest body, HttpServletRequest request) {
+        return ApiResponse.success(service.preflight(tenant(request, "DRAMA:PUBLISH"), id, dramaId, body));
+    }
     private Long tenant(HttpServletRequest request, String permission) {
         platform.requireAdministrator();
         return permissions.require(TenantRequestSupport.tenantId(request), permission).tenantId();

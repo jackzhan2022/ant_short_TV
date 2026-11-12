@@ -1,3 +1,4 @@
+import { CrownOutlined, GiftOutlined, SafetyOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -11,6 +12,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { formatPoints } from '@/utils/points';
 import AuthenticatorBinding from './AuthenticatorBinding';
+import { useStyles } from './index.style';
+import { TenantCode, TenantMark, TenantStatus } from './presentation';
 import {
   getAdminAuthenticator,
   getTenantGrantOptions,
@@ -32,6 +35,7 @@ export default function GrantPackageModal({
   onClose,
   onGranted,
 }: Props) {
+  const { styles } = useStyles();
   const [form] = Form.useForm<GrantValues>();
   const [options, setOptions] = useState<GrantOption[]>([]);
   const [bound, setBound] = useState(false);
@@ -111,6 +115,9 @@ export default function GrantPackageModal({
     <Modal
       open
       title="添加套餐/积分包"
+      width={600}
+      centered
+      className={styles.grantModal}
       onCancel={() => {
         if (!submitting.current) onClose();
       }}
@@ -127,9 +134,10 @@ export default function GrantPackageModal({
       destroyOnHidden
     >
       <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-        <Typography.Text strong>
-          租户：{tenant.name}（{tenant.code}）
-        </Typography.Text>
+        <div className={styles.grantRecipient}>
+          <TenantMark tenant={tenant} /><div><strong>{tenant.name}</strong><TenantCode code={tenant.code} /></div>
+          <TenantStatus active={tenant.status === 'ACTIVE'}>{tenant.status === 'ACTIVE' ? '已启用' : '已停用'}</TenantStatus>
+        </div>
         {error && <Alert type="error" showIcon title={error} />}
         {!ready && !error && (
           <Typography.Text>正在加载发放信息…</Typography.Text>
@@ -156,11 +164,6 @@ export default function GrantPackageModal({
                 title="绑定成功，请等待验证器生成新的验证码后再发放。"
               />
             )}
-            <Alert
-              type="info"
-              showIcon
-              title="管理员免费发放，无需租户付款。每次提交需要本人验证器验证码。"
-            />
             <Form
               form={form}
               layout="vertical"
@@ -169,18 +172,9 @@ export default function GrantPackageModal({
               style={{ width: '100%' }}
             >
               <Form.Item label="发放类型">
-                <Select
-                  aria-label="发放类型"
-                  value={type}
-                  onChange={(value) => {
-                    setType(value);
-                    form.setFieldValue('packageVersionId', undefined);
-                  }}
-                  options={[
-                    { label: '会员套餐', value: 'SUBSCRIPTION' },
-                    { label: '积分包', value: 'POINT_PACKAGE' },
-                  ]}
-                />
+                <fieldset className={styles.grantTypes} aria-label="发放类型">
+                  {([{ label: '会员套餐', value: 'SUBSCRIPTION', icon: <CrownOutlined aria-hidden /> }, { label: '积分包', value: 'POINT_PACKAGE', icon: <GiftOutlined aria-hidden /> }] as const).map((item) => <Button key={item.value} aria-pressed={type === item.value} icon={item.icon} onClick={() => { setType(item.value); form.setFieldValue('packageVersionId', undefined); }}>{item.label}</Button>)}
+                </fieldset>
               </Form.Item>
               <Form.Item
                 name="packageVersionId"
@@ -188,6 +182,7 @@ export default function GrantPackageModal({
                 rules={[{ required: true, message: '请选择发放商品' }]}
               >
                 <Select
+                  variant="outlined"
                   placeholder="请选择已发布商品"
                   notFoundContent="暂无可发放商品"
                   options={options
@@ -202,7 +197,8 @@ export default function GrantPackageModal({
                 <Space
                   orientation="vertical"
                   size={4}
-                  style={{ marginBottom: 16 }}
+                  className={styles.grantBenefits}
+                  style={{ width: '100%' }}
                 >
                   {selected.entitlements.map((item) => (
                     <Typography.Text key={item.type}>
@@ -231,6 +227,7 @@ export default function GrantPackageModal({
                 ]}
               >
                 <Input.TextArea
+                  variant="outlined"
                   rows={3}
                   maxLength={500}
                   showCount
@@ -249,12 +246,14 @@ export default function GrantPackageModal({
                 ]}
               >
                 <Input
+                  variant="outlined"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   maxLength={6}
                   placeholder="输入本人验证器的 6 位验证码"
                 />
               </Form.Item>
+              <div className={styles.grantNotice}><SafetyOutlined aria-hidden /><span>管理员免费发放，无需租户付款。每次提交需要本人验证器验证码。</span></div>
             </Form>
           </>
         )}

@@ -134,18 +134,21 @@ export default [
       {
         path: '/commercial-management/packages',
         name: 'packages',
+        icon: 'gift',
         access: 'canViewCommercialPackages',
         component: './commercial-management/packages',
       },
       {
         path: '/commercial-management/orders',
         name: 'orders',
+        icon: 'fileDone',
         access: 'canViewCommercialOrders',
         component: './commercial-management/orders',
       },
       {
         path: '/commercial-management/tenants',
         name: 'tenants',
+        icon: 'apartment',
         access: 'canViewPlatformTenants',
         component: './commercial-management/tenants',
       },

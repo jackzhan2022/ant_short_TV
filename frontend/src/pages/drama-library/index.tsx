@@ -1,25 +1,47 @@
+import {
+  ArrowLeftOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  EllipsisOutlined,
+  PlaySquareOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  RightOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useAccess, useIntl, useModel } from '@umijs/max';
 import {
   Alert,
   App,
   Button,
+  Dropdown,
+  Empty,
   Form,
+  Image,
   Input,
+  InputNumber,
   Modal,
+  Pagination,
   Popconfirm,
   Select,
   Space,
+  Spin,
   Switch,
   Table,
   Tabs,
   Tag,
   Typography,
 } from 'antd';
+import dayjs from 'dayjs';
 import type { Key } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import BatchImportEpisode from './BatchImportEpisode';
+import EpisodeEditor from './EpisodeEditor';
 import ImportEpisode from './ImportEpisode';
+import { useStyles } from './index.style';
 import OfficialAuthorization from './OfficialAuthorization';
+import PublishDrama from './PublishDrama';
 import {
   canManageCode,
   canUseMiniapp,
@@ -35,7 +57,6 @@ import {
   listMiniapps,
   listReleases,
   type Miniapp,
-  publishDrama,
   type Release,
   saveDrama,
   unpublishDrama,
@@ -44,19 +65,25 @@ import TrialCode from './TrialCode';
 
 function DramaLibraryContent() {
   const access = useAccess();
+  const { styles } = useStyles();
   const { initialState } = useModel('@@initialState');
   const tenantId = initialState?.selectedTenant?.tenant.id;
   const [codeAppId, setCodeAppId] = useState<number>();
   const intl = useIntl();
   const t = (key: string, text: string) =>
     intl.formatMessage({ id: `drama.${key}`, defaultMessage: text });
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [apps, setApps] = useState<Miniapp[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [category, setCategory] = useState<string>();
+  const [completion, setCompletion] = useState<string>();
+  const [sort, setSort] = useState('newest');
+  const [page, setPage] = useState(1);
+  const [tab, setTab] = useState('library');
   const [editor, setEditor] = useState<Drama | 'new'>();
   const [dramaForm] = Form.useForm<DramaInput>();
   const [detail, setDetail] = useState<Drama>();
@@ -64,6 +91,9 @@ function DramaLibraryContent() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFailed, setDetailFailed] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [batchImporting, setBatchImporting] = useState(false);
+  const [episodeEditor, setEpisodeEditor] = useState<Episode>();
+  const [publishing, setPublishing] = useState(false);
   const [selected, setSelected] = useState<Key[]>([]);
   const [publishAppId, setPublishAppId] = useState<number>();
   const [releaseApp, setReleaseApp] = useState<Miniapp>();
@@ -164,6 +194,9 @@ function DramaLibraryContent() {
     ++detailGeneration.current;
     setDetail(undefined);
     setImporting(false);
+    setBatchImporting(false);
+    setEpisodeEditor(undefined);
+    setPublishing(false);
     setEpisodes([]);
     setSelected([]);
   };
@@ -173,7 +206,56 @@ function DramaLibraryContent() {
     dramaForm.setFieldsValue({
       title: drama?.title ?? '',
       description: drama?.description ?? '',
+      coverUrl: drama?.coverUrl ?? '',
+      category: drama?.category ?? '',
+      completionStatus: drama?.completionStatus ?? 'ONGOING',
+      totalEpisodes: drama?.totalEpisodes ?? undefined,
     });
+  };
+  const filteredDramas = dramas
+    .filter(
+      (drama) =>
+        `${drama.title} ${drama.description || ''}`
+          .toLowerCase()
+          .includes(keyword.trim().toLowerCase()) &&
+        (!category || drama.category === category) &&
+        (!completion || (drama.completionStatus ?? 'ONGOING') === completion),
+    )
+    .sort((a, b) => {
+      const difference =
+        dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf();
+      return sort === 'newest' ? difference : -difference;
+    });
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(filteredDramas.length / 12)),
+  );
+  const openDetail = (drama: Drama) => {
+    setDetail(drama);
+    void loadDetail(drama.id);
+  };
+  const confirmDelete = (drama: Drama) => {
+    modal.confirm({
+      title: t('deleteDrama', '删除该剧及单集目录？'),
+      content: t('deleteHint', '已发布资源须先从所有小程序下架。'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const ok = await mutate(() => deleteDrama(drama.id), reload);
+        if (!ok) throw new Error('删除失败');
+      },
+    });
+  };
+  const submitDrama = async () => {
+    const values = await dramaForm.validateFields();
+    const ok = await mutate(async () => {
+      const saved = await saveDrama(
+        { ...values, title: values.title.trim() },
+        editor && editor !== 'new' ? editor.id : undefined,
+      );
+      if (mounted.current)
+        setDetail((current) => (current?.id === saved.id ? saved : current));
+    }, reload);
+    if (ok) setEditor(undefined);
   };
   const manualNotice = (
     <Alert
@@ -187,248 +269,453 @@ function DramaLibraryContent() {
     />
   );
   return (
-    <PageContainer
-      title={t('title', '剧集管理')}
-      subTitle={t('subtitle', '独立维护剧库与单集，按小程序分别分发')}
-    >
-      <Space orientation="vertical" size="large" style={{ width: '100%' }}>
-        {failed && (
-          <Alert
-            type="error"
-            title={t('loadFailed', '加载失败，请重试')}
-            action={
-              <Button onClick={() => void reload()}>
-                {t('reload', '刷新')}
-              </Button>
-            }
-          />
-        )}
-        <Tabs
-          items={[
-            {
-              key: 'library',
-              label: t('library', '剧库'),
-              children: (
-                <Space orientation="vertical" style={{ width: '100%' }}>
-                  <Space wrap>
-                    <Input
-                      aria-label={t('search', '搜索剧名')}
-                      placeholder={t('search', '搜索剧名')}
-                      value={keyword}
-                      onChange={(event) => setKeyword(event.target.value)}
-                      allowClear
-                    />
-                    <Button loading={loading} onClick={() => void reload()}>
-                      {t('reload', '刷新')}
-                    </Button>
-                    {access.canManageDramas && (
-                      <Button type="primary" onClick={() => openEditor()}>
-                        {t('create', '新建剧集')}
-                      </Button>
-                    )}
-                  </Space>
-                  <Table<Drama>
-                    rowKey="id"
-                    loading={loading}
-                    dataSource={dramas.filter((drama) =>
-                      drama.title.toLowerCase().includes(keyword.toLowerCase()),
-                    )}
-                    scroll={{ x: 720 }}
-                    pagination={{ pageSize: 10 }}
-                    locale={{
-                      emptyText: t(
-                        'emptyLibrary',
-                        '暂无剧集。新建剧集后，可从本地视频或项目成片导入单集。',
-                      ),
-                    }}
-                    columns={[
-                      {
-                        title: t('dramaTitle', '剧名'),
-                        dataIndex: 'title',
-                        width: 240,
-                        render: (_, drama) => (
-                          <Button
-                            type="link"
-                            onClick={() => {
-                              setDetail(drama);
-                              void loadDetail(drama.id);
-                            }}
-                          >
-                            {drama.title}
-                          </Button>
-                        ),
-                      },
-                      {
-                        title: t('description', '简介'),
-                        dataIndex: 'description',
-                        render: (text) => (
-                          <Typography.Paragraph
-                            ellipsis={{ rows: 2, expandable: true }}
-                          >
-                            {text || '—'}
-                          </Typography.Paragraph>
-                        ),
-                      },
-                      {
-                        title: t('createdAt', '创建时间'),
-                        dataIndex: 'createdAt',
-                        width: 180,
-                      },
-                      {
-                        title: t('actions', '操作'),
-                        width: 220,
-                        render: (_, drama) => (
-                          <Space>
-                            <Button
-                              type="link"
-                              onClick={() => {
-                                setDetail(drama);
-                                void loadDetail(drama.id);
-                              }}
-                            >
-                              {t('directory', '单集目录')}
-                            </Button>
-                            {access.canManageDramas && (
-                              <>
-                                <Button
-                                  type="link"
-                                  disabled={busy}
-                                  onClick={() => openEditor(drama)}
-                                >
-                                  {t('edit', '编辑')}
-                                </Button>
-                                <Popconfirm
-                                  title={t(
-                                    'deleteDrama',
-                                    '删除该剧及单集目录？',
-                                  )}
-                                  description={t(
-                                    'deleteHint',
-                                    '已发布资源须先从所有小程序下架。',
-                                  )}
-                                  onConfirm={() =>
-                                    mutate(() => deleteDrama(drama.id), reload)
-                                  }
-                                >
-                                  <Button type="link" danger disabled={busy}>
-                                    {t('delete', '删除')}
-                                  </Button>
-                                </Popconfirm>
-                              </>
-                            )}
-                          </Space>
-                        ),
-                      },
-                    ]}
-                  />
-                </Space>
-              ),
-            },
-            {
-              key: 'miniapps',
-              label: t('miniapps', '团队小程序分发'),
-              children: (
-                <Space orientation="vertical" style={{ width: '100%' }}>
-                  {access.canManageMiniapps && (
-                    <OfficialAuthorization onAuthorized={reload} />
-                  )}
-                  <Button loading={loading} onClick={() => void reload()}>
-                    {t('reload', '刷新')}
-                  </Button>
-                  <Table<Miniapp>
-                    rowKey="id"
-                    loading={loading}
-                    dataSource={apps}
-                    scroll={{ x: 780 }}
-                    columns={[
-                      { title: t('appName', '小程序名称'), dataIndex: 'name' },
-                      { title: 'AppID', dataIndex: 'appid' },
-                      {
-                        title: t('bindingType', '绑定方式'),
-                        render: (_, app) => (
-                          <Tag
-                            color={
-                              app.bindingType === 'OFFICIAL'
-                                ? 'success'
-                                : 'warning'
-                            }
-                          >
-                            {app.bindingType === 'OFFICIAL'
-                              ? t('official', '微信官方授权')
-                              : app.bindingType === 'MANUAL'
-                                ? t('manual', '手工绑定 · 非官方授权')
-                                : `${t('unknownBinding', '未知绑定方式')} (${app.bindingType})`}
-                          </Tag>
-                        ),
-                      },
-                      {
-                        title: t('authorizationStatus', '授权状态'),
-                        render: (_, app) =>
-                          app.bindingType === 'OFFICIAL' ? (
-                            <Tag
-                              color={canUseMiniapp(app) ? 'success' : 'error'}
-                            >
-                              {app.authStatus === 'AUTHORIZED'
-                                ? t('authorized', '已授权')
-                                : app.authStatus === 'REVOKED'
-                                  ? t('revoked', '已取消授权，请重新官方授权')
-                                  : t('unauthorized', '未授权，无法启用或发布')}
-                            </Tag>
-                          ) : (
-                            t('historicalManual', '历史手工记录（非官方授权）')
+    <PageContainer pageHeaderRender={false} className={styles.page}>
+      <div hidden={Boolean(detail)}>
+        <header className={styles.header}>
+          <div>
+            <h1>{t('title', '剧集管理')}</h1>
+            <p>剧集、单集与小程序分发</p>
+          </div>
+          {access.canManageDramas && tab === 'library' && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => openEditor()}
+            >
+              {t('create', '新建剧集')}
+            </Button>
+          )}
+        </header>
+        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+          {failed && (
+            <Alert
+              type="error"
+              title={t('loadFailed', '加载失败，请重试')}
+              action={
+                <Button onClick={() => void reload()}>
+                  {t('reload', '刷新')}
+                </Button>
+              }
+            />
+          )}
+          <Tabs
+            className={styles.tabs}
+            activeKey={tab}
+            onChange={setTab}
+            items={[
+              {
+                key: 'library',
+                label: t('library', '剧库'),
+                children: (
+                  <>
+                    <div className={styles.toolbar}>
+                      <Input
+                        aria-label={t('searchDescription', '搜索剧名或简介')}
+                        placeholder={t('searchDescription', '搜索剧名或简介')}
+                        prefix={<SearchOutlined />}
+                        value={keyword}
+                        onChange={(event) => {
+                          setKeyword(event.target.value);
+                          setPage(1);
+                        }}
+                        allowClear
+                      />
+                      <Space size={12} wrap>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ fontSize: 12 }}
+                        >
+                          共 {filteredDramas.length} 部剧集
+                        </Typography.Text>
+                        <Select
+                          aria-label="剧集排序"
+                          value={sort}
+                          onChange={(value) => {
+                            setSort(value);
+                            setPage(1);
+                          }}
+                          options={[
+                            { value: 'newest', label: '最近创建' },
+                            { value: 'oldest', label: '最早创建' },
+                          ]}
+                        />
+                        <Button
+                          type="text"
+                          aria-label={t('reload', '刷新')}
+                          icon={<ReloadOutlined spin={loading} />}
+                          disabled={loading}
+                          onClick={() => void reload()}
+                        />
+                      </Space>
+                    </div>
+                    <Space wrap style={{ marginBottom: 16 }}>
+                      <Select
+                        allowClear
+                        style={{ minWidth: 140 }}
+                        aria-label={t('categoryFilter', '筛选分类')}
+                        placeholder={t('categoryFilter', '筛选分类')}
+                        value={category}
+                        onChange={(value) => {
+                          setCategory(value);
+                          setPage(1);
+                        }}
+                        options={[
+                          ...new Set(
+                            dramas
+                              .map((drama) => drama.category)
+                              .filter((value): value is string =>
+                                Boolean(value),
+                              ),
                           ),
-                      },
-                      {
-                        title: t('enabled', '启用状态'),
-                        render: (_, app) => (
-                          <Switch
-                            checked={app.enabled}
-                            disabled={
-                              !access.canManageMiniapps ||
-                              busy ||
-                              !canUseMiniapp(app)
-                            }
-                            checkedChildren={t('enabled', '启用状态')}
-                            unCheckedChildren={t('disabled', '已停用')}
-                            onChange={(enabled) =>
-                              void mutate(
-                                () => enableMiniapp(app.id, enabled),
-                                reload,
-                              )
+                        ].map((value) => ({ value, label: value }))}
+                      />
+                      <Select
+                        allowClear
+                        style={{ minWidth: 140 }}
+                        aria-label={t('completionFilter', '筛选完结状态')}
+                        placeholder={t('completionFilter', '筛选完结状态')}
+                        value={completion}
+                        onChange={(value) => {
+                          setCompletion(value);
+                          setPage(1);
+                        }}
+                        options={[
+                          { value: 'ONGOING', label: t('ongoing', '连载中') },
+                          {
+                            value: 'COMPLETED',
+                            label: t('completed', '已完结'),
+                          },
+                        ]}
+                      />
+                    </Space>
+                    <Spin spinning={loading}>
+                      {!loading && !filteredDramas.length ? (
+                        <div className={styles.empty}>
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={
+                              keyword
+                                ? '暂无匹配剧集'
+                                : t(
+                                    'emptyLibrary',
+                                    '暂无剧集。新建剧集后，可从本地视频或项目成片导入单集。',
+                                  )
                             }
                           />
-                        ),
-                      },
-                      {
-                        title: t('actions', '操作'),
-                        render: (_, app) => (
-                          <Space>
-                            <Button
-                              type="link"
-                              onClick={() => void loadReleases(app)}
-                            >
-                              {t('releases', '发布记录')}
-                            </Button>
-                            {access.canManageMiniapps && (
+                          {keyword && (
+                            <div style={{ textAlign: 'center' }}>
                               <Button
                                 type="link"
-                                disabled={busy || !canManageCode(app)}
-                                onClick={() => setCodeAppId(app.id)}
+                                onClick={() => {
+                                  setKeyword('');
+                                  setPage(1);
+                                }}
                               >
-                                {t('code.title', '体验版管理')}
+                                重置搜索
                               </Button>
-                            )}
-                          </Space>
-                        ),
-                      },
-                    ]}
-                  />
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Space>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={styles.grid}>
+                          {filteredDramas
+                            .slice((currentPage - 1) * 12, currentPage * 12)
+                            .map((drama) => (
+                              <article
+                                key={drama.id}
+                                className={styles.card}
+                                aria-label={`剧集：${drama.title}`}
+                              >
+                                {access.canManageDramas && (
+                                  <Dropdown
+                                    trigger={['click']}
+                                    menu={{
+                                      items: [
+                                        {
+                                          key: 'edit',
+                                          label: t('editDrama', '编辑剧集'),
+                                        },
+                                        {
+                                          key: 'delete',
+                                          label: t('delete', '删除'),
+                                          danger: true,
+                                        },
+                                      ],
+                                      onClick: ({ key }) => {
+                                        if (key === 'edit') openEditor(drama);
+                                        else confirmDelete(drama);
+                                      },
+                                    }}
+                                  >
+                                    <Button
+                                      type="text"
+                                      className={styles.more}
+                                      disabled={busy}
+                                      icon={<EllipsisOutlined />}
+                                      aria-label={`${drama.title}更多操作`}
+                                    />
+                                  </Dropdown>
+                                )}
+                                <header className={styles.cardTop}>
+                                  <div className={styles.identity}>
+                                    {drama.coverUrl ? (
+                                      <Image
+                                        src={drama.coverUrl}
+                                        width={40}
+                                        height={54}
+                                        preview={false}
+                                        alt={`${drama.title}封面`}
+                                        style={{
+                                          objectFit: 'cover',
+                                          borderRadius: 6,
+                                        }}
+                                      />
+                                    ) : (
+                                      <PlaySquareOutlined />
+                                    )}
+                                  </div>
+                                  <div className={styles.cardTitle}>
+                                    <h2>
+                                      <button
+                                        type="button"
+                                        title={drama.title}
+                                        onClick={() => openDetail(drama)}
+                                      >
+                                        {drama.title}
+                                      </button>
+                                    </h2>
+                                    <span>
+                                      {drama.category || '未分类'} ·{' '}
+                                      {drama.completionStatus === 'COMPLETED'
+                                        ? '已完结'
+                                        : '连载中'}
+                                    </span>
+                                  </div>
+                                </header>
+                                <p
+                                  className={styles.description}
+                                  title={drama.description || undefined}
+                                >
+                                  {drama.description ||
+                                    t('noDescription', '暂无简介')}
+                                </p>
+                                <Space
+                                  size={8}
+                                  wrap
+                                  style={{ marginBottom: 12 }}
+                                >
+                                  <Tag>
+                                    {drama.episodeCount ?? 0} /{' '}
+                                    {drama.totalEpisodes || '—'} 集
+                                  </Tag>
+                                  <Typography.Text type="secondary">
+                                    已上架 {drama.publishedAppCount ?? 0}{' '}
+                                    个小程序
+                                  </Typography.Text>
+                                </Space>
+                                <footer className={styles.cardBottom}>
+                                  <time dateTime={drama.createdAt}>
+                                    <ClockCircleOutlined
+                                      style={{ marginRight: 5 }}
+                                    />
+                                    {dayjs(drama.createdAt).isValid()
+                                      ? dayjs(drama.createdAt).format(
+                                          'YYYY-MM-DD',
+                                        )
+                                      : '—'}
+                                  </time>
+                                  <Button
+                                    size="small"
+                                    onClick={() => openDetail(drama)}
+                                  >
+                                    {t('directory', '单集目录')}
+                                    <RightOutlined aria-hidden />
+                                  </Button>
+                                </footer>
+                              </article>
+                            ))}
+                          {access.canManageDramas && !keyword && (
+                            <button
+                              type="button"
+                              className={styles.add}
+                              onClick={() => openEditor()}
+                            >
+                              <span>
+                                <PlusOutlined />
+                              </span>
+                              {t('create', '新建剧集')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </Spin>
+                    <footer className={styles.pagination}>
+                      <span>共 {filteredDramas.length} 部剧集</span>
+                      <Pagination
+                        size="small"
+                        current={currentPage}
+                        total={filteredDramas.length}
+                        pageSize={12}
+                        hideOnSinglePage
+                        showSizeChanger={false}
+                        onChange={setPage}
+                      />
+                    </footer>
+                  </>
+                ),
+              },
+              {
+                key: 'miniapps',
+                label: t('miniapps', '团队小程序分发'),
+                children: (
+                  <div className={styles.miniapps}>
+                    {access.canManageMiniapps && (
+                      <OfficialAuthorization onAuthorized={reload} />
+                    )}
+                    <Alert
+                      type="info"
+                      title={t(
+                        'wechatFormalRelease',
+                        '正式版需在微信后台提交审核并发布',
+                      )}
+                      description={t(
+                        'wechatFormalReleaseHint',
+                        '本系统发布记录表示内容目录版本。体验版验证后，请在微信公众平台提交小程序代码审核，审核通过后手动发布正式版。',
+                      )}
+                    />
+                    <div className={styles.surface}>
+                      <header className={styles.surfaceHeader}>
+                        <h2>
+                          {t('miniapps', '团队小程序分发')}{' '}
+                          <span className={styles.count}>{apps.length}</span>
+                        </h2>
+                        <Button
+                          type="text"
+                          aria-label={t('reload', '刷新')}
+                          icon={<ReloadOutlined spin={loading} />}
+                          disabled={loading}
+                          onClick={() => void reload()}
+                        />
+                      </header>
+                      <Table<Miniapp>
+                        rowKey="id"
+                        loading={loading}
+                        dataSource={apps}
+                        scroll={{ x: 780 }}
+                        columns={[
+                          {
+                            title: t('appName', '小程序名称'),
+                            render: (_, app) => (
+                              <div className={styles.appIdentity}>
+                                <span className={styles.appIcon}>
+                                  <PlaySquareOutlined aria-hidden />
+                                </span>
+                                <div>
+                                  <strong>{app.name}</strong>
+                                  <code>{app.appid}</code>
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            title: t('bindingType', '绑定方式'),
+                            render: (_, app) => (
+                              <Tag
+                                color={
+                                  app.bindingType === 'OFFICIAL'
+                                    ? 'success'
+                                    : 'warning'
+                                }
+                              >
+                                {app.bindingType === 'OFFICIAL'
+                                  ? t('official', '微信官方授权')
+                                  : app.bindingType === 'MANUAL'
+                                    ? t('manual', '手工绑定 · 非官方授权')
+                                    : `${t('unknownBinding', '未知绑定方式')} (${app.bindingType})`}
+                              </Tag>
+                            ),
+                          },
+                          {
+                            title: t('authorizationStatus', '授权状态'),
+                            render: (_, app) =>
+                              app.bindingType === 'OFFICIAL' ? (
+                                <Tag
+                                  color={
+                                    canUseMiniapp(app) ? 'success' : 'error'
+                                  }
+                                >
+                                  {app.authStatus === 'AUTHORIZED'
+                                    ? t('authorized', '已授权')
+                                    : app.authStatus === 'REVOKED'
+                                      ? t(
+                                          'revoked',
+                                          '已取消授权，请重新官方授权',
+                                        )
+                                      : t(
+                                          'unauthorized',
+                                          '未授权，无法启用或发布',
+                                        )}
+                                </Tag>
+                              ) : (
+                                t(
+                                  'historicalManual',
+                                  '历史手工记录（非官方授权）',
+                                )
+                              ),
+                          },
+                          {
+                            title: t('enabled', '启用状态'),
+                            render: (_, app) => (
+                              <Switch
+                                checked={app.enabled}
+                                disabled={
+                                  !access.canManageMiniapps ||
+                                  busy ||
+                                  !canUseMiniapp(app)
+                                }
+                                checkedChildren={t('enabled', '启用状态')}
+                                unCheckedChildren={t('disabled', '已停用')}
+                                onChange={(enabled) =>
+                                  void mutate(
+                                    () => enableMiniapp(app.id, enabled),
+                                    reload,
+                                  )
+                                }
+                              />
+                            ),
+                          },
+                          {
+                            title: t('actions', '操作'),
+                            render: (_, app) => (
+                              <Space>
+                                <Button
+                                  type="link"
+                                  onClick={() => void loadReleases(app)}
+                                >
+                                  {t('releases', '发布记录')}
+                                </Button>
+                                {access.canManageMiniapps && (
+                                  <Button
+                                    type="link"
+                                    disabled={busy || !canManageCode(app)}
+                                    onClick={() => setCodeAppId(app.id)}
+                                  >
+                                    {t('code.title', '体验版管理')}
+                                  </Button>
+                                )}
+                              </Space>
+                            ),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </Space>
+      </div>
       <Modal
         open={Boolean(editor)}
         title={
@@ -442,18 +729,7 @@ function DramaLibraryContent() {
         closable={!busy}
         mask={{ closable: !busy }}
         keyboard={!busy}
-        onOk={async () => {
-          const values = await dramaForm.validateFields();
-          const ok = await mutate(
-            () =>
-              saveDrama(
-                { ...values, title: values.title.trim() },
-                editor && editor !== 'new' ? editor.id : undefined,
-              ),
-            reload,
-          );
-          if (ok) setEditor(undefined);
-        }}
+        onOk={() => void submitDrama().catch(() => undefined)}
       >
         <Form form={dramaForm} layout="vertical">
           <Form.Item
@@ -470,128 +746,265 @@ function DramaLibraryContent() {
           >
             <Input.TextArea maxLength={4000} showCount rows={5} />
           </Form.Item>
-        </Form>
-      </Modal>
-      <Modal
-        open={Boolean(detail)}
-        width={960}
-        title={detail?.title}
-        footer={null}
-        onCancel={closeDetail}
-        closable={!busy && !importing}
-        mask={{ closable: !busy && !importing }}
-        keyboard={!busy && !importing}
-      >
-        <Space orientation="vertical" style={{ width: '100%' }}>
-          <Typography.Paragraph>
-            {detail?.description || t('noDescription', '暂无简介')}
-          </Typography.Paragraph>
-          {detailFailed && (
-            <Alert type="error" title={t('loadFailed', '加载失败，请重试')} />
-          )}
-          <Space>
-            <Button
-              loading={detailLoading}
-              disabled={busy}
-              onClick={() => detail && void loadDetail(detail.id)}
-            >
-              {t('reload', '刷新')}
-            </Button>
-            {access.canManageDramas && (
-              <Button
-                type="primary"
-                disabled={detailLoading || detailFailed || busy}
-                onClick={() => setImporting(true)}
-              >
-                {t('import', '导入单集')}
-              </Button>
-            )}
-          </Space>
-          <Table<Episode>
-            rowKey="id"
-            loading={detailLoading}
-            dataSource={episodes}
-            scroll={{ x: 640 }}
-            pagination={{ pageSize: 10 }}
-            rowSelection={
-              access.canPublishDramas
-                ? {
-                    selectedRowKeys: selected,
-                    onChange: setSelected,
-                    getCheckboxProps: () => ({ disabled: busy }),
-                  }
-                : undefined
-            }
-            columns={[
+          <Form.Item
+            name="coverUrl"
+            label={t('coverUrl', '封面 HTTPS 地址')}
+            rules={[
+              { max: 1024 },
               {
-                title: t('episodeNo', '剧库集号'),
-                dataIndex: 'episodeNo',
-                sorter: (a, b) => a.episodeNo - b.episodeNo,
-              },
-              { title: t('episodeTitle', '单集标题'), dataIndex: 'title' },
-              {
-                title: t('source', '来源'),
-                render: (_, episode) => (
-                  <Space orientation="vertical">
-                    <Tag>
-                      {episode.sourceType === 'LOCAL_UPLOAD'
-                        ? t('local', '本地视频')
-                        : episode.sourceType === 'PROJECT_VERSION'
-                          ? t('projectSource', '项目成片')
-                          : episode.sourceType}
-                    </Tag>
-                    {episode.sourceProjectId && (
-                      <Typography.Text type="secondary">
-                        {t('project', '项目')} #{episode.sourceProjectId} /{' '}
-                        {t('version', '成片版本')} #{episode.sourceVersionId}
-                      </Typography.Text>
-                    )}
-                  </Space>
-                ),
+                type: 'url',
+                message: t('httpsRequired', '请输入有效的 HTTPS 地址'),
               },
               {
-                title: t('fileSize', '文件大小'),
-                render: (_, episode) =>
-                  episode.fileSize
-                    ? `${(episode.fileSize / 1024 / 1024).toFixed(1)} MB`
-                    : '—',
-              },
-              {
-                title: t('actions', '操作'),
-                render: (_, episode) =>
-                  access.canManageDramas && (
-                    <Popconfirm
-                      title={t('deleteEpisode', '删除该单集？')}
-                      description={t(
-                        'deleteHint',
-                        '已发布资源须先从所有小程序下架。',
-                      )}
-                      onConfirm={() => {
-                        if (!detail) return;
-                        const id = detail.id;
-                        return mutate(
-                          () => deleteEpisode(id, episode.id),
-                          () => loadDetail(id),
-                        );
-                      }}
-                    >
-                      <Button danger type="link" disabled={busy}>
-                        {t('delete', '删除')}
-                      </Button>
-                    </Popconfirm>
-                  ),
+                pattern: /^https:\/\/\S+$/,
+                message: t('httpsRequired', '请输入有效的 HTTPS 地址'),
               },
             ]}
-          />
-          {access.canPublishDramas && (
-            <>
-              <Alert
-                type="info"
-                title={t(
-                  'publishHint',
-                  '选择单集并指定目标小程序。重新上架会替换该小程序的当前发布目录，不影响其他小程序。',
+          >
+            <Input placeholder="https://" maxLength={1024} />
+          </Form.Item>
+          <Form.Item
+            name="category"
+            label={t('category', '分类')}
+            rules={[{ max: 40 }]}
+          >
+            <Input maxLength={40} />
+          </Form.Item>
+          <Form.Item
+            name="completionStatus"
+            label={t('completion', '完结状态')}
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: 'ONGOING', label: t('ongoing', '连载中') },
+                { value: 'COMPLETED', label: t('completed', '已完结') },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="totalEpisodes"
+            label={t('totalEpisodes', '总集数')}
+            extra={t(
+              'totalEpisodesHint',
+              '填写计划总集数（1—10000），上架前必填。',
+            )}
+            rules={[{ type: 'number', min: 1, max: 10000 }]}
+          >
+            <InputNumber min={1} max={10000} precision={0} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      {detail && (
+        <section aria-label={`${detail.title}的单集目录`}>
+          <Button
+            type="text"
+            className={styles.back}
+            icon={<ArrowLeftOutlined aria-hidden />}
+            disabled={
+              busy ||
+              importing ||
+              batchImporting ||
+              Boolean(episodeEditor) ||
+              publishing
+            }
+            onClick={closeDetail}
+          >
+            全部剧集
+          </Button>
+          <header className={styles.detailHeader}>
+            <div className={styles.detailTitle}>
+              <div className={styles.identity}>
+                <PlaySquareOutlined />
+              </div>
+              <div>
+                <Space align="center" wrap>
+                  <h1>{detail.title}</h1>
+                  {!detailLoading && !detailFailed && (
+                    <span className={styles.count}>{episodes.length} 集</span>
+                  )}
+                </Space>
+                <p>{detail.description || t('noDescription', '暂无简介')}</p>
+              </div>
+            </div>
+            <Space wrap>
+              {access.canManageDramas && (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    disabled={busy}
+                    onClick={() => openEditor(detail)}
+                  >
+                    {t('editDrama', '编辑剧集')}
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    disabled={detailLoading || detailFailed || busy}
+                    onClick={() => setImporting(true)}
+                  >
+                    {t('import', '导入单集')}
+                  </Button>
+                  <Button
+                    disabled={detailLoading || detailFailed || busy}
+                    onClick={() => setBatchImporting(true)}
+                  >
+                    {t('batchImport', '批量本地导入')}
+                  </Button>
+                </>
+              )}
+            </Space>
+          </header>
+          {detailFailed && (
+            <Alert
+              type="error"
+              showIcon
+              title={t('loadFailed', '加载失败，请重试')}
+              style={{ marginBottom: 20 }}
+              action={
+                <Button onClick={() => void loadDetail(detail.id)}>
+                  {t('reload', '刷新')}
+                </Button>
+              }
+            />
+          )}
+          <div className={styles.surface}>
+            <header className={styles.surfaceHeader}>
+              <h2>
+                {t('directory', '单集目录')}{' '}
+                {!detailLoading && (
+                  <span className={styles.count}>{episodes.length}</span>
                 )}
+              </h2>
+              <Button
+                type="text"
+                icon={<ReloadOutlined spin={detailLoading} />}
+                aria-label="刷新单集"
+                disabled={busy || detailLoading}
+                onClick={() => void loadDetail(detail.id)}
               />
+            </header>
+            <Table<Episode>
+              rowKey="id"
+              loading={detailLoading}
+              dataSource={episodes}
+              scroll={{ x: 640 }}
+              pagination={{ pageSize: 10 }}
+              rowSelection={
+                access.canPublishDramas
+                  ? {
+                      selectedRowKeys: selected,
+                      onChange: setSelected,
+                      getCheckboxProps: () => ({ disabled: busy }),
+                    }
+                  : undefined
+              }
+              columns={[
+                {
+                  title: t('episodeNo', '剧库集号'),
+                  dataIndex: 'episodeNo',
+                  sorter: (a, b) => a.episodeNo - b.episodeNo,
+                  width: 110,
+                  render: (value) => (
+                    <span className={styles.number}>
+                      {String(value).padStart(2, '0')}
+                    </span>
+                  ),
+                },
+                { title: t('episodeTitle', '单集标题'), dataIndex: 'title' },
+                {
+                  title: t('mediaInfo', '媒体信息'),
+                  render: (_, episode) => (
+                    <Space orientation="vertical">
+                      <span>
+                        {episode.width && episode.height
+                          ? `${episode.width} × ${episode.height}`
+                          : t('unknownResolution', '待分析分辨率')}
+                      </span>
+                      <span>
+                        {episode.durationSeconds
+                          ? `${episode.durationSeconds} ${t('seconds', '秒')}`
+                          : t('unknownDuration', '待分析时长')}
+                      </span>
+                    </Space>
+                  ),
+                },
+                {
+                  title: t('source', '来源'),
+                  render: (_, episode) => (
+                    <Space orientation="vertical">
+                      <Tag>
+                        {episode.sourceType === 'LOCAL_UPLOAD'
+                          ? t('local', '本地视频')
+                          : episode.sourceType === 'PROJECT_VERSION'
+                            ? t('projectSource', '项目成片')
+                            : episode.sourceType}
+                      </Tag>
+                      {episode.sourceProjectId && (
+                        <Typography.Text type="secondary">
+                          {t('project', '项目')} #{episode.sourceProjectId} /{' '}
+                          {t('version', '成片版本')} #{episode.sourceVersionId}
+                        </Typography.Text>
+                      )}
+                    </Space>
+                  ),
+                },
+                {
+                  title: t('fileSize', '文件大小'),
+                  render: (_, episode) =>
+                    episode.fileSize
+                      ? `${(episode.fileSize / 1024 / 1024).toFixed(1)} MB`
+                      : '—',
+                },
+                {
+                  title: t('actions', '操作'),
+                  render: (_, episode) => (
+                    <Space>
+                      <Button
+                        type="link"
+                        disabled={busy}
+                        onClick={() => setEpisodeEditor(episode)}
+                      >
+                        {t('previewEdit', '预览 / 编辑')}
+                      </Button>
+                      {access.canManageDramas && (
+                        <Popconfirm
+                          title={t('deleteEpisode', '删除该单集？')}
+                          description={t(
+                            'deleteHint',
+                            '已发布资源须先从所有小程序下架。',
+                          )}
+                          onConfirm={() => {
+                            if (!detail) return;
+                            const id = detail.id;
+                            return mutate(
+                              () => deleteEpisode(id, episode.id),
+                              async () => {
+                                await loadDetail(id);
+                                await reload();
+                              },
+                            );
+                          }}
+                        >
+                          <Button danger type="link" disabled={busy}>
+                            {t('delete', '删除')}
+                          </Button>
+                        </Popconfirm>
+                      )}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </div>
+          {access.canPublishDramas && (
+            <footer className={styles.publish}>
+              <div className={styles.publishNote}>
+                <span role="status" aria-label="已选单集">
+                  已选 <strong>{selected.length}</strong> 集
+                </span>
+                <p>重新上架将替换目标小程序的当前目录</p>
+              </div>
               <Space wrap>
                 <Select
                   style={{ minWidth: 240 }}
@@ -606,67 +1019,31 @@ function DramaLibraryContent() {
                     disabled: !app.enabled || !canUseMiniapp(app),
                   }))}
                 />
-                <Popconfirm
-                  title={t(
-                    'publishConfirm',
-                    '确认将所选单集上架至目标小程序？',
-                  )}
-                  description={t(
-                    'publishSnapshot',
-                    '剧名、简介及单集将生成新的发布快照。',
-                  )}
+                <Button
+                  type="primary"
+                  loading={busy}
+                  onClick={() => setPublishing(true)}
                   disabled={
                     !publishAppId ||
+                    !apps.some(
+                      (app) =>
+                        app.id === publishAppId &&
+                        app.enabled &&
+                        canUseMiniapp(app),
+                    ) ||
                     selected.length === 0 ||
-                    selected.length > 500
+                    selected.length > 500 ||
+                    detailLoading ||
+                    detailFailed
                   }
-                  onConfirm={() => {
-                    if (
-                      !publishAppId ||
-                      !detail ||
-                      !apps.some(
-                        (app) =>
-                          app.id === publishAppId &&
-                          app.enabled &&
-                          canUseMiniapp(app),
-                      )
-                    )
-                      return;
-                    const appId = publishAppId;
-                    const dramaId = detail.id;
-                    return mutate(
-                      () => publishDrama(appId, dramaId, selected.map(Number)),
-                      async () => {
-                        setSelected([]);
-                      },
-                    );
-                  }}
                 >
-                  <Button
-                    type="primary"
-                    loading={busy}
-                    disabled={
-                      !publishAppId ||
-                      !apps.some(
-                        (app) =>
-                          app.id === publishAppId &&
-                          app.enabled &&
-                          canUseMiniapp(app),
-                      ) ||
-                      selected.length === 0 ||
-                      selected.length > 500 ||
-                      detailLoading ||
-                      detailFailed
-                    }
-                  >
-                    {t('publish', '上架所选单集')} ({selected.length}/500)
-                  </Button>
-                </Popconfirm>
+                  {t('publish', '上架所选单集')} ({selected.length}/500)
+                </Button>
               </Space>
-            </>
+            </footer>
           )}
-        </Space>
-      </Modal>
+        </section>
+      )}
       {access.canManageMiniapps &&
         tenantId != null &&
         apps
@@ -686,9 +1063,55 @@ function DramaLibraryContent() {
             Math.max(0, ...episodes.map((episode) => episode.episodeNo)) + 1
           }
           onClose={() => setImporting(false)}
-          onImported={() => loadDetail(detail.id)}
+          onImported={async () => {
+            await loadDetail(detail.id);
+            await reload();
+          }}
         />
       )}
+      {batchImporting && detail && (
+        <BatchImportEpisode
+          dramaId={detail.id}
+          nextNo={
+            Math.max(0, ...episodes.map((episode) => episode.episodeNo)) + 1
+          }
+          onClose={() => setBatchImporting(false)}
+          onImported={async () => {
+            await loadDetail(detail.id);
+            await reload();
+          }}
+        />
+      )}
+      {episodeEditor && detail && (
+        <EpisodeEditor
+          key={episodeEditor.id}
+          dramaId={detail.id}
+          episode={episodeEditor}
+          canEdit={access.canManageDramas}
+          onClose={() => setEpisodeEditor(undefined)}
+          onSaved={() => loadDetail(detail.id)}
+        />
+      )}
+      {publishing &&
+        detail &&
+        apps
+          .filter(
+            (app) =>
+              app.id === publishAppId && app.enabled && canUseMiniapp(app),
+          )
+          .map((app) => (
+            <PublishDrama
+              key={`${app.id}:${detail.id}`}
+              dramaId={detail.id}
+              app={app}
+              episodeIds={selected.map(Number)}
+              onClose={() => setPublishing(false)}
+              onPublished={async () => {
+                setSelected([]);
+                await reload();
+              }}
+            />
+          ))}
       <Modal
         open={Boolean(releaseApp)}
         width={900}
@@ -717,9 +1140,45 @@ function DramaLibraryContent() {
             rowKey="id"
             loading={releaseLoading}
             dataSource={releases}
-            scroll={{ x: 650 }}
+            scroll={{ x: 1050 }}
             columns={[
+              {
+                title: t('contentVersion', '内容版本'),
+                dataIndex: 'id',
+                render: (value) => `#${value}`,
+              },
               { title: t('dramaTitle', '剧名'), dataIndex: 'title' },
+              {
+                title: t('cover', '封面'),
+                render: (_, release) =>
+                  release.coverUrl ? (
+                    <Image
+                      src={release.coverUrl}
+                      width={36}
+                      height={48}
+                      alt={`${release.title}${t('cover', '封面')}`}
+                      style={{ objectFit: 'cover' }}
+                      preview={false}
+                    />
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
+                title: t('episodeCount', '集数'),
+                dataIndex: 'episodeCount',
+                render: (value) => value ?? '—',
+              },
+              {
+                title: t('sortOrder', '目录排序'),
+                dataIndex: 'sortOrder',
+                render: (value) => value ?? 0,
+              },
+              {
+                title: t('recommended', '首页推荐'),
+                dataIndex: 'recommended',
+                render: (value) => (value ? t('yes', '是') : t('no', '否')),
+              },
               {
                 title: t('description', '简介'),
                 dataIndex: 'description',
@@ -748,7 +1207,10 @@ function DramaLibraryContent() {
                         const app = releaseApp;
                         return mutate(
                           () => unpublishDrama(app.id, release.dramaId),
-                          () => loadReleases(app),
+                          async () => {
+                            await loadReleases(app);
+                            await reload();
+                          },
                         );
                       }}
                     >
