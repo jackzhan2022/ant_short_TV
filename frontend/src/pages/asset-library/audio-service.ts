@@ -87,8 +87,9 @@ export const registerProjectAudio = (
   projectId: number,
   sessionToken: string,
   name: string,
+  signal?: AbortSignal,
 ) =>
   request<ApiResponse<AudioReference>>(
     `/api/projects/${projectId}/audio-assets`,
-    { method: 'POST', data: { sessionToken, name } },
+    { method: 'POST', data: { sessionToken, name }, signal },
   );

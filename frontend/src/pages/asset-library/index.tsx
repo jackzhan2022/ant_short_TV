@@ -4,6 +4,8 @@ import { history, useLocation, useModel, useParams } from '@umijs/max';
 import { Alert, Button, Checkbox, Empty, Input, Modal, Pagination, Tabs } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import LazyMediaImage from '@/components/LazyMediaImage';
+import VideoAudioExtractionModal from '@/pages/projects/production-workbench/VideoAudioExtractionModal';
+import { canExtractVideoAudio } from '@/pages/projects/production-workbench/video-audio-extraction';
 import { getCurrentTenantId } from '@/services/account-team/auth';
 import { queryProjectMetadata, queryProjects } from '@/services/account-team/project';
 import type { Project } from '@/services/account-team/types';
@@ -49,6 +51,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState<AssetLibraryItem>();
+  const [audioExtraction, setAudioExtraction] = useState<AssetLibraryItem>();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string>();
@@ -104,6 +107,7 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
   }, [tenantId, projectId, mediaType, category, keyword]);
   useEffect(() => { setInputKeyword(keyword); }, [keyword, projectId, mediaType, category]);
   useEffect(() => { setPreview(undefined); }, [tenantId, projectId, mediaType, category, keyword, page, episodeNo]);
+  useEffect(() => { setAudioExtraction(undefined); }, [tenantId, projectId, mediaType, category, keyword, page, episodeNo]);
   useEffect(() => {
     setProject(undefined);
     setMetadataFailed(false);
@@ -283,10 +287,15 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
       {total > 24 ? <Pagination className={styles.pagination} current={page} pageSize={24} total={total} showSizeChanger={false} onChange={(next) => navigate({ page: next })} /> : null}
       {preview ? <Modal open title={preview.name} width="min(1100px, calc(100vw - 32px))"
         onCancel={() => setPreview(undefined)}
-        footer={preview?.downloadUrl ? preview.resourceType === 'AI_IMAGE_RESULT' ? (
+        footer={<>
+          {preview.resourceType === 'AI_VIDEO_RESULT' && canExtractVideoAudio(project) ? <Button aria-label="提取音色" icon={<AudioOutlined aria-hidden="true" />} onClick={() => {
+            setAudioExtraction(preview); setPreview(undefined);
+          }}>提取音色</Button> : null}
+          {preview?.downloadUrl ? preview.resourceType === 'AI_IMAGE_RESULT' ? (
           <Button aria-label="下载原文件" icon={<DownloadOutlined aria-hidden="true" />} loading={downloading} disabled={downloading}
             onClick={() => void download(preview.id)}>下载原文件</Button>
-        ) : <DownloadButton type="default" name={preview.name} sources={[{ kind: 'VIDEO', projectId, id: preview.id }]}>下载原文件</DownloadButton> : null}>
+        ) : <DownloadButton type="default" name={preview.name} sources={[{ kind: 'VIDEO', projectId, id: preview.id }]}>下载原文件</DownloadButton> : null}
+        </>}>
         {downloadError ? <Alert type="error" showIcon title={downloadError} className={styles.downloadError} /> : null}
         {preview ? <div className={styles.preview}>
           {preview.resourceType === 'AI_IMAGE_RESULT' ? (
@@ -297,6 +306,8 @@ function ProjectAssetLibrary({ tenantId }: { tenantId?: number }) {
           )}
         </div> : null}
       </Modal> : null}
+      {projectId && audioExtraction && canExtractVideoAudio(project) ? <VideoAudioExtractionModal projectId={projectId}
+        resultId={audioExtraction.id} projectName={project?.name} sourceName={audioExtraction.name} onClose={() => setAudioExtraction(undefined)} /> : null}
     </main>
   );
 }

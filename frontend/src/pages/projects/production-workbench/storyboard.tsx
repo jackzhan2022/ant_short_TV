@@ -111,6 +111,8 @@ import {
 } from './useStoryboardVideoSettings';
 import useSubtitleEraseTasks from './useSubtitleEraseTasks';
 import VideoFrameCaptureModal from './VideoFrameCaptureModal';
+import VideoAudioExtractionModal from './VideoAudioExtractionModal';
+import { canExtractVideoAudio } from './video-audio-extraction';
 
 type PromptReferenceOption = Extract<StoryboardPromptNode, { type: 'mention' }>;
 type VideoSubmission = {
@@ -168,6 +170,11 @@ const ProductionWorkbenchStoryboard = () => {
     storyboardNo: number;
   }>();
   useEffect(() => setFrameCapture(undefined), [projectId]);
+  const [audioExtraction, setAudioExtraction] = useState<{
+    resultId: number;
+    storyboardNo: number;
+  }>();
+  useEffect(() => setAudioExtraction(undefined), [projectId]);
   const [subtitleErase, setSubtitleErase] = useState<{
     resultId: number;
     storyboardNo: number;
@@ -2249,6 +2256,7 @@ const ProductionWorkbenchStoryboard = () => {
       resources={{
         projectId,
         canCaptureVideo: project?.capabilities?.canEdit === true,
+        canExtractAudio: canExtractVideoAudio(project),
         characters,
         scenes,
         props,
@@ -2283,6 +2291,10 @@ const ProductionWorkbenchStoryboard = () => {
         capture: (resultId, storyboardNo) => {
           stopActiveVideo();
           setFrameCapture({ resultId, storyboardNo });
+        },
+        extractAudio: (resultId, storyboardNo) => {
+          stopActiveVideo();
+          setAudioExtraction({ resultId, storyboardNo });
         },
         erase: (resultId, storyboardNo) => {
           stopActiveVideo();
@@ -2513,6 +2525,15 @@ const ProductionWorkbenchStoryboard = () => {
               resultId={frameCapture.resultId}
               storyboardNo={frameCapture.storyboardNo}
               onClose={() => setFrameCapture(undefined)}
+            />
+          ) : null}
+          {audioExtraction && canExtractVideoAudio(project) ? (
+            <VideoAudioExtractionModal
+              projectId={projectId}
+              resultId={audioExtraction.resultId}
+              projectName={project?.name}
+              sourceName={`分镜${audioExtraction.storyboardNo} · 视频${audioExtraction.resultId}`}
+              onClose={() => setAudioExtraction(undefined)}
             />
           ) : null}
           {subtitleErase ? (

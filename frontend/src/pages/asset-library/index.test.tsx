@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import AssetLibrary from './index';
 
@@ -90,6 +90,28 @@ it('queries and plays only the selected projects audio assets', async () => {
   expect(mocks.library).toHaveBeenCalledWith(1, expect.objectContaining({ mediaType: 'AUDIO', category: undefined }), expect.any(AbortSignal));
   expect(screen.queryByLabelText('筛选剧集')).not.toBeInTheDocument();
   expect(screen.queryByAltText('角色音色.wav')).not.toBeInTheDocument();
+});
+
+it('opens extraction for the displayed video with the actual project context', async () => {
+  route('/asset-library/projects/1?type=VIDEO');
+  mocks.metadata.mockResolvedValue({ success: true, data: { ...project, effectivePermissions: ['MENU:ASSET_LIBRARY', 'MENU:PROJECTS'] } });
+  mocks.library.mockResolvedValue(response([video]));
+  render(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('button', { name: '预览EP1 · 镜头 1' }));
+  fireEvent.click(screen.getByRole('button', { name: '提取音色' }));
+  const dialog = await screen.findByRole('dialog', { name: /提取音色/ });
+  expect(within(dialog).getByText('长夜未央')).toBeInTheDocument();
+  expect(within(dialog).getByLabelText('音色提取视频预览')).toHaveAttribute('src', '/api/projects/1/ai-video-results/52/frame-source');
+  expect(within(dialog).getByText('保存到 长夜未央 / 项目音频库')).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '保存到项目音频库' })).toBeDisabled();
+});
+
+it('does not expose extraction to a user with only library read access', async () => {
+  route('/asset-library/projects/1?type=VIDEO');
+  mocks.library.mockResolvedValue(response([video]));
+  render(<AssetLibrary />);
+  fireEvent.click(await screen.findByRole('button', { name: '预览EP1 · 镜头 1' }));
+  expect(screen.queryByRole('button', { name: '提取音色' })).not.toBeInTheDocument();
 });
 
 it('searches project folders on the server and paginates without fetching project details', async () => {

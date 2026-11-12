@@ -12,7 +12,7 @@ import type { CharacterAsset, SceneAsset, PropAsset, ScriptEpisode, StoryboardSh
 type Reference = Extract<StoryboardPromptNode, { type: 'mention' }>;
 type Media = ReturnType<typeof useStoryboardMediaController>;
 type Resources = {
-  projectId: number; canCaptureVideo: boolean;
+  projectId: number; canCaptureVideo: boolean; canExtractAudio?: boolean;
   characters: CharacterAsset[]; scenes: SceneAsset[]; props: PropAsset[]; episodes: ScriptEpisode[];
   referenceOptions: Record<'IMAGE' | 'VIDEO' | 'AUDIO', Reference[]>;
   referenceThumbnails: ReadonlyMap<string, string>;
@@ -42,6 +42,7 @@ type ProviderProps = {
   actions: {
     add: (shot: StoryboardShot) => void; copy: (shot: StoryboardShot) => void; remove: (shot: StoryboardShot) => Promise<boolean>;
     capture: (resultId: number, storyboardNo: number) => void;
+    extractAudio?: (resultId: number, storyboardNo: number) => void;
     erase: (resultId: number, storyboardNo: number) => void;
   };
   erasure: { tasks: SubtitleEraseTask[]; previews: Record<number, AiVideoResult>; retry: (id: number) => Promise<void> };
@@ -117,7 +118,7 @@ export function StoryboardCardProvider(input: ProviderProps) {
   const referenceOptions = stableOptions.current;
   const referenceThumbnails = stableThumbnails.current;
   const shared = useMemo(() => ({ ...resources, referenceOptions, referenceThumbnails, generatingReferenceKeys: assets.generating }), [
-    resources.projectId, resources.canCaptureVideo, resources.characters, resources.scenes, resources.props,
+    resources.projectId, resources.canCaptureVideo, resources.canExtractAudio, resources.characters, resources.scenes, resources.props,
     resources.episodes, referenceOptions, referenceThumbnails, resources.model, resources.modelId, resources.aspectRatio, resources.modelConstraints, assets.generating,
   ]);
   return <ScopeContext.Provider value={scope}><ResourceContext.Provider value={shared}>
@@ -199,6 +200,7 @@ export function useStoryboardCardActions(id: number) {
     copy: () => scope.current.actions.copy(shotFor(scope, id)),
     remove: () => scope.current.actions.remove(shotFor(scope, id)),
     capture: (resultId: number, storyboardNo: number) => scope.current.actions.capture(resultId, storyboardNo),
+    extractAudio: (resultId: number, storyboardNo: number) => scope.current.actions.extractAudio?.(resultId, storyboardNo),
     erase: (resultId: number, storyboardNo: number) => scope.current.actions.erase(resultId, storyboardNo),
     uploaded: (reference: Reference) => scope.current.assets.uploaded(reference),
     generateReferenceImage: (reference: StoryboardAssetReference, key: string) => scope.current.assets.generate(reference, key),
