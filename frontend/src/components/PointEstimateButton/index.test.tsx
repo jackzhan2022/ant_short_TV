@@ -63,6 +63,38 @@ afterEach(() => {
 });
 
 describe('live button point estimates', () => {
+  it('shows only rounded points and preserves the provided icon in points mode', async () => {
+    mocks.request.mockResolvedValue(response(127.2, false));
+    render(
+      <PointEstimateButton
+        displayMode="points"
+        icon={<svg data-testid="original-point-icon" />}
+        operations={operations()}
+      >
+        开始创作
+      </PointEstimateButton>,
+    );
+    await advance();
+    const button = screen.getByRole('button', { name: '开始创作' });
+    expect(button.textContent).toBe('128');
+    expect(screen.getByTestId('original-point-icon')).toBeInTheDocument();
+    expect(button).toHaveAccessibleDescription(/积分不足/);
+    expect(button).toBeDisabled();
+  });
+
+  it('shows zero points for an empty project without requesting a quote', async () => {
+    render(
+      <PointEstimateButton displayMode="points" operations={[]}>
+        开始创作
+      </PointEstimateButton>,
+    );
+    await advance();
+    expect(screen.getByRole('button', { name: '开始创作' })).toHaveTextContent(
+      '0',
+    );
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
+
   it('supports compact integer credits without changing the quote or affordability gate', async () => {
     mocks.request.mockResolvedValue(response(127.6, false));
     render(

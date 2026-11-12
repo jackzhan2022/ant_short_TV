@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { App } from 'antd';
+import { App, ConfigProvider } from 'antd';
 
 expect.extend(matchers);
 // 仅隔离本页面测试的框架 locale 收集。
@@ -16,16 +16,20 @@ const mocks = vi.hoisted(() => ({
   team: 1,
   canView: true,
   canManage: true,
+  canManageDramas: false,
   templates: vi.fn(),
   list: vi.fn(),
   apps: vi.fn(),
   enable: vi.fn(),
+  detail: vi.fn(),
+  episodes: vi.fn(),
+  save: vi.fn(),
 }));
 vi.mock('@umijs/max', () => ({
   useAccess: () => ({
     canViewDramas: mocks.canView,
     canManageMiniapps: mocks.canManage,
-    canManageDramas: false,
+    canManageDramas: mocks.canManageDramas,
     canPublishDramas: true,
   }),
   useIntl: () => ({
@@ -47,6 +51,9 @@ vi.mock('./service', () => ({
   listDramas: mocks.list,
   listMiniapps: mocks.apps,
   enableMiniapp: mocks.enable,
+  getDrama: mocks.detail,
+  listEpisodes: mocks.episodes,
+  saveDrama: mocks.save,
   getCodeTemplates: mocks.templates,
   canManageCode: (app: {
     enabled: boolean;
@@ -68,8 +75,24 @@ describe('团队小程序官方入口', () => {
     mocks.team = 1;
     mocks.canView = true;
     mocks.canManage = true;
+    mocks.canManageDramas = false;
     mocks.templates.mockResolvedValue([]);
     mocks.list.mockResolvedValue([]);
+    mocks.detail.mockImplementation(async (id: number) => ({
+      id,
+      title: id === 1 ? '第一部剧' : '第二部剧',
+      createdAt: '2026-11-11T12:00:00',
+    }));
+    mocks.episodes.mockImplementation(async (id: number) => [
+      {
+        id: id * 10,
+        dramaId: id,
+        episodeNo: 1,
+        title: `剧集 ${id} 的第一集`,
+        sourceType: 'LOCAL_UPLOAD',
+        createdAt: '2026-11-11T12:00:00',
+      },
+    ]);
     mocks.apps.mockResolvedValue([
       {
         id: 1,
@@ -94,6 +117,127 @@ describe('团队小程序官方入口', () => {
     expect(container).toBeEmptyDOMElement();
     expect(mocks.list).not.toHaveBeenCalled();
     expect(mocks.apps).not.toHaveBeenCalled();
+  });
+
+  it('轻卡片可搜索简介和排序，浏览不会逐部请求单集', async () => {
+    mocks.list.mockResolvedValue([
+      {
+        id: 1,
+        title: '第一部剧',
+        description: '都市悬疑',
+        createdAt: '2026-11-10T12:00:00',
+      },
+      {
+        id: 2,
+        title: '第二部剧',
+        description: '古装故事',
+        createdAt: '2026-11-11T12:00:00',
+      },
+    ]);
+    render(
+      <App>
+        <DramaLibraryPage />
+      </App>,
+    );
+    await screen.findByRole('article', { name: '剧集：第一部剧' });
+    expect(screen.getAllByRole('article')[0]).toHaveAccessibleName(
+      '剧集：第二部剧',
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索剧名或简介' }), {
+      target: { value: '悬疑' },
+    });
+    expect(
+      screen.queryByRole('article', { name: '剧集：第二部剧' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('article', { name: '剧集：第一部剧' }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索剧名或简介' }), {
+      target: { value: '' },
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '剧集排序' }));
+    fireEvent.click(await screen.findByText('最早创建'));
+    expect(screen.getAllByRole('article')[0]).toHaveAccessibleName(
+      '剧集：第一部剧',
+    );
+    expect(mocks.episodes).not.toHaveBeenCalled();
+    expect(mocks.detail).not.toHaveBeenCalled();
+  });
+
+  it('页内目录返回后保留搜索，切换剧集清除单集选择', async () => {
+    mocks.list.mockResolvedValue([
+      { id: 1, title: '第一部剧', createdAt: '2026-11-11T12:00:00' },
+      { id: 2, title: '第二部剧', createdAt: '2026-11-10T12:00:00' },
+    ]);
+    render(
+      <App>
+        <DramaLibraryPage />
+      </App>,
+    );
+    await screen.findByRole('article', { name: '剧集：第一部剧' });
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索剧名或简介' }), {
+      target: { value: '第一' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '单集目录' }));
+    await screen.findByText('剧集 1 的第一集');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByRole('status', { name: '已选单集' })).toHaveTextContent(
+      '已选 1 集',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '全部剧集' }));
+    expect(screen.getByRole('textbox', { name: '搜索剧名或简介' })).toHaveValue(
+      '第一',
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索剧名或简介' }), {
+      target: { value: '第二' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '单集目录' }));
+    await screen.findByText('剧集 2 的第一集');
+    expect(screen.getByRole('status', { name: '已选单集' })).toHaveTextContent(
+      '已选 0 集',
+    );
+    expect(mocks.detail).toHaveBeenLastCalledWith(2);
+    expect(mocks.episodes).toHaveBeenLastCalledWith(2);
+  });
+
+  it('目录编辑后同步标题，二次编辑使用最新内容且保留单集选择', async () => {
+    mocks.canManageDramas = true;
+    mocks.list.mockResolvedValue([
+      { id: 1, title: '第一部剧', createdAt: '2026-11-11T12:00:00' },
+    ]);
+    mocks.save.mockImplementation(
+      async (values: { title: string; description?: string }, id: number) => ({
+        id,
+        ...values,
+        createdAt: '2026-11-11T12:00:00',
+      }),
+    );
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <App>
+          <DramaLibraryPage />
+        </App>
+      </ConfigProvider>,
+    );
+    await screen.findByRole('article', { name: '剧集：第一部剧' });
+    fireEvent.click(screen.getByRole('button', { name: '单集目录' }));
+    await screen.findByText('剧集 1 的第一集');
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('button', { name: /编辑剧集/ }));
+    fireEvent.change(screen.getByLabelText('剧名'), {
+      target: { value: '新的剧名' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /OK|确\s*定/ }));
+    await screen.findByRole('heading', { name: '新的剧名', level: 1 });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('status', { name: '已选单集' })).toHaveTextContent(
+      '已选 1 集',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /编辑剧集/ }));
+    expect(screen.getByLabelText('剧名')).toHaveValue('新的剧名');
   });
 
   it('权限撤销后卸载管理页面与授权入口', async () => {

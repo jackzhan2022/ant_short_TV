@@ -8,7 +8,18 @@ import {
   ProFormTextArea,
 } from '@ant-design/pro-components';
 import { useAccess } from '@umijs/max';
-import { App, Button, Form, Modal, Popconfirm, Space, Table, Tabs, Tag, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Form,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+} from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
@@ -19,17 +30,20 @@ import {
   revokePointPrice,
 } from '@/services/ant-design-pro/platformAiAccountingController';
 import { metricText } from '@/utils/fieldDictionary';
+import { useAdminStyles } from '../admin-ui';
 import {
   buildPointComponents,
   findEffectiveCostVersion,
   formatBillingUnit,
   formatPricingDimensions,
-  parsePricingDimensions,
   type PricingComponent,
+  parsePricingDimensions,
 } from './pricingEntry';
 
 type PriceKind = 'cost' | 'point';
-type PriceVersion = API.ModelPriceVersionResponse | API.ModelPointPriceVersionResponse;
+type PriceVersion =
+  | API.ModelPriceVersionResponse
+  | API.ModelPointPriceVersionResponse;
 type FormValues = {
   effectiveFrom: string | Dayjs;
   effectiveTo?: string | Dayjs;
@@ -65,7 +79,9 @@ const metricOptions = [
 ].map(([value, label]) => ({ value, label }));
 
 function isoLocalDateTime(value: string | Dayjs): string;
-function isoLocalDateTime(value: string | Dayjs | undefined): string | undefined;
+function isoLocalDateTime(
+  value: string | Dayjs | undefined,
+): string | undefined;
 function isoLocalDateTime(value?: string | Dayjs) {
   if (dayjs.isDayjs(value)) return value.format('YYYY-MM-DDTHH:mm:ss');
   return value?.replace(
@@ -77,12 +93,20 @@ function isoLocalDateTime(value?: string | Dayjs) {
 const lifecycle = (version: PriceVersion) => {
   if (version.status === 'REVOKED') return { text: '已撤销', color: 'default' };
   const now = dayjs();
-  if (version.effectiveFrom && now.isBefore(version.effectiveFrom)) return { text: '待生效', color: 'blue' };
-  if (version.effectiveTo && !now.isBefore(version.effectiveTo)) return { text: '已过期', color: 'default' };
+  if (version.effectiveFrom && now.isBefore(version.effectiveFrom))
+    return { text: '待生效', color: 'blue' };
+  if (version.effectiveTo && !now.isBefore(version.effectiveTo))
+    return { text: '已过期', color: 'default' };
   return { text: '生效中', color: 'green' };
 };
 
-const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDialogProps) => {
+const ModelPricingDialog = ({
+  model,
+  open,
+  onClose,
+  onChanged,
+}: ModelPricingDialogProps) => {
+  const { styles } = useAdminStyles();
   const { message } = App.useApp();
   const access = useAccess();
   const [history, setHistory] = useState<API.ModelBillingHistoryResponse>();
@@ -142,7 +166,8 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
   };
 
   const revoke = async (kind: PriceKind, versionId: number) => {
-    if (kind === 'cost') await revokeCostPrice({ modelId: model.id, versionId });
+    if (kind === 'cost')
+      await revokeCostPrice({ modelId: model.id, versionId });
     else await revokePointPrice({ modelId: model.id, versionId });
     message.success('未来版本已撤销');
     await load();
@@ -155,29 +180,58 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
       size="small"
       loading={loading}
       pagination={false}
+      scroll={{ x: 900 }}
       dataSource={versions}
       columns={[
-        { title: '版本', dataIndex: 'versionNo', width: 90, render: (value) => `v${value}` },
         {
-          title: '状态', width: 100, render: (_, record) => {
+          title: '版本',
+          dataIndex: 'versionNo',
+          width: 90,
+          render: (value) => `v${value}`,
+        },
+        {
+          title: '状态',
+          width: 100,
+          render: (_, record) => {
             const state = lifecycle(record);
             return <Tag color={state.color}>{state.text}</Tag>;
           },
         },
         { title: '生效时间', dataIndex: 'effectiveFrom', width: 190 },
-        { title: '失效时间', dataIndex: 'effectiveTo', width: 190, render: (value) => value ?? '-' },
         {
-          title: '计费项', render: (_, record) => (
+          title: '失效时间',
+          dataIndex: 'effectiveTo',
+          width: 190,
+          render: (value) => value ?? '-',
+        },
+        {
+          title: '计费项',
+          render: (_, record) => (
             <Space orientation="vertical" size={2}>
               {(record.components ?? []).map((component: PricingComponent) => (
-                <Space orientation="vertical" size={0} key={component.id ?? `${component.metric}:${formatPricingDimensions(component.dimensions)}`}>
+                <Space
+                  orientation="vertical"
+                  size={0}
+                  key={
+                    component.id ??
+                    `${component.metric}:${formatPricingDimensions(component.dimensions)}`
+                  }
+                >
                   <Typography.Text>
-                    {metricText(component.metric ?? '')} / {formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}:{' '}
+                    {metricText(component.metric ?? '')} /{' '}
+                    {formatBillingUnit(
+                      component.metric ?? '',
+                      component.unitSize ?? 0,
+                    )}
+                    :{' '}
                     {kind === 'cost'
                       ? `${(component as API.ModelPriceComponentResponse).unitPrice} ${(component as API.ModelPriceComponentResponse).currency}`
                       : `${(component as API.PointPolicyComponentResponse).pointRate} 积分`}
                   </Typography.Text>
-                  <Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+                  <Typography.Text
+                    type="secondary"
+                    style={{ whiteSpace: 'pre-wrap' }}
+                  >
                     {Object.keys(component.dimensions ?? {}).length === 0
                       ? '计费条件：{}（默认兜底）'
                       : `计费条件：${formatPricingDimensions(component.dimensions)}`}
@@ -188,15 +242,26 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
           ),
         },
         {
-          title: '操作', width: 90, render: (_, record) => {
+          title: '操作',
+          width: 90,
+          render: (_, record) => {
             const versionId = record.id;
-            const canRevoke = versionId != null && lifecycle(record).text === '待生效'
-              && access.canPublishModelBilling;
+            const canRevoke =
+              versionId != null &&
+              lifecycle(record).text === '待生效' &&
+              access.canPublishModelBilling;
             return canRevoke ? (
-              <Popconfirm title="确认撤销该未来版本？" onConfirm={() => revoke(kind, versionId)}>
-                <Button type="link" danger>撤销</Button>
+              <Popconfirm
+                title="确认撤销该未来版本？"
+                onConfirm={() => revoke(kind, versionId)}
+              >
+                <Button type="link" danger>
+                  撤销
+                </Button>
               </Popconfirm>
-            ) : '-';
+            ) : (
+              '-'
+            );
           },
         },
       ]}
@@ -206,13 +271,14 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
   const generatePointComponents = () => {
     const values = pointForm.getFieldsValue();
     const effectiveFrom = isoLocalDateTime(values.effectiveFrom);
-    const costVersion = effectiveFrom && findEffectiveCostVersion(
-      history?.costPrices ?? [],
-      effectiveFrom,
-    );
+    const costVersion =
+      effectiveFrom &&
+      findEffectiveCostVersion(history?.costPrices ?? [], effectiveFrom);
 
     if (!costVersion) {
-      message.warning('该生效时间没有可用的已发布成本价，请先发布成本价或调整生效时间');
+      message.warning(
+        '该生效时间没有可用的已发布成本价，请先发布成本价或调整生效时间',
+      );
       return;
     }
 
@@ -232,9 +298,13 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
   const editor = (kind: PriceKind) => (
     <ModalForm<FormValues>
       title={kind === 'cost' ? '发布成本价' : '发布积分价'}
-      trigger={<Button type="primary" icon={<PlusOutlined />}>{kind === 'cost' ? '发布成本价' : '发布积分价'}</Button>}
+      trigger={
+        <Button type="primary" icon={<PlusOutlined />}>
+          {kind === 'cost' ? '发布成本价' : '发布积分价'}
+        </Button>
+      }
       onFinish={(values) => publish(kind, values)}
-      modalProps={{ destroyOnHidden: true }}
+      modalProps={{ destroyOnHidden: true, rootClassName: styles.overlay }}
       form={kind === 'cost' ? costForm : pointForm}
       onOpenChange={(visible) => {
         if (visible) {
@@ -247,17 +317,42 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
           });
         }
       }}
-      initialValues={{ effectiveFrom: dayjs(), components: [{ unitSize: 1, currency: 'USD' }] }}
+      initialValues={{
+        effectiveFrom: dayjs(),
+        components: [{ unitSize: 1, currency: 'USD' }],
+      }}
     >
-      <ProFormDateTimePicker name="effectiveFrom" label="生效时间" rules={[{ required: true }]} />
+      <ProFormDateTimePicker
+        name="effectiveFrom"
+        label="生效时间"
+        rules={[{ required: true }]}
+      />
       <ProFormDateTimePicker name="effectiveTo" label="失效时间" />
-      {kind === 'point' && <Space align="start">
-        <ProFormDigit name="multiplier" label="倍率" min={0} initialValue={1} rules={[{ required: true }]} />
-        <Button onClick={generatePointComponents}>按倍率生成积分项</Button>
-      </Space>}
-      <ProFormList name="components" label="计费项" min={1} creatorButtonProps={{ creatorButtonText: '添加计费项' }}>
+      {kind === 'point' && (
+        <Space align="start">
+          <ProFormDigit
+            name="multiplier"
+            label="倍率"
+            min={0}
+            initialValue={1}
+            rules={[{ required: true }]}
+          />
+          <Button onClick={generatePointComponents}>按倍率生成积分项</Button>
+        </Space>
+      )}
+      <ProFormList
+        name="components"
+        label="计费项"
+        min={1}
+        creatorButtonProps={{ creatorButtonText: '添加计费项' }}
+      >
         <Space align="start" wrap>
-          <ProFormSelect name="metric" label="指标" options={metricOptions} rules={[{ required: true }]} />
+          <ProFormSelect
+            name="metric"
+            label="指标"
+            options={metricOptions}
+            rules={[{ required: true }]}
+          />
           <ProFormDigit
             name="unitSize"
             label={`计费单位（Token：${formatBillingUnit('INPUT_TOKEN', 1_000_000)}；调用：${formatBillingUnit('CALL', 1)}）`}
@@ -266,7 +361,12 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
           />
           {kind === 'cost' ? (
             <>
-              <ProFormDigit name="unitPrice" label="成本单价" min={0} rules={[{ required: true }]} />
+              <ProFormDigit
+                name="unitPrice"
+                label="成本单价"
+                min={0}
+                rules={[{ required: true }]}
+              />
               <ProFormSelect
                 name="currency"
                 label="币种"
@@ -278,7 +378,12 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
               />
             </>
           ) : (
-            <ProFormDigit name="pointRate" label="积分单价" min={0} rules={[{ required: true }]} />
+            <ProFormDigit
+              name="pointRate"
+              label="积分单价"
+              min={0}
+              rules={[{ required: true }]}
+            />
           )}
         </Space>
         <ProFormTextArea
@@ -288,30 +393,61 @@ const ModelPricingDialog = ({ model, open, onClose, onChanged }: ModelPricingDia
           placeholder='{"resolution":"720p","referenceVideo":"false"}'
           extra="留空或 {} 表示默认兜底；JSON 对象的值必须是字符串。"
           fieldProps={{ autoSize: { minRows: 2, maxRows: 6 } }}
-          rules={[{ validator: async (_: unknown, value?: string) => { parsePricingDimensions(value); } }]}
+          rules={[
+            {
+              validator: async (_: unknown, value?: string) => {
+                parsePricingDimensions(value);
+              },
+            },
+          ]}
         />
       </ProFormList>
     </ModalForm>
   );
 
   return (
-    <Modal title={`${model.name} 模型价格`} open={open} onCancel={onClose} footer={null} width={1000} destroyOnHidden>
-      <Tabs items={[
-        {
-          key: 'cost', label: '供应商成本价',
-          children: <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-            {access.canPublishModelBilling && editor('cost')}
-            {renderVersions('cost', history?.costPrices ?? [])}
-          </Space>,
-        },
-        {
-          key: 'point', label: '用户积分价',
-          children: <Space orientation="vertical" size={16} style={{ width: '100%' }}>
-            {access.canPublishModelBilling && editor('point')}
-            {renderVersions('point', history?.pointPrices ?? [])}
-          </Space>,
-        },
-      ]} />
+    <Modal
+      rootClassName={styles.overlay}
+      title={`${model.name} 模型价格`}
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={1000}
+      destroyOnHidden
+    >
+      <p
+        className={styles.muted}
+        style={{
+          fontSize: 12,
+          margin: '8px 0 20px',
+        }}
+      >
+        查看成本与积分计费项、适用条件和版本生效时间。
+      </p>
+      <Tabs
+        items={[
+          {
+            key: 'cost',
+            label: '供应商成本价',
+            children: (
+              <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                {access.canPublishModelBilling && editor('cost')}
+                {renderVersions('cost', history?.costPrices ?? [])}
+              </Space>
+            ),
+          },
+          {
+            key: 'point',
+            label: '用户积分价',
+            children: (
+              <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                {access.canPublishModelBilling && editor('point')}
+                {renderVersions('point', history?.pointPrices ?? [])}
+              </Space>
+            ),
+          },
+        ]}
+      />
     </Modal>
   );
 };

@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Card,
   DatePicker,
   Descriptions,
   Form,
@@ -16,6 +17,7 @@ import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
 import { useEffect, useState } from 'react';
+import { useStyles } from './index.style';
 import { time } from './presentation';
 import {
   type AlertEvent,
@@ -207,7 +209,9 @@ export function RuleEditor({
         <Form.Item
           name="dimensionsJson"
           label="匹配维度（JSON；只允许团队/项目/服务商/模型/场景/实例/阶段/HTTP路由及方法）"
-          extra={'阶段耗时指标必填 phase，例如 {"phase":"SUBMIT","scene":"FREE_CREATION"}；route、method 仅用于 HTTP 指标。'}
+          extra={
+            '阶段耗时指标必填 phase，例如 {"phase":"SUBMIT","scene":"FREE_CREATION"}；route、method 仅用于 HTTP 指标。'
+          }
           dependencies={['metric']}
           rules={[
             {
@@ -234,7 +238,8 @@ export function RuleEditor({
                 )
                   throw new Error('请输入仅含支持维度的JSON对象');
                 if (
-                  form.getFieldValue('metric') === 'execution.phaseAgeSeconds' &&
+                  form.getFieldValue('metric') ===
+                    'execution.phaseAgeSeconds' &&
                   (!('phase' in dimensions) ||
                     typeof dimensions.phase !== 'string' ||
                     !dimensions.phase.trim())
@@ -266,6 +271,7 @@ export function SettingsPanel({
   editable: boolean;
   saved: () => void;
 }) {
+  const { styles } = useStyles();
   const [form] = Form.useForm<SettingsForm>();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -301,43 +307,7 @@ export function SettingsPanel({
     }
   };
   return (
-    <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-      <Typography.Title level={4}>
-        {editable ? '监控配置' : '只读配置'}
-      </Typography.Title>
-      <Descriptions
-        column={2}
-        items={[
-          {
-            key: 'channel',
-            label: '飞书通道',
-            children: settings
-              ? settings.channelConfigured
-                ? '已配置'
-                : '未配置'
-              : '无数据',
-          },
-          {
-            key: 'signature',
-            label: '签名',
-            children: settings
-              ? settings.signatureConfigured
-                ? '已配置'
-                : '未配置'
-              : '无数据',
-          },
-          {
-            key: 'version',
-            label: '配置版本',
-            children: settings?.version ?? '无数据',
-          },
-          {
-            key: 'instance',
-            label: '实例',
-            children: settings?.instanceId ?? '无数据',
-          },
-        ]}
-      />
+    <div className={styles.settings}>
       <Alert
         type="info"
         title="采集与通知独立控制；初始24小时观察期不会自动启用即时通知"
@@ -358,72 +328,127 @@ export function SettingsPanel({
         disabled={!editable || !settings}
         onFinish={submit}
       >
-        <Space wrap>
-          {(
-            [
-              ['telemetryEnabled', '采集启用'],
-              ['notificationsEnabled', '即时通知启用'],
-              ['persistentDigestEnabled', '持久化小时摘要启用'],
-              ['externalProbeConfigured', '独立外部探测已配置'],
-            ] as const
-          ).map(([name, label]) => (
+        <div className={styles.settingsGrid}>
+          <Card title={editable ? '采集与通知' : '只读配置'} size="small">
+            <p className={styles.settingsDescription}>
+              采集和通知独立控制，观察期结束后仍需手动开启即时通知。
+            </p>
+            <div className={styles.switches}>
+              {(
+                [
+                  ['telemetryEnabled', '采集启用'],
+                  ['notificationsEnabled', '即时通知启用'],
+                  ['persistentDigestEnabled', '持久化小时摘要启用'],
+                  ['externalProbeConfigured', '独立外部探测已配置'],
+                ] as const
+              ).map(([name, label]) => (
+                <Form.Item
+                  key={name}
+                  name={name}
+                  label={label}
+                  valuePropName="checked"
+                >
+                  <Switch />
+                </Form.Item>
+              ))}
+            </div>
             <Form.Item
-              key={name}
-              name={name}
-              label={label}
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
-          ))}
-        </Space>
-        <Form.Item
-          name="observationUntil"
-          label="观察期截止（北京时间）"
-          rules={[{ required: true }]}
-        >
-          <DatePicker showTime />
-        </Form.Item>
-        <Form.Item
-          name="refreshSeconds"
-          label="页面刷新间隔（秒）"
-          rules={[{ required: true }]}
-        >
-          <InputNumber min={5} max={300} precision={0} />
-        </Form.Item>
-        <div className="grid grid-cols-2 gap-x-4 lg:grid-cols-3">
-          {(
-            [
-              ['minuteRetentionDays', '分钟指标/资源'],
-              ['hourlyRetentionDays', '小时指标'],
-              ['eventRetentionDays', '错误事件'],
-              ['projectionRetentionDays', 'AI/执行明细'],
-              ['alertRetentionDays', '告警历史'],
-              ['notificationRetentionDays', '通知记录'],
-            ] as const
-          ).map(([name, label]) => (
-            <Form.Item
-              key={name}
-              name={name}
-              label={`${label}保留（天）`}
+              name="observationUntil"
+              label="观察期截止（北京时间）"
               rules={[{ required: true }]}
             >
-              <InputNumber min={1} max={90} precision={0} />
+              <DatePicker showTime />
             </Form.Item>
-          ))}
+            <Form.Item
+              name="refreshSeconds"
+              label="页面刷新间隔（秒）"
+              rules={[{ required: true }]}
+            >
+              <InputNumber min={5} max={300} precision={0} />
+            </Form.Item>
+          </Card>
+          <Card title="数据保留" size="small">
+            <p className={styles.settingsDescription}>
+              按数据类型设置保留时间；小时数据与告警历史须覆盖对应明细保留期。
+            </p>
+            {(
+              [
+                ['minuteRetentionDays', '分钟指标/资源'],
+                ['hourlyRetentionDays', '小时指标'],
+                ['eventRetentionDays', '错误事件'],
+                ['projectionRetentionDays', 'AI/执行明细'],
+                ['alertRetentionDays', '告警历史'],
+                ['notificationRetentionDays', '通知记录'],
+              ] as const
+            ).map(([name, label]) => (
+              <Form.Item
+                key={name}
+                name={name}
+                label={`${label}保留（天）`}
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={1} max={90} precision={0} />
+              </Form.Item>
+            ))}
+          </Card>
+          <Card title="配置状态" size="small">
+            <p className={styles.settingsDescription}>
+              通道与签名由服务端环境配置，当前页面显示实际配置状态。
+            </p>
+            <Descriptions
+              column={1}
+              items={[
+                {
+                  key: 'channel',
+                  label: '飞书通道',
+                  children: settings
+                    ? settings.channelConfigured
+                      ? '已配置'
+                      : '未配置'
+                    : '无数据',
+                },
+                {
+                  key: 'signature',
+                  label: '签名',
+                  children: settings
+                    ? settings.signatureConfigured
+                      ? '已配置'
+                      : '未配置'
+                    : '无数据',
+                },
+                {
+                  key: 'version',
+                  label: '配置版本',
+                  children: settings?.version ?? '无数据',
+                },
+                {
+                  key: 'instance',
+                  label: '实例',
+                  children: settings?.instanceId ?? '无数据',
+                },
+              ]}
+            />
+          </Card>
         </div>
-        {editable && (
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={saving}
-            disabled={!settings}
-          >
-            保存设置
-          </Button>
-        )}
+        <div className={styles.saveBar}>
+          <p>
+            {editable
+              ? '修改后保存生效；飞书通道与签名由服务端配置。'
+              : '当前配置仅供查看。'}
+          </p>
+          {editable && (
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={saving}
+              disabled={!settings}
+            >
+              保存设置
+            </Button>
+          )}
+        </div>
       </Form>
-    </Space>
+    </div>
   );
 }
 

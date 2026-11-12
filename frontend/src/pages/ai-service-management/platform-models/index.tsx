@@ -15,12 +15,38 @@ import {
   ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
-import { App, Button, Form, Space, Switch, Tag, Typography } from 'antd';
+import { useAccess } from '@umijs/max';
+import {
+  App,
+  Button,
+  Descriptions,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Space,
+  Switch,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import dayjs from 'dayjs';
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAccess } from '@umijs/max';
+import { billingHistory } from '@/services/ant-design-pro/platformAiAccountingController';
+import {
+  serviceTypeText as displayServiceTypeText,
+  metricText,
+} from '@/utils/fieldDictionary';
+import { AdminHeading, useAdminStyles } from '../admin-ui';
+import ModelPricingDialog from '../billing/ModelPricingDialog';
+import {
+  formatBillingUnit,
+  formatPricingDimensions,
+  type PricingComponent,
+} from '../billing/pricingEntry';
 import type {
+  AiModelParameterFormValues,
   PlatformModel,
   PlatformModelFormValues,
   PlatformModelServiceType,
@@ -28,37 +54,40 @@ import type {
 } from '../platform-service';
 import {
   createPlatformModel,
+  queryModelParameters,
   queryPlatformModels,
   queryPlatformProviders,
   setDefaultPlatformModel,
+  updateModelParameters,
   updatePlatformModel,
   updatePlatformModelStatus,
-  queryModelParameters,
-  updateModelParameters,
 } from '../platform-service';
-import type { AiModelParameterFormValues } from '../platform-service';
-import ModelPricingDialog from '../billing/ModelPricingDialog';
-import { billingHistory } from '@/services/ant-design-pro/platformAiAccountingController';
-import { serviceTypeText as displayServiceTypeText } from '@/utils/fieldDictionary';
 
 type ModelWithPrice = PlatformModel & {
   currentCostPrice?: string;
   currentPointPrice?: string;
 };
 
-const activePrice = <T extends { status?: string; effectiveFrom?: string; effectiveTo?: string }>(
+const activePrice = <
+  T extends { status?: string; effectiveFrom?: string; effectiveTo?: string },
+>(
   versions: T[] | undefined,
-) => versions?.find((version) =>
-  version.status !== 'REVOKED'
-  && (!version.effectiveFrom || !dayjs().isBefore(version.effectiveFrom))
-  && (!version.effectiveTo || dayjs().isBefore(version.effectiveTo)),
-);
+) =>
+  versions?.find(
+    (version) =>
+      version.status !== 'REVOKED' &&
+      (!version.effectiveFrom || !dayjs().isBefore(version.effectiveFrom)) &&
+      (!version.effectiveTo || dayjs().isBefore(version.effectiveTo)),
+  );
 
 const formatCostPrice = (history: API.ModelBillingHistoryResponse) => {
   const version = activePrice(history.costPrices);
   if (!version?.components?.length) return '-';
   return version.components
-    .map((component) => `${component.metric}: ${component.unitPrice} ${component.currency}`)
+    .map(
+      (component: PricingComponent) =>
+        `${metricText(component.metric)} ${component.unitPrice} ${component.currency} / ${formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}${Object.keys(component.dimensions ?? {}).length ? `（${formatPricingDimensions(component.dimensions)}）` : ''}`,
+    )
     .join('；');
 };
 
@@ -66,7 +95,10 @@ const formatPointPrice = (history: API.ModelBillingHistoryResponse) => {
   const version = activePrice(history.pointPrices);
   if (!version?.components?.length) return '-';
   return version.components
-    .map((component) => `${component.metric}: ${component.pointRate} 积分`)
+    .map(
+      (component: PricingComponent) =>
+        `${metricText(component.metric)} ${component.pointRate} 积分 / ${formatBillingUnit(component.metric ?? '', component.unitSize ?? 0)}${Object.keys(component.dimensions ?? {}).length ? `（${formatPricingDimensions(component.dimensions)}）` : ''}`,
+    )
     .join('；');
 };
 
@@ -94,14 +126,6 @@ const serviceTypeOptions: Array<{
   { label: '音频', value: 'AUDIO' },
 ];
 
-const serviceTypeValueEnum = {
-  TEXT: { text: '文本' },
-  IMAGE: { text: '图片' },
-  VIDEO: { text: '视频' },
-  VIDEO_UNDERSTANDING: { text: '视频理解' },
-  AUDIO: { text: '音频' },
-};
-
 const ModelEditor = ({
   record,
   providers,
@@ -113,6 +137,7 @@ const ModelEditor = ({
   trigger: ReactElement;
   onDone: () => void;
 }) => {
+  const { styles } = useAdminStyles();
   const [form] = Form.useForm<PlatformModelFormValues>();
   const { message } = App.useApp();
   const isEdit = Boolean(record);
@@ -155,7 +180,7 @@ const ModelEditor = ({
       title={isEdit ? '编辑 AI 大模型' : '新增 AI 大模型'}
       form={form}
       trigger={trigger}
-      modalProps={{ destroyOnHidden: true }}
+      modalProps={{ destroyOnHidden: true, rootClassName: styles.overlay }}
       onFinish={async (values) => {
         if (record) {
           await updatePlatformModel(record.id, values);
@@ -214,15 +239,26 @@ const ModelEditor = ({
   );
 };
 
-const ModelParameterEditor = ({ model, onDone }: { model: PlatformModel; onDone: () => void }) => {
+const ModelParameterEditor = ({
+  model,
+  onDone,
+}: {
+  model: PlatformModel;
+  onDone: () => void;
+}) => {
+  const { styles } = useAdminStyles();
   const [form] = Form.useForm<AiModelParameterFormValues>();
   const { message } = App.useApp();
   return (
     <ModalForm<AiModelParameterFormValues>
       title={`配置参数：${model.name}`}
-      trigger={<Button type="link" icon={<SettingOutlined />}>参数</Button>}
+      trigger={
+        <Button type="link" icon={<SettingOutlined />}>
+          参数
+        </Button>
+      }
       form={form}
-      modalProps={{ destroyOnHidden: true }}
+      modalProps={{ destroyOnHidden: true, rootClassName: styles.overlay }}
       request={async () => {
         const response = await queryModelParameters(model.id);
         const data = response.data;
@@ -236,17 +272,47 @@ const ModelParameterEditor = ({ model, onDone }: { model: PlatformModel; onDone:
         return true;
       }}
     >
-      <ProFormDigit name="temperature" label="Temperature" min={0} max={2} step={0.1} rules={[{ required: true }]} />
+      <ProFormDigit
+        name="temperature"
+        label="Temperature"
+        min={0}
+        max={2}
+        step={0.1}
+        rules={[{ required: true }]}
+      />
       <ProFormDigit name="topP" label="Top P" min={0} max={1} step={0.1} />
-      <ProFormDigit name="maxTokens" label="最大输出 Token" min={256} max={128000} rules={[{ required: true }]} />
+      <ProFormDigit
+        name="maxTokens"
+        label="最大输出 Token"
+        min={256}
+        max={128000}
+        rules={[{ required: true }]}
+      />
       <ProFormSwitch name="jsonMode" label="JSON 输出模式" />
-      <ProFormDigit name="timeoutSeconds" label="超时（秒）" min={5} max={180} rules={[{ required: true }]} />
-      <ProFormDigit name="retryCount" label="重试次数" min={0} max={3} rules={[{ required: true }]} />
+      <ProFormDigit
+        name="timeoutSeconds"
+        label="超时（秒）"
+        min={5}
+        max={180}
+        rules={[{ required: true }]}
+      />
+      <ProFormDigit
+        name="retryCount"
+        label="重试次数"
+        min={0}
+        max={3}
+        rules={[{ required: true }]}
+      />
     </ModalForm>
   );
 };
 
 const PlatformModelsPage = () => {
+  const { styles } = useAdminStyles();
+  const [search, setSearch] = useState('');
+  const [serviceType, setServiceType] = useState<string>();
+  const [status, setStatus] = useState<string>();
+  const [detailModel, setDetailModel] = useState<ModelWithPrice>();
   const actionRef = useRef<ActionType | null>(null);
   const { message } = App.useApp();
   const access = useAccess();
@@ -267,100 +333,125 @@ const PlatformModelsPage = () => {
     [providers],
   );
 
+  const priceSummary = (value?: string) => {
+    const parts = (value || '-').split('；');
+    return (
+      <Tooltip
+        title={<div style={{ whiteSpace: 'pre-wrap' }}>{parts.join('\n')}</div>}
+      >
+        <div className={styles.summary}>
+          {[...new Set(parts)].slice(0, 2).map((part) => {
+            const text = part.split('（')[0];
+            const [price, unit] = text.split(' / ');
+            return (
+              <div key={part}>
+                <span>{price}</span>
+                {unit && (
+                  <div>
+                    <small>
+                      / {unit}
+                      {part.includes('（') ? ' · 条件价' : ''}
+                    </small>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {parts.length > 2 && (
+            <small>另 {parts.length - 2} 项 · 查看完整价格</small>
+          )}
+        </div>
+      </Tooltip>
+    );
+  };
+
   const columns: ProColumns<ModelWithPrice>[] = [
     {
-      title: '模型',
+      title: '模型名称 / 编码',
       dataIndex: 'name',
-      width: 220,
+      width: 200,
       render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{record.name}</Typography.Text>
-          <Typography.Text type="secondary">{record.code}</Typography.Text>
-        </Space>
+        <div className={styles.name}>
+          <span className={styles.mark}>
+            {displayServiceTypeText(record.serviceType).slice(0, 1)}
+          </span>
+          <div>
+            <Space size={2}>
+              <Typography.Text strong>{record.name}</Typography.Text>
+              <Button
+                aria-label={
+                  record.isDefault
+                    ? `当前默认模型：${record.name}`
+                    : `设为默认模型：${record.name}`
+                }
+                size="small"
+                type="text"
+                disabled={
+                  !access.canEditPlatformAiModels || record.status !== 'ENABLED'
+                }
+                icon={
+                  record.isDefault ? (
+                    <StarFilled style={{ color: '#faad14' }} />
+                  ) : (
+                    <StarOutlined />
+                  )
+                }
+                onClick={async () => {
+                  if (record.isDefault) {
+                    return;
+                  }
+                  await setDefaultPlatformModel(record.id);
+                  message.success('已设为默认模型');
+                  reload();
+                }}
+              />
+            </Space>
+            <div className={styles.secondary}>{record.code}</div>
+          </div>
+        </div>
       ),
     },
     {
-      title: '服务类型',
-      dataIndex: 'serviceType',
-      valueEnum: serviceTypeValueEnum,
-      width: 110,
-      render: (_, record) => (
-        <Tag>{displayServiceTypeText(record.serviceType)}</Tag>
-      ),
-    },
-    {
-      title: '模型服务商',
+      title: '服务商 / 能力',
       dataIndex: 'providerName',
-      search: false,
-      width: 180,
-      renderText: (value, record) =>
-        value || providerNameMap.get(record.providerId) || '-',
-    },
-    {
-      title: '真实模型编码',
-      dataIndex: 'modelCode',
-      search: false,
-      ellipsis: true,
-      width: 220,
-    },
-    {
-      title: '能力',
-      dataIndex: 'capabilities',
-      search: false,
-      width: 220,
-      render: (_, record) =>
-        (record.capabilities || []).map((item) => <Tag key={item}>{item}</Tag>),
+      width: 125,
+      render: (_, record) => (
+        <div className={styles.summary}>
+          <span>
+            {record.providerName ||
+              providerNameMap.get(record.providerId) ||
+              '-'}
+          </span>
+          <div>
+            <Tag>{displayServiceTypeText(record.serviceType)}</Tag>
+            {(record.capabilities || []).map((item) => (
+              <Tag key={item}>{item}</Tag>
+            ))}
+          </div>
+        </div>
+      ),
     },
     {
       title: '当前成本价',
       dataIndex: 'currentCostPrice',
-      search: false,
-      width: 180,
-      ellipsis: true,
+      width: 175,
       renderText: (value) => value ?? '-',
+      render: (_, record) => priceSummary(record.currentCostPrice),
     },
     {
       title: '当前积分价',
       dataIndex: 'currentPointPrice',
-      search: false,
-      width: 180,
-      ellipsis: true,
+      width: 175,
       renderText: (value) => value ?? '-',
-    },
-    {
-      title: '默认',
-      dataIndex: 'isDefault',
-      search: false,
-      align: 'center',
-      width: 100,
-      render: (_, record) => (
-        <Button
-          type="text"
-          disabled={!access.canEditPlatformAiModels || record.status !== 'ENABLED'}
-          icon={
-            record.isDefault ? (
-              <StarFilled style={{ color: '#faad14' }} />
-            ) : (
-              <StarOutlined />
-            )
-          }
-          onClick={async () => {
-            if (record.isDefault) {
-              return;
-            }
-            await setDefaultPlatformModel(record.id);
-            message.success('已设为默认模型');
-            reload();
-          }}
-        />
-      ),
+      render: (_, record) => priceSummary(record.currentPointPrice),
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 110,
+      width: 70,
       render: (_, record) => (
         <Switch
+          size="small"
           checked={record.status === 'ENABLED'}
           checkedChildren="启用"
           unCheckedChildren="停用"
@@ -374,19 +465,15 @@ const PlatformModelsPage = () => {
       ),
     },
     {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      valueType: 'dateTime',
-      search: false,
-      width: 180,
-    },
-    {
       title: '操作',
       valueType: 'option',
-      width: 120,
+      width: 185,
       fixed: 'right',
       render: (_, record) => (
-        <Space size={0}>
+        <Space size={0} wrap>
+          <Button type="link" onClick={() => setDetailModel(record)}>
+            详情
+          </Button>
           {access.canViewModelBilling && (
             <Button type="link" onClick={() => setPricingModel(record)}>
               模型价格
@@ -413,30 +500,87 @@ const PlatformModelsPage = () => {
   ];
 
   return (
-    <>
+    <div className={styles.page}>
+      <AdminHeading
+        title="AI 大模型"
+        description="配置模型能力、调用状态与计费规则。"
+      />
       <ProTable<ModelWithPrice>
+        className={styles.compactTable}
+        params={{ search, serviceType, status }}
+        toolbar={{
+          filter: (
+            <Space wrap>
+              <Select
+                allowClear
+                aria-label="模型服务类型"
+                placeholder="全部类型"
+                options={serviceTypeOptions}
+                value={serviceType}
+                onChange={setServiceType}
+                style={{ width: 135 }}
+              />
+              <Input.Search
+                allowClear
+                placeholder="搜索模型名称或编码"
+                onSearch={setSearch}
+                style={{ width: 245 }}
+              />
+              <Select
+                allowClear
+                aria-label="模型状态"
+                placeholder="全部状态"
+                value={status}
+                onChange={setStatus}
+                style={{ width: 120 }}
+                options={[
+                  { label: '启用', value: 'ENABLED' },
+                  { label: '停用', value: 'DISABLED' },
+                ]}
+              />
+            </Space>
+          ),
+        }}
+        options={{
+          density: false,
+          setting: false,
+          fullScreen: false,
+          reload: true,
+        }}
         actionRef={actionRef}
         rowKey="id"
-        headerTitle="AI 大模型"
+        headerTitle={false}
         columns={columns}
         search={false}
         tableLayout="fixed"
-        scroll={{ x: 1400 }}
+        scroll={{ x: 930 }}
         request={async () => {
           if (!access.canViewPlatformAiModels) {
             return { data: [], success: true };
           }
           const response = await queryPlatformModels();
-          const models = response.data ?? [];
+          const models = (response.data ?? []).filter(
+            (model) =>
+              (!serviceType || model.serviceType === serviceType) &&
+              (!status || model.status === status) &&
+              (!search ||
+                `${model.name} ${model.code} ${model.modelCode}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase())),
+          );
           const prices = access.canViewModelBilling
-            ? await Promise.all(models.map(async (model) => {
-              try {
-                const response = await billingHistory({ modelId: model.id });
-                return [model.id, response.data] as const;
-              } catch {
-                return [model.id, undefined] as const;
-              }
-            }))
+            ? await Promise.all(
+                models.map(async (model) => {
+                  try {
+                    const response = await billingHistory({
+                      modelId: model.id,
+                    });
+                    return [model.id, response.data] as const;
+                  } catch {
+                    return [model.id, undefined] as const;
+                  }
+                }),
+              )
             : [];
           const priceMap = new Map(prices);
           return {
@@ -481,7 +625,104 @@ const PlatformModelsPage = () => {
           onChanged={reload}
         />
       )}
-    </>
+      <Drawer
+        title="模型详情"
+        rootClassName={styles.overlay}
+        open={Boolean(detailModel)}
+        onClose={() => setDetailModel(undefined)}
+        size={640}
+        destroyOnHidden
+      >
+        {detailModel && (
+          <>
+            <AdminHeading
+              title={detailModel.name}
+              description={detailModel.code}
+            />
+            <Descriptions
+              column={1}
+              items={[
+                {
+                  key: 'provider',
+                  label: '服务商',
+                  children:
+                    detailModel.providerName ||
+                    providerNameMap.get(detailModel.providerId) ||
+                    '-',
+                },
+                {
+                  key: 'modelCode',
+                  label: '真实模型编码',
+                  children: detailModel.modelCode,
+                },
+                {
+                  key: 'type',
+                  label: '服务类型',
+                  children: displayServiceTypeText(detailModel.serviceType),
+                },
+                {
+                  key: 'capabilities',
+                  label: '能力',
+                  children: detailModel.capabilities?.join('、') || '-',
+                },
+                {
+                  key: 'status',
+                  label: '状态',
+                  children: detailModel.status === 'ENABLED' ? '启用' : '停用',
+                },
+                {
+                  key: 'default',
+                  label: '默认模型',
+                  children: detailModel.isDefault ? '是' : '否',
+                },
+                { key: 'sort', label: '排序', children: detailModel.sort },
+                {
+                  key: 'description',
+                  label: '描述',
+                  children: detailModel.description || '-',
+                },
+                {
+                  key: 'updatedAt',
+                  label: '更新时间',
+                  children: detailModel.updatedAt,
+                },
+                ...(access.canViewModelBilling
+                  ? [
+                      {
+                        key: 'cost',
+                        label: '当前成本价',
+                        children: (
+                          <div style={{ whiteSpace: 'pre-wrap' }}>
+                            {detailModel.currentCostPrice
+                              ?.split('；')
+                              .join('\n')}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'point',
+                        label: '当前积分价',
+                        children: (
+                          <div style={{ whiteSpace: 'pre-wrap' }}>
+                            {detailModel.currentPointPrice
+                              ?.split('；')
+                              .join('\n')}
+                          </div>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            {access.canViewModelBilling && (
+              <Button onClick={() => setPricingModel(detailModel)}>
+                查看价格版本与完整计费条件
+              </Button>
+            )}
+          </>
+        )}
+      </Drawer>
+    </div>
   );
 };
 

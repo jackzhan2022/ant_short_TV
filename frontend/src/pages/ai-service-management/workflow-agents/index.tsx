@@ -28,6 +28,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AdminEmpty, AdminHeading, useAdminStyles } from '../admin-ui';
 import type { PlatformModel } from '../platform-service';
 import { queryPlatformModels } from '../platform-service';
 import type {
@@ -100,6 +101,7 @@ const RunDrawer = ({
   open: boolean;
   onClose: () => void;
 }) => {
+  const { styles } = useAdminStyles();
   const [form] = Form.useForm<WorkflowRunInput>();
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<WorkflowRunDetail>();
@@ -123,6 +125,7 @@ const RunDrawer = ({
 
   return (
     <Drawer
+      rootClassName={styles.overlay}
       title="测试 Agent 配置"
       open={open}
       size="large"
@@ -140,11 +143,7 @@ const RunDrawer = ({
         title="测试使用当前表单配置，不会覆盖已保存的 Agent。"
         style={{ marginBottom: 16 }}
       />
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{ input: '' }}
-      >
+      <Form form={form} layout="vertical" initialValues={{ input: '' }}>
         <Form.Item
           name="input"
           label="输入内容"
@@ -207,6 +206,7 @@ const RunDrawer = ({
 };
 
 const WorkflowAgentsPage = () => {
+  const { styles } = useAdminStyles();
   const access = useAccess();
   const editable = Boolean(access.canEditWorkflowAgents);
   const { message } = App.useApp();
@@ -244,10 +244,13 @@ const WorkflowAgentsPage = () => {
       setHistoryDetail(response.data);
     } catch (caught) {
       if (requestId === historyDetailRequest.current) {
-        setHistoryDetailError(errorMessage(caught, '加载运行详情失败，请关闭后重试'));
+        setHistoryDetailError(
+          errorMessage(caught, '加载运行详情失败，请关闭后重试'),
+        );
       }
     } finally {
-      if (requestId === historyDetailRequest.current) setHistoryDetailLoading(false);
+      if (requestId === historyDetailRequest.current)
+        setHistoryDetailLoading(false);
     }
   };
   const promptCursor = useRef(0);
@@ -377,53 +380,94 @@ const WorkflowAgentsPage = () => {
       {
         title: 'Agent',
         dataIndex: 'name',
+        width: 190,
         render: (_, record) => (
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.name}</Typography.Text>
-            <Typography.Text type="secondary">{record.code}</Typography.Text>
+            <Typography.Text
+              type="secondary"
+              style={{ maxWidth: 165 }}
+              ellipsis={{ tooltip: record.code }}
+            >
+              {record.code}
+            </Typography.Text>
           </Space>
         ),
       },
       {
         title: '模型',
         dataIndex: 'modelId',
+        width: 135,
+        ellipsis: true,
         render: (id) => models.find((model) => model.id === id)?.name ?? id,
       },
       {
         title: 'Skills',
         dataIndex: 'skillCodes',
+        width: 155,
         render: (codes: string[]) => (
-          <Space wrap>
-            {codes.map((code) => (
-              <Tag key={code}>{code}</Tag>
-            ))}
-          </Space>
+          <Tooltip title={codes.join('、') || '未配置 Skill'}>
+            <div className={styles.tagGroup}>
+              {codes.slice(0, 2).map((code) => (
+                <Tag key={code}>
+                  {skills.find((skill) => skill.code === code)?.name || code}
+                </Tag>
+              ))}
+              {codes.length > 2 && <small>另 {codes.length - 2} 项</small>}
+              {!codes.length && <small>未配置</small>}
+            </div>
+          </Tooltip>
         ),
       },
       {
         title: '工具',
         dataIndex: 'toolCodes',
+        width: 145,
         render: (codes: string[]) => (
-          <Space wrap>
-            {codes.map((code) => (
-              <Tooltip
-                key={code}
-                title={tools.find((tool) => tool.code === code)?.description}
-              >
-                <Tag color="blue">{code}</Tag>
-              </Tooltip>
-            ))}
-          </Space>
+          <Tooltip
+            title={codes
+              .map(
+                (code) =>
+                  `${code}：${tools.find((tool) => tool.code === code)?.description || ''}`,
+              )
+              .join('；')}
+          >
+            <div className={styles.tagGroup}>
+              {codes.slice(0, 2).map((code) => (
+                <Tooltip
+                  key={code}
+                  title={tools.find((tool) => tool.code === code)?.description}
+                >
+                  <Tag color="blue">
+                    {tools.find((tool) => tool.code === code)?.name || code}
+                  </Tag>
+                </Tooltip>
+              ))}
+              {codes.length > 2 && <small>另 {codes.length - 2} 项</small>}
+              {!codes.length && <small>未配置</small>}
+            </div>
+          </Tooltip>
         ),
       },
-      { title: '更新时间', dataIndex: 'updatedAt', width: 180 },
+      {
+        title: '更新时间',
+        dataIndex: 'updatedAt',
+        width: 110,
+        render: (value: string) => (
+          <div className={styles.summary}>
+            <span>{value?.slice(0, 10)}</span>
+            <small>{value?.slice(11)}</small>
+          </div>
+        ),
+      },
       {
         title: '状态',
         dataIndex: 'status',
-        width: 100,
+        width: 65,
         render: (_, record) =>
           editable ? (
             <Switch
+              size="small"
               checked={record.status === 'ENABLED'}
               checkedChildren="启用"
               unCheckedChildren="停用"
@@ -441,7 +485,8 @@ const WorkflowAgentsPage = () => {
       {
         title: '操作',
         key: 'actions',
-        width: 320,
+        width: 180,
+        fixed: 'right',
         render: (_, record) => (
           <Space wrap>
             {editable && (
@@ -502,46 +547,63 @@ const WorkflowAgentsPage = () => {
         ),
       },
     ],
-    [editable, load, models, tools],
+    [editable, load, models, tools, skills],
   );
 
   return (
     <>
-      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-        <Alert
-          type="info"
-          showIcon
-          title="Agent 是独立的纯文本工具工作流；保存后立即生效，当前不保留配置版本。"
+      <div className={styles.page}>
+        <AdminHeading
+          title={'Agent 管理'}
+          description={
+            '管理模型、Skills 与工具的协作流程，保存后立即生效，当前不保留配置版本。'
+          }
         />
-        <Space wrap>
-          <Input.Search
-            allowClear
-            placeholder="搜索 Agent 名称或 code"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onSearch={(value) => void load(value)}
-            style={{ width: 320 }}
+        <div className={styles.surface}>
+          <div className={styles.filters}>
+            <Space wrap>
+              <Input.Search
+                allowClear
+                placeholder="搜索 Agent 名称或 code"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onSearch={(value) => void load(value)}
+                style={{ width: 320 }}
+              />
+              {editable && (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => openEditor('create')}
+                >
+                  新增 Agent
+                </Button>
+              )}
+            </Space>
+          </div>
+          <Table
+            className={styles.compactTable}
+            size="small"
+            scroll={{ x: 980 }}
+            locale={{
+              emptyText: (
+                <AdminEmpty
+                  title="暂无 Agent"
+                  description="新建 Agent，配置模型与工具工作流。"
+                />
+              ),
+            }}
+            rowKey="code"
+            loading={loading}
+            columns={columns}
+            dataSource={agents}
+            pagination={{ pageSize: 20 }}
           />
-          {editable && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openEditor('create')}
-            >
-              新增 Agent
-            </Button>
-          )}
-        </Space>
-        <Table
-          rowKey="code"
-          loading={loading}
-          columns={columns}
-          dataSource={agents}
-          pagination={{ pageSize: 20 }}
-        />
-      </Space>
+        </div>
+      </div>
 
       <Drawer
+        rootClassName={styles.overlay}
         title={
           mode === 'create'
             ? '新增 Agent'
@@ -747,6 +809,7 @@ const WorkflowAgentsPage = () => {
         onClose={() => setRunOpen(false)}
       />
       <Drawer
+        rootClassName={styles.overlay}
         title="Agent 运行记录"
         open={historyOpen}
         size="large"
@@ -777,6 +840,7 @@ const WorkflowAgentsPage = () => {
         />
       </Drawer>
       <Modal
+        rootClassName={styles.overlay}
         title="Agent 运行详情"
         open={historyDetailOpen}
         loading={historyDetailLoading}
@@ -786,10 +850,18 @@ const WorkflowAgentsPage = () => {
         }}
         footer={null}
         width={1000}
-        styles={{ body: { maxHeight: '70vh', overflow: 'auto', overflowWrap: 'anywhere' } }}
+        styles={{
+          body: {
+            maxHeight: '70vh',
+            overflow: 'auto',
+            overflowWrap: 'anywhere',
+          },
+        }}
         destroyOnHidden
       >
-        {historyDetailError && <Alert type="error" showIcon title={historyDetailError} />}
+        {historyDetailError && (
+          <Alert type="error" showIcon title={historyDetailError} />
+        )}
         {historyDetail && (
           <Space
             orientation="vertical"
@@ -847,10 +919,7 @@ const WorkflowAgentsPage = () => {
             />
             <div>
               <Typography.Title level={5}>提示词快照</Typography.Title>
-              <Typography.Paragraph
-                copyable
-                style={{ whiteSpace: 'pre-wrap' }}
-              >
+              <Typography.Paragraph copyable style={{ whiteSpace: 'pre-wrap' }}>
                 {historyDetail.promptSnapshot}
               </Typography.Paragraph>
             </div>

@@ -160,7 +160,9 @@ describe('WorkflowAgentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /编辑/ }));
     expect(await screen.findByDisplayValue('screenplay-agent')).toBeDisabled();
     expect(screen.getAllByText(/保存后立即生效/).length).toBeGreaterThan(0);
-    expect(screen.getByText('读取剧集')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '读取剧集' }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '读取剧集' }));
     expect(
@@ -201,7 +203,9 @@ describe('WorkflowAgentsPage', () => {
       await screen.findByRole('button', { name: '读取剧集' }),
     );
 
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('读取当前剧集');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '读取当前剧集',
+    );
   });
 
   it('runs unsaved form values without saving the Agent', async () => {
@@ -241,12 +245,20 @@ describe('WorkflowAgentsPage', () => {
 
   it('shows an error in the detail modal when loading fails', async () => {
     mocks.queryRun.mockRejectedValueOnce({});
-    render(<App><WorkflowAgentsPage /></App>);
+    render(
+      <App>
+        <WorkflowAgentsPage />
+      </App>,
+    );
     await screen.findByText('编剧 Agent');
     fireEvent.click(screen.getByRole('button', { name: /运行记录/ }));
     fireEvent.click(await screen.findByRole('button', { name: '详情' }));
-    expect((await screen.findByText('Agent 运行详情')).closest('[role="dialog"]')).toBeInTheDocument();
-    expect(await screen.findByText('加载运行详情失败，请关闭后重试')).toBeInTheDocument();
+    expect(
+      (await screen.findByText('Agent 运行详情')).closest('[role="dialog"]'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('加载运行详情失败，请关闭后重试'),
+    ).toBeInTheDocument();
   });
 
   it('shows failure diagnostics and steps for a historical run', async () => {
@@ -299,6 +311,34 @@ describe('WorkflowAgentsPage', () => {
     expect(screen.getByText('模型未能完成保存')).toBeInTheDocument();
     expect(screen.getByText('save_review_unit_result')).toBeInTheDocument();
     expect(screen.getByText('审核提示词快照')).toBeInTheDocument();
-    expect(screen.getByText('审核提示词快照').closest('[role="dialog"]')).toContainElement(screen.getByText('Agent 运行详情'));
+    expect(
+      screen.getByText('审核提示词快照').closest('[role="dialog"]'),
+    ).toContainElement(screen.getByText('Agent 运行详情'));
+  });
+  it('keeps large Skill lists compact and exposes every reference in a tooltip', async () => {
+    const response = await mocks.queryAgents();
+    response.data[0].skillCodes = [
+      'first-skill',
+      'second-skill',
+      'third-skill',
+      'fourth-skill',
+    ];
+    mocks.queryAgents.mockResolvedValue(response);
+    render(
+      <App>
+        <WorkflowAgentsPage />
+      </App>,
+    );
+    const first = await screen.findByText('first-skill');
+    expect(screen.getByText('second-skill')).toBeInTheDocument();
+    expect(screen.getByText('另 2 项')).toBeInTheDocument();
+    expect(screen.queryByText('third-skill')).not.toBeInTheDocument();
+    const group = first.parentElement;
+    if (!group) throw new Error('Skill group is missing');
+    fireEvent.mouseEnter(group);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(
+      'first-skill、second-skill、third-skill、fourth-skill',
+    );
   });
 });
