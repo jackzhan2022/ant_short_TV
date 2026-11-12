@@ -21,11 +21,33 @@
 
 ## CDN 配置与线上联调
 
-播放域名 `antvcdn.aixmax.cn` 的 Referer 白名单已增加 `servicewechat.com`，同时保留 `aixmax.cn`、`antv.aixmax.cn`。空 Referer 访问仍未启用，Type D / SHA256 鉴权保持原配置。
+播放域名 `antvcdn.aixmax.cn` 的 Referer 白名单已增加 `servicewechat.com`，同时保留 `aixmax.cn`、`antv.aixmax.cn`。后续真机排障经用户授权启用“允许空 Referer 访问”，Type D / SHA256 鉴权保持原配置；调整与对照验证见下文。
 
 配置前，同一签名视频在网页 Referer 下返回 206，微信 Referer 下返回 403。配置后，使用 `https://servicewechat.com/wx2a250e3fe6b31ce4/0/page-frame.html` 复测返回 HTTP 206、1,024 字节、`video/mp4`。
 
 生产联调通过目录读取、非法分页 400、详情、播放签名、历史写入/读取/清空、退出和退出后 401。测试使用独立临时用户会话，临时会话和进度已清理。
+
+## 新禾文创分镜体验内容与播放排障
+
+2026-11-12 将“新禾文创”（tenant 1，非 tenant 37 的“新禾文化”）当前已选、有效的 6 段项目分镜视频，通过后台批量本地导入、媒体检测、发布预检后上架至简行易+体验版。按原分镜顺序连续编排剧库集号，标题保留分镜编号，标注“分镜体验”，不代表整集合成成片；原项目视频及原有剧库 ID 1 保留。
+
+| 剧库 ID | 剧名 | 集号 | 原项目与分镜 |
+| --- | --- | --- | --- |
+| 2 | 海贼时代：替你们活到天亮（分镜体验） | 1—3 | 项目 60，第 1 集分镜 2、3、4 |
+| 3 | 古风探案（分镜体验） | 1—2 | 项目 81，第 1 集分镜 6、7 |
+| 4 | 长篇流程验收（分镜体验） | 1 | 项目 44，第 1 集分镜 1 |
+
+用户反馈点击播放后视频区域报网络异常。同一条有效签名视频的 Range `bytes=0-1` 对照：微信 Referer 返回 206，不带 Referer 返回 403；带微信 Referer 的尾部分段返回 206，HEAD 返回 200。日志可见 iPhone 端详情、播放地址和播放事件请求成功，但这些接口结果不能证明视频画面已经播放，也未捕获原生视频请求的 Referer，故“原生播放器缺少 Referer”仍为排障假设。
+
+用户明确授权开启“允许空 Referer 访问”并复测；若不能解决播放错误则回退。控制台提交并读回 `referer白名单(允许空referer)`，保留现有三项白名单和签名鉴权。配置后 6 段视频使用有效签名、无 Referer、AppleCoreMedia 风格 User-Agent 的 Range 请求均返回 206，微信 Referer 请求仍返回 206；无签名、错误签名和非白名单 Referer 均返回 403。
+
+另使用独立临时会话验证三部剧历史隔离、进度乱序写入防护、非法跨剧单集 404 和退出后 401，临时会话及进度已清理。上述为接口与 CDN 对照验证，不等同于真机验收通过。用户后续询问加载速度和流量，但未明确确认画面、声音、播完、切集、续播及切后台恢复均通过；Android 独立验收仍未完成。
+
+性能诊断发现 6 段文件均为 `ftyp → uuid → free → mdat → moov`，含 `avc1`、`mp4a` 标识，播放索引位于尾部；平均码率约 2.82—7.13 Mbps。检查使用本地文件解析，不是 ffprobe 或真机首帧测量。当前播放器仅预先获取下一集签名地址，没有实现下一集视频字节预加载。
+
+已讨论保留原件、另生成手机播放版本、索引前置及受控预加载的方案，尚未转码、替换线上视频或实施相关代码，不承诺秒开、提速比例或实际节省比例。本轮新增的是内容上架和 CDN 运维调整，无业务源码变更，无微信正式提审。
+
+本地证据位于 `.release/drama-miniapp-20261112/trial-content/`：`manifest.json`、`library-published.png`、`video-header-probe.json`、`multi-content-after-cdn.json`、`cdn-empty-referer-applied.png`、`media-container-check.json`、`media-bitrate-check.json` 和 `acceptance.md`。视频、签名地址、临时运维脚本和二维码继续留在忽略目录，不提交 Git。
 
 ## 微信模板、体验版与合法域名
 
