@@ -1,6 +1,7 @@
 import { Alert, Form, Input, Modal, Select } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { categories, categoryOptions, errorText } from './constants';
+import { useStyles } from './index.style';
 import { findRecipients, type Recipient, sendMessage } from './service';
 
 type Values = {
@@ -18,6 +19,7 @@ export default function SendMessageModal({
   onClose: () => void;
   onSent: (count: number) => void;
 }) {
+  const { styles } = useStyles();
   const [form] = Form.useForm<Values>();
   const scope = Form.useWatch('scope', form);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -74,6 +76,9 @@ export default function SendMessageModal({
   return (
     <Modal
       open
+      centered
+      width={640}
+      className={styles.compose}
       title={preview ? '确认发送消息' : '发送消息'}
       okText={preview ? '确认发送' : '下一步'}
       cancelText={preview ? '返回编辑' : '取消'}
@@ -94,18 +99,17 @@ export default function SendMessageModal({
     >
       {error && <Alert type="error" title={error} showIcon />}
       {preview ? (
-        <div className="message-send-preview">
-          <p>
-            发送范围：
+        <div>
+          <div className={styles.composeMeta}>
             <strong>
               {preview.scope === 'ALL'
                 ? '全部当前有效用户'
                 : `已选择的 ${preview.recipientIds?.length ?? 0} 位用户`}
             </strong>
-          </p>
-          <p>消息分类：{categories[preview.category]}</p>
-          <h3>{preview.title}</h3>
-          <div className="message-content">{preview.content}</div>
+            <span>{categories[preview.category]}</span>
+          </div>
+          <h3 className={styles.readingTitle}>{preview.title}</h3>
+          <div className={styles.content}>{preview.content}</div>
         </div>
       ) : null}
       <Form
@@ -118,14 +122,23 @@ export default function SendMessageModal({
           setPreview(values);
         }}
       >
-        <Form.Item label="发送范围" name="scope" rules={[{ required: true }]}>
-          <Select
-            options={[
-              { value: 'SELECTED', label: '指定用户' },
-              { value: 'ALL', label: '全部当前有效用户' },
-            ]}
-          />
-        </Form.Item>
+        <div className={styles.formGrid}>
+          <Form.Item label="发送范围" name="scope" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: 'SELECTED', label: '指定用户' },
+                { value: 'ALL', label: '全部当前有效用户' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            label="消息分类"
+            name="category"
+            rules={[{ required: true }]}
+          >
+            <Select options={categoryOptions} />
+          </Form.Item>
+        </div>
         {scope !== 'ALL' && (
           <Form.Item
             label="收件人"
@@ -155,13 +168,6 @@ export default function SendMessageModal({
           <Alert title={recipientError} type="error" showIcon />
         )}
         <Form.Item
-          label="消息分类"
-          name="category"
-          rules={[{ required: true }]}
-        >
-          <Select options={categoryOptions} />
-        </Form.Item>
-        <Form.Item
           label="消息标题"
           name="title"
           rules={[
@@ -188,7 +194,7 @@ export default function SendMessageModal({
           ]}
         >
           <Input.TextArea
-            rows={6}
+            rows={7}
             maxLength={10000}
             showCount
             placeholder="请输入消息正文"

@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { ConfigProvider } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -16,6 +23,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./service', () => ({ ...mocks }));
 
 import MessageCenter from './index';
+
+const renderPage = () =>
+  render(
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <MessageCenter />
+    </ConfigProvider>,
+  );
 
 describe('MessageCenter', () => {
   beforeEach(() => {
@@ -52,7 +66,7 @@ describe('MessageCenter', () => {
     mocks.updateMessages.mockResolvedValue(undefined);
   });
   it('shows received messages without a send action for ordinary members, and marks opened messages read', async () => {
-    render(<MessageCenter />);
+    renderPage();
     fireEvent.click(
       await screen.findByRole('button', { name: '产品升级通知' }),
     );
@@ -73,7 +87,7 @@ describe('MessageCenter', () => {
       canSend: true,
     });
     mocks.findRecipients.mockResolvedValue([]);
-    render(<MessageCenter />);
+    renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /发送消息/ }));
     expect(await screen.findByLabelText('消息标题')).toBeInTheDocument();
     expect(screen.getByLabelText('消息正文')).toBeInTheDocument();
@@ -105,23 +119,32 @@ describe('MessageCenter', () => {
       ],
       total: 12,
     });
-    render(<MessageCenter />);
+    renderPage();
     fireEvent.click(await screen.findByRole('tab', { name: '已发送' }));
     fireEvent.click(await screen.findByRole('button', { name: '已发送公告' }));
     expect(await screen.findByText('公告正文')).toBeInTheDocument();
     expect(await screen.findByText('测试收件人')).toBeInTheDocument();
-    expect(
-      screen.getByText('收件 12 人 · 已读 5 人 · 未读 7 人'),
-    ).toBeInTheDocument();
+    const counts = screen.getByRole('region', { name: '送达统计' });
+    expect(within(counts).getByText('12')).toBeInTheDocument();
+    expect(within(counts).getByText('5')).toBeInTheDocument();
+    expect(within(counts).getByText('7')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('dialog')).getByTitle('2'));
+    await waitFor(() =>
+      expect(mocks.listDeliveries).toHaveBeenLastCalledWith('sent-1', 2, 10),
+    );
     expect(mocks.updateMessages).not.toHaveBeenCalled();
   });
   it('applies title search and category changes to the server query', async () => {
-    render(<MessageCenter />);
+    renderPage();
     await screen.findByRole('button', { name: '产品升级通知' });
-    fireEvent.change(screen.getByPlaceholderText('请输入标题搜索'), {
+    fireEvent.change(screen.getByPlaceholderText('搜索消息标题'), {
       target: { value: '升级' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /搜.*索/ }));
+    fireEvent.keyDown(screen.getByPlaceholderText('搜索消息标题'), {
+      key: 'Enter',
+      code: 'Enter',
+      charCode: 13,
+    });
     await waitFor(() =>
       expect(mocks.listMessages).toHaveBeenLastCalledWith(
         expect.objectContaining({ keyword: '升级', page: 1 }),
@@ -135,7 +158,7 @@ describe('MessageCenter', () => {
     );
   });
   it('marks all messages read within the current filter only', async () => {
-    render(<MessageCenter />);
+    renderPage();
     await screen.findByRole('button', { name: '产品升级通知' });
     fireEvent.click(screen.getByRole('tab', { name: /产品消息/ }));
     await waitFor(() =>
@@ -143,7 +166,7 @@ describe('MessageCenter', () => {
         expect.objectContaining({ category: 'PRODUCT' }),
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: '当前筛选全部已读' }));
+    fireEvent.click(screen.getByRole('button', { name: '全部标为已读' }));
     await waitFor(() =>
       expect(mocks.updateMessages).toHaveBeenCalledWith(
         'read',
@@ -159,7 +182,7 @@ describe('MessageCenter', () => {
     });
     mocks.findRecipients.mockResolvedValue([]);
     mocks.sendMessage.mockResolvedValue({ id: 'sent', recipientCount: 3 });
-    render(<MessageCenter />);
+    renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /发送消息/ }));
     fireEvent.mouseDown(screen.getByLabelText('发送范围'));
     fireEvent.click(await screen.findByText('全部当前有效用户'));
@@ -190,5 +213,163 @@ describe('MessageCenter', () => {
     expect(
       await screen.findByText('消息已发送给 3 位用户'),
     ).toBeInTheDocument();
+  });
+
+  it('shows batch actions only after selection and clears selection with the filter', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: '产品升级通知' });
+    expect(
+      screen.queryByRole('region', { name: '批量操作' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    const bar = screen.getByRole('region', { name: '批量操作' });
+    expect(within(bar).getByText('已选 1 条')).toBeInTheDocument();
+    fireEvent.click(within(bar).getByRole('button', { name: '标为已读' }));
+    await waitFor(() =>
+      expect(mocks.updateMessages).toHaveBeenCalledWith('read', {
+        ids: ['message-1'],
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: '批量操作' }),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('tab', { name: /安全消息/ }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: '批量操作' }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('clears a title/category filter back to the first page', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: '产品升级通知' });
+    fireEvent.click(screen.getByRole('tab', { name: /产品消息/ }));
+    const input = screen.getByPlaceholderText('搜索消息标题');
+    fireEvent.change(input, { target: { value: '升级' } });
+    fireEvent.keyDown(input, { key: 'Enter', charCode: 13 });
+    await waitFor(() =>
+      expect(mocks.listMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ keyword: '升级' }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '清除筛选' }));
+    await waitFor(() =>
+      expect(mocks.listMessages).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+      }),
+    );
+    expect(input).toHaveValue('');
+  });
+
+  it('requires confirmation before deleting selected messages', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: '产品升级通知' });
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(
+      within(screen.getByRole('region', { name: '批量操作' })).getByRole(
+        'button',
+        { name: '删除' },
+      ),
+    );
+    expect(await screen.findByRole('dialog')).toHaveTextContent(
+      '删除已选的 1 条消息？',
+    );
+    expect(mocks.updateMessages).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /删.*除/,
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.updateMessages).toHaveBeenCalledWith('delete', {
+        ids: ['message-1'],
+      }),
+    );
+  });
+
+  it('navigates between messages in the reading drawer', async () => {
+    const first = (await mocks.listMessages()).items[0];
+    mocks.listMessages.mockResolvedValue({
+      items: [
+        first,
+        { ...first, id: 'message-2', title: '第二条通知', read: true },
+      ],
+      total: 2,
+    });
+    mocks.getMessage.mockImplementation(async (id: string) => ({
+      ...first,
+      id,
+      read: true,
+      title: id === 'message-1' ? first.title : '第二条通知',
+      content: id === 'message-1' ? '第一条正文' : '第二条正文',
+    }));
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: '产品升级通知' }),
+    );
+    expect(await screen.findByText('第一条正文')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '上一条' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '下一条' }));
+    expect(await screen.findByText('第二条正文')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '下一条' })).toBeDisabled();
+    expect(mocks.updateMessages).not.toHaveBeenCalled();
+  });
+
+  it('preserves detail navigation when marking an unread message removes it from the filtered list', async () => {
+    const first = { id: 'message-1', title: '产品升级通知', category: 'PRODUCT', source: 'ADMIN', senderName: '管理员', createdAt: '2026-10-21T08:00:00Z', read: false };
+    const second = { ...first, id: 'message-2', title: '第二条通知' };
+    let marked = false;
+    mocks.listMessages.mockImplementation(async (query) => ({ items: query.status === 'UNREAD' && marked ? [second] : [first, second], total: marked ? 1 : 2 }));
+    mocks.updateMessages.mockImplementation(async () => { marked = true; });
+    mocks.getMessage.mockImplementation(async (id) => ({ ...(id === first.id ? first : second), content: id === first.id ? '第一条未读正文' : '第二条未读正文' }));
+    renderPage();
+    await screen.findByRole('button', { name: first.title });
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '消息状态' }));
+    fireEvent.click(await screen.findByText('未读', { selector: '.ant-select-item-option-content' }));
+    await waitFor(() => expect(mocks.listMessages).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'UNREAD' })));
+    fireEvent.click(screen.getByRole('button', { name: first.title }));
+    await screen.findByText('第一条未读正文');
+    await waitFor(() => expect(screen.queryByRole('button', { name: first.title })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: '下一条' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '下一条' }));
+    expect(await screen.findByText('第二条未读正文')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '上一条' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '上一条' }));
+    expect(await screen.findByText('第一条未读正文')).toBeInTheDocument();
+  });
+
+  it('keeps the current filters when confirming deletion from the more menu', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: '产品升级通知' });
+    fireEvent.click(screen.getByRole('tab', { name: /产品消息/ }));
+    const input = screen.getByPlaceholderText('搜索消息标题');
+    fireEvent.change(input, { target: { value: '升级' } });
+    fireEvent.keyDown(input, { key: 'Enter', charCode: 13 });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: '全部标为已读' }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '更多消息操作' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: '删除当前筛选全部消息' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('删除当前筛选下的全部消息？');
+    expect(mocks.updateMessages).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: /删.*除/ }));
+    await waitFor(() =>
+      expect(mocks.updateMessages).toHaveBeenCalledWith('delete', {
+        all: true,
+        category: 'PRODUCT',
+        keyword: '升级',
+        status: undefined,
+      }),
+    );
   });
 });

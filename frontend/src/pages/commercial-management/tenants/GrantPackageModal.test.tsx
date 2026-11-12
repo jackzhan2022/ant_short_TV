@@ -92,9 +92,7 @@ describe('管理员发放弹窗', () => {
   it('selects a point package and explains that membership is unchanged', async () => {
     mocks.options.mockResolvedValue({ data: [...options, { packageId: 2, packageVersionId: 11, name: '积分补充', packageType: 'POINT_PACKAGE', entitlements: [{ type: 'ONE_TIME_POINTS', value: 500 }] }] });
     render(<GrantPackageModal tenant={tenant} onClose={vi.fn()} onGranted={vi.fn()} />);
-    const typeSelect = await screen.findByRole('combobox', { name: '发放类型' });
-    fireEvent.mouseDown(typeSelect);
-    fireEvent.click(await screen.findByText('积分包', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByRole('button', { name: '积分包' }));
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '发放商品' }));
     fireEvent.click(await screen.findByText('积分补充'));
     await screen.findByText('积分立即到账，不改变当前会员套餐。');

@@ -2,6 +2,7 @@ import { Alert, Button, Form, Input, Modal, Space } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { startTenantMemberImpersonation } from '@/services/account-team/impersonation';
 import AuthenticatorBinding from './AuthenticatorBinding';
+import { useStyles } from './index.style';
 import { getAdminAuthenticator, grantErrorMessage } from './grantService';
 import type { PlatformTenantMember, PlatformTenantSummary } from './service';
 
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export default function ImpersonationModal({ tenant, member, onClose }: Props) {
+  const { styles } = useStyles();
   const [form] = Form.useForm<Values>();
   const [ready, setReady] = useState(false);
   const [bound, setBound] = useState(false);
@@ -74,6 +76,9 @@ export default function ImpersonationModal({ tenant, member, onClose }: Props) {
     <Modal
       open
       title="切换登录"
+      centered
+      width={560}
+      className={styles.grantModal}
       onCancel={() => {
         if (!submitting.current) onClose();
       }}

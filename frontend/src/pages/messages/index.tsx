@@ -1,9 +1,19 @@
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  CheckOutlined,
+  DeleteOutlined,
+  EllipsisOutlined,
+  InboxOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  SendOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
-  Badge,
   Button,
   Drawer,
+  Dropdown,
   Input,
   Modal,
   Select,
@@ -11,7 +21,18 @@ import {
   Tabs,
 } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { categories, errorText, formatMessageTime } from './constants';
+import { errorText } from './constants';
+import { useStyles } from './index.style';
+import {
+  CategoryNav,
+  CategoryTag,
+  MessageDate,
+  MessageEmpty,
+  MessageIdentity,
+  MessagePagination,
+  ReadingHeader,
+  ReadTag,
+} from './presentation';
 import SendMessageModal from './SendMessageModal';
 import SentMessages from './SentMessages';
 import {
@@ -25,9 +46,9 @@ import {
   notifyMessageChange,
   updateMessages,
 } from './service';
-import './index.less';
 
 export default function MessageCenter() {
+  const { styles } = useStyles();
   const [box, setBox] = useState('inbox');
   const [sentRevision, setSentRevision] = useState(0);
   const [query, setQuery] = useState<MessageQuery>({ page: 1, pageSize: 10 });
@@ -47,6 +68,7 @@ export default function MessageCenter() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [detail, setDetail] = useState<MessageItem>();
+  const [detailItems, setDetailItems] = useState<MessageItem[]>([]);
   const [opening, setOpening] = useState(false);
   const [sending, setSending] = useState(false);
   const requestId = useRef(0);
@@ -129,7 +151,8 @@ export default function MessageCenter() {
       });
     } else void perform(action, payload);
   };
-  const openMessage = async (item: MessageItem) => {
+  const openMessage = async (item: MessageItem, navigating = false) => {
+    if (!navigating) setDetailItems(data.items);
     const id = ++detailId.current;
     setOpening(true);
     setError('');
@@ -139,6 +162,7 @@ export default function MessageCenter() {
       setDetail(result);
       if (!result.read) {
         await updateMessages('read', { ids: [result.id] });
+        if (id === detailId.current) setDetail({ ...result, read: true });
         notifyMessageChange();
         await load();
       }
@@ -153,29 +177,68 @@ export default function MessageCenter() {
     setQuery((q) => ({ ...q, ...patch, page: 1 }));
   };
   const disabled = loading || busy || opening;
+  const filtered = !!(query.keyword || query.category || query.status);
+  const clearFilters = () => {
+    setKeyword('');
+    setQuery({ page: 1, pageSize: query.pageSize });
+  };
+  const closeDetail = () => {
+    detailId.current++;
+    setDetail(undefined);
+    setOpening(false);
+  };
+  const detailIndex = detailItems.findIndex((item) => item.id === detail?.id);
 
   return (
-    <main className="message-center">
+    <main className={styles.page}>
       {contextHolder}
-      <header className="message-center-header">
+      <header className={styles.heading}>
         <div>
-          <h1>消息中心</h1>
+          <h1>
+            消息中心
+            {!!summary.unread && (
+              <span className={styles.unreadCount}>
+                {summary.unread} 条未读
+              </span>
+            )}
+          </h1>
           <p>查看平台公告与系统通知</p>
         </div>
-        <div className="message-center-actions">
-          <Button
-            aria-label="刷新消息"
-            icon={<ReloadOutlined />}
-            disabled={disabled}
-            onClick={() => {
-              void load();
-              setSentRevision((v) => v + 1);
-            }}
-          />
+        <div className={styles.headingActions}>
+          {summary.canSend && (
+            <>
+              <Tabs
+                className={styles.boxSwitch}
+                activeKey={box}
+                onChange={setBox}
+                items={[
+                  {
+                    key: 'inbox',
+                    label: (
+                      <>
+                        <InboxOutlined aria-hidden />
+                        收件箱
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'sent',
+                    label: (
+                      <>
+                        <SendOutlined aria-hidden />
+                        已发送
+                      </>
+                    ),
+                  },
+                ]}
+              />
+              <span className={styles.headingDivider} aria-hidden />
+            </>
+          )}
           {summary.canSend && (
             <Button
               type="primary"
-              icon={<PlusOutlined />}
+              icon={<PlusOutlined aria-hidden />}
               onClick={() => setSending(true)}
             >
               发送消息
@@ -192,51 +255,43 @@ export default function MessageCenter() {
         />
       )}
       {success && <Alert title={success} type="success" showIcon />}
-      {summary.canSend && (
-        <Tabs
-          activeKey={box}
-          onChange={setBox}
-          items={[
-            { key: 'inbox', label: '收件箱' },
-            { key: 'sent', label: '已发送' },
-          ]}
-        />
-      )}
       {box === 'sent' && summary.canSend ? (
         <SentMessages revision={sentRevision} />
       ) : (
-        <section className="message-center-panel" aria-label="消息列表">
-          <Tabs
-            activeKey={query.category || 'ALL'}
-            onChange={(key) =>
-              changeFilter({ category: key === 'ALL' ? undefined : key })
-            }
-            items={[['ALL', '全部消息'], ...Object.entries(categories)].map(
-              ([key, label]) => ({
-                key,
-                label: (
-                  <span className="message-tab">
-                    {label}
-                    <Badge
-                      count={
-                        key === 'ALL' ? summary.unread : summary.categories[key]
-                      }
-                      overflowCount={99}
-                    />
-                  </span>
-                ),
-              }),
-            )}
+        <section className={styles.panel} aria-label="消息列表">
+          <CategoryNav
+            category={query.category}
+            onChange={(category) => changeFilter({ category })}
+            total={data.total}
+            unread={summary.unread}
+            counts={summary.categories}
+            onRefresh={() => void load()}
+            loading={disabled}
           />
-          <div className="message-center-filters">
-            <label htmlFor="message-status">状态</label>
+          <div className={styles.toolbar}>
+            <Input
+              aria-label="标题搜索"
+              placeholder="搜索消息标题"
+              prefix={<SearchOutlined aria-hidden />}
+              variant="outlined"
+              value={keyword}
+              maxLength={200}
+              allowClear
+              onChange={(e) => {
+                setKeyword(e.target.value);
+                if (!e.target.value && query.keyword)
+                  changeFilter({ keyword: undefined });
+              }}
+              onPressEnter={() =>
+                changeFilter({ keyword: keyword.trim() || undefined })
+              }
+            />
             <Select
               id="message-status"
               aria-label="消息状态"
               value={query.status || 'ALL'}
-              style={{ width: 180 }}
               options={[
-                { value: 'ALL', label: '全部消息' },
+                { value: 'ALL', label: '全部状态' },
                 { value: 'UNREAD', label: '未读' },
                 { value: 'READ', label: '已读' },
               ]}
@@ -244,108 +299,134 @@ export default function MessageCenter() {
                 changeFilter({ status: value === 'ALL' ? undefined : value })
               }
             />
-            <Input
-              aria-label="标题搜索"
-              placeholder="请输入标题搜索"
-              value={keyword}
-              maxLength={200}
-              allowClear
-              onChange={(e) => setKeyword(e.target.value)}
-              onPressEnter={() =>
-                changeFilter({ keyword: keyword.trim() || undefined })
-              }
-              style={{ width: 280 }}
-            />
+            {(filtered || keyword) && (
+              <Button
+                type="text"
+                className={styles.quietButton}
+                onClick={clearFilters}
+              >
+                清除筛选
+              </Button>
+            )}
+            <span className={styles.spacer} />
             <Button
-              type="primary"
-              onClick={() =>
-                changeFilter({ keyword: keyword.trim() || undefined })
-              }
+              type="text"
+              className={styles.quietButton}
+              icon={<CheckOutlined aria-hidden />}
+              disabled={!data.total || disabled}
+              onClick={() => act('read', true)}
             >
-              搜索
+              全部标为已读
             </Button>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'delete-all',
+                    label: '删除当前筛选全部消息',
+                    icon: <DeleteOutlined aria-hidden />,
+                    danger: true,
+                    disabled: !data.total || disabled,
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'delete-all') act('delete', true);
+                },
+              }}
+            >
+              <Button
+                type="text"
+                aria-label="更多消息操作"
+                icon={<EllipsisOutlined aria-hidden />}
+              />
+            </Dropdown>
           </div>
           <Table<MessageItem>
+            className={styles.table}
             rowKey="id"
             loading={loading || opening}
             dataSource={data.items}
-            scroll={{ x: 760 }}
+            scroll={{ x: 820, y: 'max(280px, calc(100dvh - 365px))' }}
+            pagination={false}
             rowSelection={{
               selectedRowKeys: selected,
               onChange: (keys) => setSelected(keys.map(String)),
               getCheckboxProps: () => ({ disabled }),
             }}
-            rowClassName={(item) =>
-              item.read ? 'message-row-read' : 'message-row-unread'
-            }
+            rowClassName={(item) => (item.read ? styles.readRow : '')}
             locale={{
-              emptyText:
-                query.keyword || query.category || query.status
-                  ? '暂无符合条件的消息'
-                  : '暂无消息',
+              emptyText: (
+                <MessageEmpty filtered={filtered} onClear={clearFilters} />
+              ),
             }}
             columns={[
               {
-                title: '标题',
+                title: '消息标题',
                 dataIndex: 'title',
                 render: (_, item) => (
-                  <button
-                    type="button"
-                    className="message-title-button"
+                  <MessageIdentity
+                    item={item}
+                    unread={!item.read}
                     disabled={disabled}
-                    onClick={() => void openMessage(item)}
-                  >
-                    {item.title}
-                  </button>
+                    onOpen={() => void openMessage(item)}
+                  />
+                ),
+              },
+              {
+                title: '分类',
+                dataIndex: 'category',
+                width: 130,
+                render: (category: string) => (
+                  <CategoryTag category={category} />
                 ),
               },
               {
                 title: '状态',
                 dataIndex: 'read',
                 width: 100,
-                render: (read: boolean) => (
-                  <Badge
-                    status={read ? 'default' : 'processing'}
-                    text={read ? '已读' : '未读'}
+                render: (read: boolean) => <ReadTag read={read} />,
+              },
+              {
+                title: '收到时间',
+                dataIndex: 'createdAt',
+                width: 160,
+                render: (value: string) => <MessageDate value={value} />,
+              },
+              {
+                key: 'detail',
+                width: 60,
+                render: (_, item) => (
+                  <Button
+                    type="text"
+                    className="message-detail-link"
+                    aria-label={`查看消息：${item.title}`}
+                    icon={<ArrowRightOutlined aria-hidden />}
+                    disabled={disabled}
+                    onClick={() => void openMessage(item)}
                   />
                 ),
               },
-              {
-                title: '时间（UTC+8）',
-                dataIndex: 'createdAt',
-                width: 210,
-                render: formatMessageTime,
-              },
-              {
-                title: '消息分类',
-                dataIndex: 'category',
-                width: 130,
-                render: (value: string) => categories[value] || value,
-              },
-              {
-                title: '来源',
-                dataIndex: 'source',
-                width: 120,
-                render: (value: string) =>
-                  value === 'SYSTEM' ? '系统流程' : '平台管理员',
-              },
             ]}
-            pagination={{
-              current: query.page,
-              pageSize: query.pageSize,
-              total: data.total,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (total) => `共 ${total} 条`,
-              onChange: (page, pageSize) =>
-                setQuery((q) => ({
-                  ...q,
-                  page: pageSize === q.pageSize ? page : 1,
-                  pageSize,
-                })),
-            }}
           />
-          <div className="message-center-batch">
+          <MessagePagination
+            page={query.page}
+            pageSize={query.pageSize}
+            total={data.total}
+            disabled={disabled}
+            onChange={(page, pageSize) =>
+              setQuery((q) => ({
+                ...q,
+                page: pageSize === q.pageSize ? page : 1,
+                pageSize,
+              }))
+            }
+          />
+        </section>
+      )}
+      {box === 'inbox' && selected.length > 0 && (
+        <section className={styles.batch} aria-label="批量操作">
+          <div>
             <span>已选 {selected.length} 条</span>
             <Button
               type="link"
@@ -354,53 +435,65 @@ export default function MessageCenter() {
             >
               取消选择
             </Button>
+          </div>
+          <div>
             <Button
-              disabled={!selected.length || disabled}
+              disabled={disabled}
+              icon={<CheckOutlined aria-hidden />}
               onClick={() => act('read')}
             >
-              标记为已读
+              标为已读
             </Button>
             <Button
               danger
-              disabled={!selected.length || disabled}
+              aria-label="删除"
+              icon={<DeleteOutlined aria-hidden />}
+              disabled={disabled}
               onClick={() => act('delete')}
             >
               删除
-            </Button>
-            <Button
-              disabled={!data.total || disabled}
-              onClick={() => act('read', true)}
-            >
-              当前筛选全部已读
-            </Button>
-            <Button
-              danger
-              disabled={!data.total || disabled}
-              onClick={() => act('delete', true)}
-            >
-              当前筛选全部删除
             </Button>
           </div>
         </section>
       )}
       <Drawer
+        className={styles.drawer}
         open={!!detail}
         title="消息详情"
-        onClose={() => {
-          detailId.current++;
-          setDetail(undefined);
-          setOpening(false);
-        }}
-        size="large"
+        onClose={closeDetail}
+        size={720}
+        footer={
+          <div className={styles.drawerFooter}>
+            <div>
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined aria-hidden />}
+                disabled={opening || detailIndex <= 0}
+                onClick={() => void openMessage(detailItems[detailIndex - 1], true)}
+              >
+                上一条
+              </Button>
+              <Button
+                type="text"
+                icon={<ArrowRightOutlined aria-hidden />}
+                disabled={
+                  opening ||
+                  detailIndex < 0 ||
+                  detailIndex >= detailItems.length - 1
+                }
+                onClick={() => void openMessage(detailItems[detailIndex + 1], true)}
+              >
+                下一条
+              </Button>
+            </div>
+            <Button onClick={closeDetail}>关闭</Button>
+          </div>
+        }
       >
         {detail && (
           <article>
-            <h2>{detail.title}</h2>
-            <p className="message-detail-meta">
-              {categories[detail.category]} · {detail.senderName} ·{' '}
-              {formatMessageTime(detail.createdAt)}
-            </p>
-            <div className="message-content">{detail.content}</div>
+            <ReadingHeader item={detail} read={detail.read} />
+            <div className={styles.content}>{detail.content}</div>
           </article>
         )}
       </Drawer>

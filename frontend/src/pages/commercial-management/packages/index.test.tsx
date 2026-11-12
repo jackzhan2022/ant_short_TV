@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   updateEntitlement: vi.fn(),
   enableEntitlement: vi.fn(),
   disableEntitlement: vi.fn(),
-  tableReload: vi.fn(),
+  createDraft: vi.fn(),
+  draftValues: { code: 'OTHER', packageType: 'POINT_PACKAGE', name: '新版月卡', price: 49.9, effectiveFrom: '2026-11-12 10:00:00', entitlements: [{ type: 'ONE_TIME_POINTS', value: 6000 }, { type: 'DISPLAY_ALL_MODELS', value: 100 }] },
   messageSuccess: vi.fn(),
 }));
 
@@ -23,7 +24,7 @@ vi.mock('@umijs/max', async () => {
 });
 
 vi.mock('./service', () => ({
-  createCommercialPackageDraft: vi.fn(),
+  createCommercialPackageDraft: mocks.createDraft,
   listCommercialPackages: mocks.listPackages,
   listCommercialPackageVersions: mocks.listPackageVersions,
   publishCommercialPackageVersion: mocks.publishPackageVersion,
@@ -37,35 +38,29 @@ vi.mock('./service', () => ({
 
 vi.mock('@ant-design/pro-components', () => ({
   PageContainer: ({ children }: any) => <main>{children}</main>,
-  ModalForm: ({ children, initialValues, onFinish, open, title, trigger }: any) => <div>{trigger}{open && <section aria-label={title}><output data-testid="draft-package-code">{initialValues?.code}</output><output data-testid="entitlement-name">{initialValues?.name}</output>{children}<button type="button" onClick={() => void onFinish?.({ name: '测试展示权益', description: '展示说明', sortOrder: 50 })}>提交{title}</button></section>}</div>,
+  ModalForm: ({ children, initialValues, onFinish, open, title, trigger }: any) => <div>{trigger}{open && <section aria-label={title}><output data-testid="draft-package-code">{initialValues?.code}</output><output data-testid="entitlement-name">{initialValues?.name}</output>{children}<button type="button" onClick={() => void onFinish?.(title.includes('草稿') ? mocks.draftValues : { name: '测试展示权益', description: '展示说明', sortOrder: 50 })}>提交{title}</button></section>}</div>,
   ProFormDateTimePicker: () => null,
   ProFormDependency: ({ children }: any) => children({ type: 'ONE_TIME_POINTS' }),
   ProFormDigit: () => null,
   ProFormList: ({ children }: any) => <div>{children}</div>,
   ProFormSelect: () => null,
   ProFormText: ({ fieldProps, label, rules }: any) => label ? <label>{label}<input aria-label={label} maxLength={fieldProps?.maxLength} required={rules?.some((rule: any) => rule.required)} /></label> : null,
-  ProTable: ({ actionRef, columns = [], dataSource, request, toolBarRender }: any) => {
-    const [data, setData] = useState<any[]>(dataSource ?? []);
-    if (actionRef) actionRef.current = { reload: mocks.tableReload };
-    useEffect(() => {
-      if (dataSource !== undefined) setData(dataSource);
-      else void request({ current: 1, pageSize: 20 }).then((response: any) => setData(response.data));
-    }, [dataSource, request]);
-    return <div>{columns.map((column: any) => <span key={`header-${column.hideInTable ? 'query' : 'table'}-${column.dataIndex ?? column.title}`}>{column.title}</span>)}{typeof toolBarRender === 'function' ? toolBarRender() : null}{data.map((record: any) => <div key={record.id}>{columns.filter((column: any) => !column.hideInTable).map((column: any) => <span key={`cell-${column.dataIndex ?? column.title}`}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>;
-  },
+
 }));
 
-vi.mock('antd', () => ({
+vi.mock('antd', async () => ({
+  ...await vi.importActual<typeof import('antd')>('antd'),
   App: { useApp: () => ({ message: { success: mocks.messageSuccess } }) },
-  Button: ({ children, onClick }: any) => <button type="button" onClick={onClick}>{children}</button>,
-  Drawer: ({ children, open, title }: any) => open ? <section aria-label={title}>{children}</section> : null,
+  Button: ({ children, onClick, disabled, 'aria-label': label, 'aria-pressed': pressed }: any) => <button type="button" disabled={disabled} aria-label={label} aria-pressed={pressed} onClick={onClick}>{children}</button>,
+  Dropdown: ({ children, menu }: any) => { const [open, setOpen] = useState(false); return <div><span onClick={() => setOpen(!open)}>{children}</span>{open && menu.items.map((item: any) => <button key={item.key} type="button" disabled={item.disabled} onClick={() => { menu.onClick({ key: item.key }); setOpen(false); }}>{item.label}</button>)}</div>; },
+  Drawer: ({ children, open, title, footer }: any) => open ? <section aria-label={title}>{children}{footer}</section> : null,
   Empty: ({ description }: any) => <div>{description}</div>,
   Popconfirm: ({ children, onConfirm }: any) => <span onClick={onConfirm}>{children}</span>,
   Space: ({ children }: any) => <div>{children}</div>,
   Statistic: ({ title, value }: any) => <span>{title}：{value}</span>,
-  Input: ({ placeholder, value, onChange }: any) => <input placeholder={placeholder} value={value} onChange={onChange} />,
-  Select: () => <select />,
-  Table: ({ columns, dataSource, title }: any) => <div>{title?.()} {dataSource.map((record: any) => <div key={record.id ?? record.versionId}>{columns.map((column: any, index: number) => <span key={column.dataIndex ?? column.title ?? index}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>,
+  Input: ({ placeholder, value, onChange, 'aria-label': label }: any) => <input aria-label={label} placeholder={placeholder} value={value} onChange={onChange} />,
+  Select: ({ value, onChange, options, 'aria-label': label }: any) => <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
+  Table: ({ columns, dataSource, title, locale }: any) => <div>{title?.()}{columns.map((column: any) => <span key={column.key ?? column.title}>{column.title}</span>)}{!dataSource.length && locale?.emptyText} {dataSource.map((record: any) => <div key={record.id ?? record.versionId}>{columns.map((column: any, index: number) => <span key={column.dataIndex ?? column.title ?? index}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</span>)}</div>)}</div>,
   Tabs: ({ activeKey, items, onChange }: any) => <div>{items.map((item: any) => <button key={item.key} type="button" aria-pressed={item.key === activeKey} onClick={() => onChange(item.key)}>{item.label}</button>)}{items.find((item: any) => item.key === activeKey)?.children}</div>,
   Tag: ({ children }: any) => <span>{children}</span>,
   Typography: { Text: ({ children }: any) => <span>{children}</span> },
@@ -113,6 +108,17 @@ describe('CommercialPackageManagementPage', () => {
     await waitFor(() => expect(mocks.disableEntitlement).toHaveBeenCalledWith(4));
     fireEvent.click(screen.getByRole('button', { name: '启用' }));
     await waitFor(() => expect(mocks.enableEntitlement).toHaveBeenCalledWith(5));
+  });
+
+  it('filters the entitlement catalog by name and category', async () => {
+    render(<CommercialPackageManagementPage />);
+    fireEvent.click(screen.getByRole('button', { name: '权益管理' }));
+    await screen.findByText('一次性积分');
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索权益名称或编码' }), { target: { value: '全部模型' } });
+    expect(screen.queryByText('一次性积分')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '系统权益' }));
+    expect(screen.queryByText('使用全部模型')).not.toBeInTheDocument();
+    expect(screen.getByText('暂无匹配权益')).toBeInTheDocument();
   });
 
   it('opens create and edit forms for display entitlements', async () => {
@@ -163,14 +169,14 @@ describe('CommercialPackageManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看版本' }));
     await waitFor(() => expect(mocks.listPackageVersions).toHaveBeenCalledWith(1));
     expect((await screen.findAllByText('专业版月卡')).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('全局折扣：0.9')).toBeInTheDocument();
+    expect(screen.getAllByText('全局折扣：0.9').length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows the latest commercial information in the package list', async () => {
     render(<CommercialPackageManagementPage />);
 
     expect(await screen.findByText('专业版月卡')).toBeInTheDocument();
-    expect(screen.getByText('99 CNY')).toBeInTheDocument();
+    expect(screen.getByText('99.00')).toBeInTheDocument();
     expect(screen.getByText('V1')).toBeInTheDocument();
   });
 
@@ -181,22 +187,71 @@ describe('CommercialPackageManagementPage', () => {
     expect(screen.queryByText(/套餐总数/)).not.toBeInTheDocument();
   });
 
-  it('uses the tenant-style labelled query form', async () => {
+  it('filters packages with compact search, type and status controls', async () => {
+    mocks.listPackages.mockResolvedValue({ data: [
+      { id: 1, code: 'MONTH', packageType: 'SUBSCRIPTION', latestName: '创作月卡', latestStatus: 'PUBLISHED', latestPrice: 49.9 },
+      { id: 2, code: 'POINTS', packageType: 'POINT_PACKAGE', latestName: '积分包', latestStatus: 'DRAFT', latestPrice: 9.9 },
+    ] });
     render(<CommercialPackageManagementPage />);
+    await screen.findByText('MONTH');
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索套餐名称或编码' }), { target: { value: '月卡' } });
+    expect(screen.queryByText('POINTS')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索套餐名称或编码' }), { target: { value: '' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '套餐类型' }), { target: { value: 'POINT_PACKAGE' } });
+    expect(screen.queryByText('MONTH')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /销售中/ }));
+    expect(screen.queryByText('POINTS')).not.toBeInTheDocument();
+    expect(screen.getByText('暂无匹配套餐')).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText('套餐名称或编码')).toBeInTheDocument();
-    expect(screen.getByText('套餐类型')).toBeInTheDocument();
-    expect(screen.getAllByText('销售状态')).toHaveLength(2);
+  it('keeps filters when switching to cards and orders by price', async () => {
+    mocks.listPackages.mockResolvedValue({ data: [
+      { id: 1, code: 'HIGH', packageType: 'SUBSCRIPTION', latestName: '月卡', latestStatus: 'DRAFT', latestPrice: 99 },
+      { id: 2, code: 'LOW', packageType: 'POINT_PACKAGE', latestName: '积分包', latestStatus: 'PUBLISHED', latestPrice: 9.9 },
+    ] });
+    render(<CommercialPackageManagementPage />);
+    await screen.findByText('HIGH');
+    expect(screen.getByText('LOW').compareDocumentPosition(screen.getByText('HIGH')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: '套餐排序' }), { target: { value: 'price' } });
+    fireEvent.click(screen.getByRole('button', { name: '轻卡片展示' }));
+    expect(screen.getByRole('button', { name: '轻卡片展示' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索套餐名称或编码' }), { target: { value: 'LOW' } });
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+  });
+
+  it('refreshes the package list after publishing a version', async () => {
+    render(<CommercialPackageManagementPage />);
+    await screen.findByText('PRO_MONTH');
+    fireEvent.click(screen.getByRole('button', { name: '查看版本' }));
+    fireEvent.click(await screen.findByRole('button', { name: '发布' }));
+    await waitFor(() => expect(mocks.publishPackageVersion).toHaveBeenCalledWith(1, 11));
+    await waitFor(() => expect(mocks.listPackages).toHaveBeenCalledTimes(2));
   });
 
   it('opens a version draft with the selected package code', async () => {
     render(<CommercialPackageManagementPage />);
     await screen.findByText('PRO_MONTH');
 
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
     fireEvent.click(screen.getByRole('button', { name: '新增版本' }));
 
     expect(await screen.findByRole('region', { name: '新增版本草稿' })).toBeInTheDocument();
     expect(screen.getByTestId('draft-package-code')).toHaveTextContent('PRO_MONTH');
+  });
+
+  it('preserves package identity and normalizes draft entitlements', async () => {
+    render(<CommercialPackageManagementPage />);
+    await screen.findByText('PRO_MONTH');
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增版本' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交新增版本草稿' }));
+    await waitFor(() => expect(mocks.createDraft).toHaveBeenCalledWith({
+      code: 'PRO_MONTH', packageType: 'SUBSCRIPTION', name: '新版月卡', price: 49.9, currency: 'CNY', effectiveFrom: '2026-11-12 10:00:00',
+      entitlements: [{ type: 'ONE_TIME_POINTS', value: 6000 }, { type: 'DISPLAY_ALL_MODELS' }],
+    }));
+    await waitFor(() => expect(mocks.listPackages).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('region', { name: '新增版本草稿' })).not.toBeInTheDocument();
   });
 
   it('shows lifecycle controls only with package edit permission', async () => {
@@ -212,5 +267,8 @@ describe('CommercialPackageManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看版本' }));
     await screen.findByText('专业版月卡');
     expect(screen.queryByRole('button', { name: '发布' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建草稿' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '更多操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新增版本' })).not.toBeInTheDocument();
   });
 });
