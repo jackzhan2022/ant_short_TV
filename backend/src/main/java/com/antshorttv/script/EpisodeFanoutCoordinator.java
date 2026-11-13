@@ -58,10 +58,11 @@ public class EpisodeFanoutCoordinator {
         if (episodes.isEmpty()) {
             throw new BusinessException(ErrorCode.ANALYSIS_AGENT_INCOMPLETE, "没有可处理的当前正式剧集。");
         }
-        WorkflowAgentExecutionPlan plan = runner.freezeFormal(agentCode);
+        WorkflowAgentExecutionPlan plan = runner.freezeFormal(agentCode, task.getTenantId(), task.getProjectId());
         String snapshotHash = episodeSetHash(episodes);
         long snapshotId = store.openSnapshot(
             task, stage, agentCode, plan, effectiveModelId, episodes, snapshotHash, fullRegeneration);
+        plan = store.freezePlan(snapshotId, plan);
         store.updateParentProgress(snapshotId, store.progress(snapshotId));
         return new Prepared(snapshotId, snapshotHash, plan, task, stage, executionContext, effectiveModelId);
     }

@@ -1,3 +1,4 @@
+import AssetExtractionSkillSelect, { defaultAssetExtractionSkill } from '@/components/AssetExtractionSkillSelect';
 import {
   CameraOutlined,
   CloseOutlined,
@@ -176,6 +177,7 @@ const ShortDramaCreationPage = () => {
     scriptType: 'PREMIUM_DRAMA',
     breakdownStrength: 'MEDIUM',
     storyboardSkillVersion: 'V1',
+    assetExtractionSkillCode: defaultAssetExtractionSkill,
     visualStyleVersion: 'V1',
   });
 
@@ -432,6 +434,7 @@ const ShortDramaCreationPage = () => {
         scriptType: projectForm.scriptType,
         breakdownStrength: projectForm.breakdownStrength,
         storyboardSkillVersion: projectForm.storyboardSkillVersion,
+        assetExtractionSkillCode: projectForm.assetExtractionSkillCode,
         visualStyleVersion: projectForm.visualStyleVersion || 'V1',
         visualStyleCode: projectForm.visualStyleCode,
         visualStyle:
@@ -596,6 +599,10 @@ const ShortDramaCreationPage = () => {
           onChange={(value) => updateForm({ breakdownStrength: value })}
         />
       </div>
+      <AssetExtractionSkillSelect
+        value={projectForm.assetExtractionSkillCode}
+        onChange={(assetExtractionSkillCode) => updateForm({ assetExtractionSkillCode })}
+      />
       <div className={styles.popoverRow}>
         <span>分镜技能</span>
         <Select

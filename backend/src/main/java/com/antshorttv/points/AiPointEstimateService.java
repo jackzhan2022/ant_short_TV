@@ -126,6 +126,8 @@ public class AiPointEstimateService {
         private final LocalDateTime at = LocalDateTime.now();
         private final Map<String,Long> configuredModels = new HashMap<>();
         private final Map<String,String> projectScripts = new HashMap<>();
+        private Long planningProject;
+        private String planningAssetSkill;
         private final Map<String,Set<Long>> storyboardEpisodes = new HashMap<>();
 
         private Long resolveModel(Long tenant,Long project,String capability) {
@@ -134,12 +136,18 @@ public class AiPointEstimateService {
         }
 
     private List<AiPointEstimatePlan> plan(Long tenant, Operation operation) {
+        planningProject = null;
+        planningAssetSkill = null;
         String path = operation.url();
         if ("/api/free-creations".equals(path)) return List.of(freeCreations.pointEstimate(tenant, operation.data()));
         JsonNode data = operation.data() == null ? json.createObjectNode() : operation.data();
         var project = Pattern.compile("^/api/projects/(\\d+)/(.*)$").matcher(path);
-        if (project.matches()) return projectPlan(tenant, Long.valueOf(project.group(1)), project.group(2), data);
+        if (project.matches()) {
+            planningProject = Long.valueOf(project.group(1));
+            return projectPlan(tenant, planningProject, project.group(2), data);
+        }
         if ("/api/projects".equals(path)) {
+            planningAssetSkill = data.path("assetExtractionSkillCode").asText(null);
             String content = data.path("initialScriptContent").asText("").trim();
             return content.isEmpty() ? List.of() : analysis(tenant, null, content);
         }
@@ -369,7 +377,7 @@ public class AiPointEstimateService {
         if (episodes.stream().anyMatch(episode -> number(episode,"id") == null)) return episodes;
         var units = episodes.stream().map(episode -> new EpisodeFanoutCoordinator.EpisodeUnit(
             number(episode,"id"),text(episode,"stable_key"),text(episode,"content_fingerprint"),text(episode,"status"))).toList();
-        var plan = agentPlans.computeIfAbsent(tenant+":"+agentCode, ignored -> agents.freezeFormal(agentCode,tenant));
+        var plan = agentPlans.computeIfAbsent(tenant+":"+project+":"+agentCode, ignored -> agents.freezeFormal(agentCode,tenant,project));
         // Use the same compatibility checks as JdbcEpisodeFanoutStore.openSnapshot before reusing success.
         var snapshots = jdbc.queryForList("""
             select id from script_analysis_fanout_snapshot
@@ -448,7 +456,9 @@ public class AiPointEstimateService {
         int output = outputLimit;
         String context = content;
         if (agentCode != null) {
-            var plan = agentPlans.computeIfAbsent(tenant+":"+agentCode, ignored -> agents.freezeFormal(agentCode, tenant));
+            var plan = agentPlans.computeIfAbsent(tenant+":"+planningProject+":"+planningAssetSkill+":"+agentCode, ignored ->
+                "short-drama-asset-recognition".equals(agentCode) && planningAssetSkill != null
+                    ? agents.freezeAssetSkill(tenant, planningAssetSkill) : agents.freezeFormal(agentCode, tenant, planningProject));
             output = plan.agent().maxTokens();
             context += plan.agent().systemPrompt();
             for (var skill : plan.skillSnapshots()) context += skill.content();
@@ -547,6 +557,7 @@ public class AiPointEstimateService {
     private List<AiPointEstimatePlan> execution(Long tenant, Long executionId, boolean frozen) {
         executionAccess.requireControl(tenant, executionId);
         var task = executions.requireTask(executionId);
+        planningProject = task.projectId;
         if("FREE_CREATION".equals(task.businessType)) return List.of(freeCreations.pointEstimateControl(tenant,task.businessId,frozen?"RETRY":"REGENERATE"));
         var reservation = frozen ? reservations.selectByExecutionId(executionId) : null;
         List<AiPointEstimatePlan> plans;

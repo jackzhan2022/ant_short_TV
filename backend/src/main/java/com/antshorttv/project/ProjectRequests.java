@@ -27,8 +27,32 @@ record CreateProjectRequest(
     String visualStyleCode,
     @Size(max = 200) String scriptName,
     String initialScriptContent,
-    String storyboardSkillVersion
+    String storyboardSkillVersion,
+    String assetExtractionSkillCode
 ) {
+    CreateProjectRequest(String name,
+    String code,
+    String description,
+    String coverUrl,
+    String coverSource,
+    Long ownerId,
+    LocalDate startDate,
+    LocalDate endDate,
+    String aspectRatio,
+    String videoResolution,
+    Boolean videoGenerateAudio,
+    Boolean videoWatermark,
+    String fileFormat,
+    String scriptType,
+    String breakdownStrength,
+    String visualStyle,
+    String visualStyleVersion,
+    String visualStyleCode,
+    String scriptName,
+    String initialScriptContent,
+    String storyboardSkillVersion) {
+        this(name, code, description, coverUrl, coverSource, ownerId, startDate, endDate, aspectRatio, videoResolution, videoGenerateAudio, videoWatermark, fileFormat, scriptType, breakdownStrength, visualStyle, visualStyleVersion, visualStyleCode, scriptName, initialScriptContent, storyboardSkillVersion, null);
+    }
 }
 
 record UpdateProjectRequest(
@@ -49,8 +73,29 @@ record UpdateProjectRequest(
     String visualStyleVersion,
     String visualStyleCode,
     String initialScriptContent,
-    Boolean clearCover
+    Boolean clearCover,
+    String assetExtractionSkillCode
 ) {
+    UpdateProjectRequest(String name,
+    String description,
+    String coverUrl,
+    String coverSource,
+    LocalDate startDate,
+    LocalDate endDate,
+    String aspectRatio,
+    String videoResolution,
+    Boolean videoGenerateAudio,
+    Boolean videoWatermark,
+    String fileFormat,
+    String scriptType,
+    String breakdownStrength,
+    String visualStyle,
+    String visualStyleVersion,
+    String visualStyleCode,
+    String initialScriptContent,
+    Boolean clearCover) {
+        this(name, description, coverUrl, coverSource, startDate, endDate, aspectRatio, videoResolution, videoGenerateAudio, videoWatermark, fileFormat, scriptType, breakdownStrength, visualStyle, visualStyleVersion, visualStyleCode, initialScriptContent, clearCover, null);
+    }
 }
 
 record UpdateProjectStatusRequest(

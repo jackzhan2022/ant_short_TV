@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetVisualVariantService {
+    @org.springframework.beans.factory.annotation.Autowired private AssetGenerationSpecService generationSpecs;
     @org.springframework.beans.factory.annotation.Autowired private PropProductionService propProduction;
     private final AssetVisualVariantMapper variantMapper;
     private final JdbcTemplate jdbc;
@@ -146,6 +147,7 @@ public class AssetVisualVariantService {
         return """
             select v.id, v.asset_type, v.asset_id, v.name, v.appearance,
                    case when v.is_primary = true then a.prompt else v.prompt end as effective_prompt,
+                   case when v.is_primary = true then a.content_json else v.content_json end as generation_content_json,
                    v.source_type, v.generation_status, v.generation_task_id, v.current_image_result_id,
                    v.virtual_avatar_asset_id,
                    case when v.current_image_url like 'data:%%' then null else v.current_image_url end as current_image_url,
@@ -172,7 +174,8 @@ public class AssetVisualVariantService {
             imageUrl, thumbnail, row.getString("generation_error_code"), row.getString("generation_error_message"),
             row.getString("virtual_avatar_asset_id"),
             row.getBoolean("is_primary"), "COMPLETED".equals(status)
-                && (resultId != null || imageUrl != null && !imageUrl.isBlank()));
+                && (resultId != null || imageUrl != null && !imageUrl.isBlank()),
+            generationSpecs == null ? null : generationSpecs.fromContent(row.getString("generation_content_json")));
     }
 
     private String thumbnailUrl(Long projectId, Long resultId) {
@@ -530,7 +533,8 @@ public class AssetVisualVariantService {
 
     private GenerationInput generationInput(Long tenantId, Long projectId, AssetVisualVariantEntity variant, String prompt) {
         AssetType type = AssetType.fromStorageValue(variant.getAssetType());
-        if (type == AssetType.SCENE && propProduction != null && prompt != null && !prompt.isBlank())
+        if (type == AssetType.SCENE && propProduction != null && prompt != null && !prompt.isBlank()
+            && (generationSpecs == null || !generationSpecs.read(tenantId, projectId, "VISUAL_VARIANT", variant.getId()).complete()))
             prompt += propProduction.sceneContext(tenantId,projectId,variant.getAssetId());
         boolean primaryVariant = Boolean.TRUE.equals(variant.getIsPrimary());
         if (prompt == null || prompt.isBlank()) {
@@ -697,7 +701,10 @@ public class AssetVisualVariantService {
             currentImageThumbnailUrl(entity),
             entity.getGenerationErrorCode(), entity.getGenerationErrorMessage(),
             entity.getVirtualAvatarAssetId(),
-            Boolean.TRUE.equals(entity.getIsPrimary()), usable(entity));
+            Boolean.TRUE.equals(entity.getIsPrimary()), usable(entity),
+            generationSpecs == null ? null : Boolean.TRUE.equals(entity.getIsPrimary())
+                ? generationSpecs.read(entity.getTenantId(), entity.getProjectId(), entity.getAssetType(), entity.getAssetId())
+                : generationSpecs.fromContent(entity.getContentJson()));
     }
 
     private String currentImageThumbnailUrl(AssetVisualVariantEntity entity) {
@@ -732,7 +739,7 @@ public class AssetVisualVariantService {
         Long id, String assetType, Long assetId, String name, String appearance, String prompt,
         String sourceType, String generationStatus, Long generationTaskId, Long currentImageResultId,
         String currentImageUrl, String currentImageThumbnailUrl, String errorCode, String errorMessage,
-        String virtualAvatarAssetId, boolean primary, boolean usable
+        String virtualAvatarAssetId, boolean primary, boolean usable, AssetGenerationSpecService.Spec generationSpec
     ) {
         public boolean virtualAvatar() {
             return virtualAvatarAssetId != null && !virtualAvatarAssetId.isBlank();

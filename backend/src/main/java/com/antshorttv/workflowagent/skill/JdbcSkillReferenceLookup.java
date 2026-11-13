@@ -26,6 +26,9 @@ public class JdbcSkillReferenceLookup extends SkillReferenceLookup {
                 java.util.stream.Stream.of(com.antshorttv.workflowagent.agent.StoryboardAgentBootstrap.AGENT_CODE))
                 .distinct().sorted().toList();
         }
+        if (AssetExtractionSkillService.DEFAULT.equals(skillCode) || AssetExtractionSkillService.LIVE_ACTION.equals(skillCode)
+            || !jdbc.queryForList("select id from project where asset_extraction_skill_code=? and deleted_at is null limit 1", Long.class, skillCode).isEmpty())
+            return java.util.stream.Stream.concat(agents.stream(), java.util.stream.Stream.of(AssetExtractionSkillService.AGENT)).distinct().toList();
         return agents;
     }
 }

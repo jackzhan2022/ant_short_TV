@@ -47,6 +47,29 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 class AiImageTaskServiceTest {
 
+    @org.junit.jupiter.api.Test
+    void completeAssetPromptReachesImageTaskWithSavedNegativeRatioAndNoProjectStyle() {
+        Fixture f = new Fixture("SUCCESS");
+        f.project.visualStyle="动漫";
+        var specs=mock(com.antshorttv.script.AssetGenerationSpecService.class);
+        when(specs.read(11L,22L,"VISUAL_VARIANT",77L)).thenReturn(new com.antshorttv.script.AssetGenerationSpecService.Spec("手持、重复物件", "4:3", "FULL"));
+        org.springframework.test.util.ReflectionTestUtils.setField(f.service,"generationSpecs",specs);
+        var model=new AiModelEntity(); model.setId(8L); model.setName("test");
+        var provider=new AiProviderEntity();provider.setCode("mock");
+        when(f.router.route(8L,"IMAGE")).thenReturn(new AiModelRoute(model,provider,null,null));
+        when(f.variants.prepareGeneration(11L,22L,77L)).thenReturn(new AssetVisualVariantService.GenerationInput("黑色手机，4:3纯白背景单件特写",List.of()));
+        when(f.tasks.insert(any(AiImageTaskEntity.class))).thenAnswer(i->{i.<AiImageTaskEntity>getArgument(0).setId(34L);return 1;});
+        var execution=new AiExecutionTaskEntity();execution.id=200L;
+        when(f.executions.createWithReservation(any(),any(),any())).thenReturn(execution);
+        f.service.createForBatch(11L,22L,66L,new CreateAiImageTaskRequest("PROP","VISUAL_VARIANT",77L,8L,"批量占位",null,List.of(),"ASSET",1,null,null,null),"live-action","live-action");
+        var task=org.mockito.ArgumentCaptor.forClass(AiImageTaskEntity.class);
+        verify(f.tasks).insert(task.capture());
+        assertThat(task.getValue().getPrompt()).isEqualTo("黑色手机，4:3纯白背景单件特写");
+        assertThat(task.getValue().getNegativePrompt()).isEqualTo("手持、重复物件");
+        assertThat(task.getValue().getAspectRatio()).isEqualTo("4:3");
+        assertThat(task.getValue().getStyle()).isNull();
+    }
+
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"   ", "水彩插画"})

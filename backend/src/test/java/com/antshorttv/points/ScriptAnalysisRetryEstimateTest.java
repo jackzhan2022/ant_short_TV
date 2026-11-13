@@ -88,7 +88,7 @@ class ScriptAnalysisRetryEstimateTest {
         when(agent.revision()).thenReturn(2L);
         when(agent.maxTokens()).thenReturn(1024);
         when(agent.systemPrompt()).thenReturn("system");
-        when(agents.freezeFormal(anyString(),eq(7L))).thenReturn(new WorkflowAgentExecutionPlan(agent,List.of()));
+        when(agents.freezeFormal(anyString(),eq(7L),any())).thenReturn(new WorkflowAgentExecutionPlan(agent,List.of()));
         var task = new AiExecutionTaskEntity();
         task.id = 51L; task.tenantId = 7L; task.projectId = 3L; task.businessId = 69L;
         task.businessType = "SCRIPT_ANALYSIS_TASK"; task.requestedModelId = 9L; task.status = "FAILED";

@@ -474,7 +474,7 @@ const ProductionWorkbenchSettings = () => {
   const [batchPreflight, setBatchPreflight] =
     useState<AssetImageBatchPreflight>();
   const [batchModelId, setBatchModelId] = useState<number>();
-  const [batchAspectRatio, setBatchAspectRatio] = useState('16:9');
+  const [batchAspectRatio, setBatchAspectRatio] = useState('ASSET');
   const [batchImageCount, setBatchImageCount] = useState(1);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
@@ -561,7 +561,8 @@ const ProductionWorkbenchSettings = () => {
   const [generationSubmitting, setGenerationSubmitting] = useState(false);
   const [imageModels, setImageModels] = useState<ProjectModelOption[]>([]);
   const [generationModelId, setGenerationModelId] = useState<number>();
-  const [generationAspectRatio, setGenerationAspectRatio] = useState('16:9');
+  const [generationAspectRatio, setGenerationAspectRatio] = useState('ASSET');
+  const [generationNegativePrompt, setGenerationNegativePrompt] = useState<string>();
   const [generationImageCount, setGenerationImageCount] = useState(1);
   const [imageGenerationVersion, setImageGenerationVersion] = useState(0);
   const workspaceRequestId = useRef(0);
@@ -842,7 +843,7 @@ const ProductionWorkbenchSettings = () => {
     const requestProjectId = projectId;
     setBatchLoading(true);
     setBatchMode(mode);
-    setBatchAspectRatio('16:9');
+    setBatchAspectRatio('ASSET');
     setBatchImageCount(1);
     try {
       const [modelsResponse, configResponse] = await Promise.all([
@@ -855,7 +856,7 @@ const ProductionWorkbenchSettings = () => {
         assetIds: selectedAssetIds,
         mode,
         modelId,
-        aspectRatio: '16:9',
+        aspectRatio: 'ASSET',
         imageCount: 1,
       });
       if (
@@ -1138,7 +1139,8 @@ const ProductionWorkbenchSettings = () => {
     }
     setGenerationVariantId(variant.id);
     setGenerationPrompt(variant.prompt || '');
-    setGenerationAspectRatio('16:9');
+    setGenerationAspectRatio('ASSET');
+    setGenerationNegativePrompt(variant.generationSpec?.negativePrompt || undefined);
     setGenerationImageCount(1);
     try {
       const [modelsResponse, configResponse] = await Promise.all([
@@ -1287,6 +1289,7 @@ const ProductionWorkbenchSettings = () => {
           visualAsset.type === 'CHARACTER' && !variant.primary && primaryImage
             ? [primaryImage]
             : undefined,
+        negativePrompt: generationNegativePrompt,
         aspectRatio: generationAspectRatio,
         imageCount: generationImageCount,
       });
@@ -1622,6 +1625,7 @@ const ProductionWorkbenchSettings = () => {
                     <option value="3:4">3:4</option>
                     <option value="4:3">4:3</option>
                     <option value="9:16">9:16</option>
+                    <option value="ASSET">按资产方案</option>
                     <option value="16:9">16:9</option>
                   </select>
                 </label>
@@ -2277,6 +2281,7 @@ const ProductionWorkbenchSettings = () => {
                     values={{
                       prompt: generationPrompt,
                       modelId: generationModelId,
+                      negativePrompt: generationNegativePrompt,
                       aspectRatio: generationAspectRatio,
                       imageCount: generationImageCount,
                     }}
@@ -2284,6 +2289,7 @@ const ProductionWorkbenchSettings = () => {
                     onChange={(values) => {
                       if (values.prompt !== undefined) setGenerationPrompt(values.prompt);
                       if ('modelId' in values) setGenerationModelId(values.modelId);
+                      if (values.negativePrompt !== undefined) setGenerationNegativePrompt(values.negativePrompt);
                       if (values.aspectRatio !== undefined) {
                         setGenerationAspectRatio(values.aspectRatio);
                       }

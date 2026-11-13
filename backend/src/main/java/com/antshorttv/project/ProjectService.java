@@ -47,6 +47,8 @@ public class ProjectService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.style.AssetArtStyleService artStyles;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.workflowagent.skill.AssetExtractionSkillService assetSkills;
     private final ProjectMapper projectMapper;
     private final ProjectMemberMapper projectMemberMapper;
     private final ProjectRoleMapper projectRoleMapper;
@@ -156,6 +158,7 @@ public class ProjectService {
         project.scriptType = request.scriptType();
         project.breakdownStrength = request.breakdownStrength();
         project.storyboardSkillVersion = StoryboardSkillVersion.resolve(request.storyboardSkillVersion()).name();
+        project.assetExtractionSkillCode = assetSkills.validate(request.assetExtractionSkillCode());
         artStyles.configure(project, request.visualStyleVersion(), request.visualStyleCode(), request.visualStyle());
         project.initialScriptContent = request.initialScriptContent();
         project.createdBy = context.userId();
@@ -222,6 +225,8 @@ public class ProjectService {
         ProjectEntity project = requireProject(tenantId, id);
         validateWritable(project);
         String previousCover = project.coverUrl;
+        if (request.assetExtractionSkillCode() != null)
+            project.assetExtractionSkillCode = assetSkills.validate(request.assetExtractionSkillCode());
         project.name = validateName(request.name());
         project.description = request.description();
         if (Boolean.TRUE.equals(request.clearCover())) {
@@ -674,6 +679,7 @@ public class ProjectService {
             project.scriptType,
             project.breakdownStrength,
             StoryboardSkillVersion.resolve(project.storyboardSkillVersion).name(),
+            project.assetExtractionSkillCode == null ? com.antshorttv.workflowagent.skill.AssetExtractionSkillService.DEFAULT : project.assetExtractionSkillCode,
             project.visualStyle,
             project.visualStyleVersion == null ? "V1" : project.visualStyleVersion,
             project.visualStyleCode,

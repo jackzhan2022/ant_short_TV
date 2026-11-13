@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiImageTaskService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetGenerationSpecService generationSpecs;
     @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
     private static final List<String> VIDEO_COVER_TABLES = List.of("ai_video_result", "material", "shot_compose_result", "episode_video_version");
     private static final List<String> TASK_TYPES = List.of("CHARACTER", "SCENE", "PROP", "STORYBOARD_FIRST_FRAME");
@@ -199,6 +200,11 @@ public class AiImageTaskService {
         HttpServletRequest servletRequest
     ) {
         if(normalizationGuard!=null && java.util.Set.of("CHARACTER","SCENE","PROP").contains(request.taskType())) normalizationGuard.requireReady(tenantId,projectId);
+        var generationSpec = generationSpecs == null ? new com.antshorttv.script.AssetGenerationSpecService.Spec(null,null,null)
+            : generationSpecs.read(tenantId, projectId, request.targetType(), request.targetId());
+        request = new CreateAiImageTaskRequest(request.taskType(), request.targetType(), request.targetId(), request.modelId(),
+            request.prompt(), request.negativePrompt() == null ? generationSpec.negativePrompt() : request.negativePrompt(),
+            request.referenceImages(), generationSpec.ratio(request.aspectRatio()), request.imageCount(), request.style(), request.quality(), request.seed());
         validateRequest(request);
         AiImageTaskEntity existing = taskMapper.selectByIdempotency(tenantId, idempotencyKey);
         if (existing != null) {
@@ -206,7 +212,8 @@ public class AiImageTaskService {
         }
         ResolvedImageModel resolved = resolveImageModel(tenantId, projectId, request.modelId());
         AssetVisualVariantService.GenerationInput variantInput = "VISUAL_VARIANT".equals(request.targetType())
-            ? assetVisualVariantService.prepareGeneration(tenantId, projectId, request.targetId()) : null;
+            ? (servletRequest == null ? assetVisualVariantService.prepareGeneration(tenantId, projectId, request.targetId())
+                : assetVisualVariantService.previewGeneration(tenantId, projectId, request.targetId(), request.prompt())) : null;
         String taskType = request.taskType().trim();
         LocalDateTime now = LocalDateTime.now();
 
@@ -225,7 +232,7 @@ public class AiImageTaskService {
             ? resolveReferenceImages(tenantId, projectId, request) : variantInput.referenceImages()));
         task.setAspectRatio(request.aspectRatio().trim());
         task.setImageCount(request.imageCount());
-        task.setStyle(resolveStyle(tenantId, projectId, request.style()));
+        task.setStyle(generationSpec.complete() ? blankToNull(request.style()) : resolveStyle(tenantId, projectId, request.style()));
         task.setQuality(blankToNull(request.quality()) == null ? "STANDARD" : request.quality().trim());
         task.setSeed(blankToNull(request.seed()));
         task.setStatus(AiImageTaskStatus.PENDING.name());
@@ -295,7 +302,9 @@ public class AiImageTaskService {
         task.setReferenceImages(source.getReferenceImages());
         task.setAspectRatio(source.getAspectRatio());
         task.setImageCount(source.getImageCount());
-        task.setStyle(resolveStyle(tenantId, projectId, source.getStyle()));
+        var sourceSpec = generationSpecs == null ? new com.antshorttv.script.AssetGenerationSpecService.Spec(null,null,null)
+            : generationSpecs.read(tenantId, projectId, source.getTargetType(), source.getTargetId());
+        task.setStyle(sourceSpec.complete() ? source.getStyle() : resolveStyle(tenantId, projectId, source.getStyle()));
         task.setQuality(source.getQuality());
         task.setSeed(source.getSeed());
         task.setStatus(AiImageTaskStatus.PENDING.name());
@@ -639,7 +648,7 @@ public class AiImageTaskService {
         if (!TARGET_TYPES.contains(request.targetType())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择关联对象。");
         }
-        if (!ASPECT_RATIOS.contains(request.aspectRatio())) {
+        if (request.aspectRatio() == null || !ASPECT_RATIOS.contains(request.aspectRatio())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择图片比例。");
         }
         if (request.referenceImages() != null && request.referenceImages().size() > 4) {
@@ -747,6 +756,11 @@ public class AiImageTaskService {
         if (request.imageCount() == null || request.imageCount() < 1 || request.imageCount() > 4) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "图片数量必须为 1–4 张。");
         }
+        var generationSpec = generationSpecs == null ? new com.antshorttv.script.AssetGenerationSpecService.Spec(null,null,null)
+            : generationSpecs.read(tenantId, projectId, request.targetType(), request.targetId());
+        request = new CreateAiImageTaskRequest(request.taskType(), request.targetType(), request.targetId(), request.modelId(),
+            request.prompt(), request.negativePrompt() == null ? generationSpec.negativePrompt() : request.negativePrompt(),
+            request.referenceImages(), generationSpec.ratio(request.aspectRatio()), request.imageCount(), request.style(), request.quality(), request.seed());
         validateRequest(request);
         return pointEstimate(tenantId, projectId, request);
     }

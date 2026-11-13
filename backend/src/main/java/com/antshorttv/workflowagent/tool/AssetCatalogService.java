@@ -133,7 +133,7 @@ public class AssetCatalogService {
             if (rows.size() != 1) throw invalid("资产 key 不属于当前剧本或已删除。");
             ObjectNode asset = summary(type, rows.get(0));
             JsonNode content = parse(rows.get(0).get("content_json"));
-            if ("CHARACTER".equals(type) && content.isObject()) {
+            if ("CHARACTER".equals(type) && content.isObject() && !content.path("visualIdentity").isObject()) {
                 // Visual design lives in the canonical prompt, not extraction metadata.
                 ObjectNode identity = characterIdentity(rows.get(0).get("prompt"));
                 if (!identity.isEmpty()) ((ObjectNode) content).set("visualIdentity", identity);
@@ -196,6 +196,7 @@ public class AssetCatalogService {
             long last = 0;
             for (JsonNode fullVariant : fullAsset.path("variants")) {
                 ObjectNode variant = fullVariant.deepCopy();
+                variant.remove("prompt");
                 ObjectNode visual = detailSummaryContent(fullVariant.path("content"));
                 variant.set("content", visual);
                 variant.put("contentTruncated", !visual.equals(fullVariant.path("content")));
@@ -225,7 +226,7 @@ public class AssetCatalogService {
             summary.put("description", description.substring(0, description.offsetByCodePoints(0, Math.min(120, length))));
         }
         ObjectNode identity = json.createObjectNode();
-        for (String field : List.of("脸型", "性别", "年龄")) {
+        for (String field : List.of("脸型", "性别", "年龄", "face", "gender", "age")) {
             String value = content.path("visualIdentity").path(field).asText("");
             if (!value.isBlank()) {
                 int length = value.codePointCount(0, value.length());

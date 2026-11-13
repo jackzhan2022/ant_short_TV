@@ -131,6 +131,15 @@ public class JdbcEpisodeFanoutStore implements EpisodeFanoutStore {
     }
 
     @Override
+    public WorkflowAgentExecutionPlan freezePlan(long snapshotId, WorkflowAgentExecutionPlan plan) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+        try {
+            jdbc.update("update script_analysis_fanout_snapshot set asset_plan_json=? where id=? and asset_plan_json is null", json.writeValueAsString(plan), snapshotId);
+            return json.readValue(jdbc.queryForObject("select asset_plan_json from script_analysis_fanout_snapshot where id=?", String.class, snapshotId), WorkflowAgentExecutionPlan.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("无法恢复逐集规则快照。", e); }
+    }
+
+    @Override
     public List<EpisodeFanoutCoordinator.EpisodeUnit> runnableUnits(long snapshotId) {
         return jdbc.query("""
             select episode_id, episode_key, content_fingerprint, status

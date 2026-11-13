@@ -12,7 +12,7 @@ import java.util.Set;
 
 public final class EpisodeAssetsPayloadNormalizer {
     private static final String[] ARRAY_FIELDS = {
-        "characters", "characterLooks", "scenes", "props", "propVariants"
+        "characters", "characterLooks", "scenes", "props", "propVariants", "sceneVariants"
     };
     // Only remove schema vocabulary that has no business meaning in this contract.
     private static final List<String> SCHEMA_FIELDS = List.of(
@@ -71,7 +71,7 @@ public final class EpisodeAssetsPayloadNormalizer {
             if (!items.isArray()) continue; // Let schema validation report the original field type.
             for (JsonNode item : items) {
                 if (!(item instanceof ObjectNode object)) continue;
-                if (field.equals("characterLooks") || field.equals("propVariants")) {
+                if (field.equals("characterLooks") || field.equals("propVariants") || field.equals("sceneVariants")) {
                     if (!object.has("preferred")) object.put("preferred", false);
                 } else if (!object.has("aliases")) {
                     object.putArray("aliases");
@@ -152,6 +152,7 @@ public final class EpisodeAssetsPayloadNormalizer {
         checkOwners(payload.path("props"), "props", "ownerCharacterLocalKey", keys.get("characters"), false, errors);
         checkOwners(payload.path("characterLooks"), "characterLooks", "characterLocalKey", keys.get("characters"), true, errors);
         checkOwners(payload.path("propVariants"), "propVariants", "propLocalKey", keys.get("props"), true, errors);
+        checkOwners(payload.path("sceneVariants"), "sceneVariants", "sceneLocalKey", keys.get("scenes"), true, errors);
         return errors;
     }
 

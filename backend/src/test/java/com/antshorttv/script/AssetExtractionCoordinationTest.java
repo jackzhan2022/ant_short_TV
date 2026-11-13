@@ -51,7 +51,7 @@ class AssetExtractionCoordinationTest {
         jdbc.update("insert into project(id,tenant_id,name,code,owner_id,status,created_by,created_at,updated_at) values (?,?,'test',?,?,'ACTIVE',?,now(),now())",project,tenant,"ASSET_"+tenant,tenant,tenant);
         jdbc.update("insert into ai_model(id,provider_id,code,name,model_code,service_type,status,is_default,sort,created_at,updated_at) select ?,provider_id,?,'test','test','TEXT','DISABLED',false,0,now(),now() from ai_model order by id limit 1",model,"concurrency-"+tenant);
         when(models.resolveModelId(anyLong(),anyLong(),eq("TEXT"))).thenReturn(model);
-        when(runner.freezeFormal(anyString())).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(
+        when(runner.freezeFormal(anyString(),any(),any())).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(
             new com.antshorttv.workflowagent.agent.WorkflowAgentRecord(null,"short-drama-asset-recognition","test","","frozen prompt",
                 model,java.math.BigDecimal.ZERO,16384,12,"ENABLED",1L,tenant,tenant,LocalDateTime.now(),LocalDateTime.now(),
                 java.util.List.of(),java.util.List.of("read_current_episode","save_episode_assets")),java.util.List.of()));
@@ -209,7 +209,7 @@ class AssetExtractionCoordinationTest {
         scoped.execute(operation,request,recovered);
         scoped.execute(operation,request,recovered); // finalization replay is harmless
         verify(recognition,times(1)).executeChild(any(),any(),any(),anyLong(),any(),anyLong(),any(),any());
-        verify(runner,times(1)).freezeFormal(anyString());
+        verify(runner,times(1)).freezeFormal(anyString(),any(),any());
         assertThat(count("prop_asset")).isEqualTo(1);
         assertThat(count("asset_visual_variant_episode")).isEqualTo(1);
         assertThat(jdbc.queryForObject("select status from scoped_asset_reextraction_snapshot where operation_id=?",String.class,operation.id)).isEqualTo("SUCCEEDED");

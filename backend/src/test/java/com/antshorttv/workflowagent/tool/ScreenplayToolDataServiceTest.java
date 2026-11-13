@@ -1378,6 +1378,62 @@ class ScreenplayToolDataServiceTest {
             Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
     }
 
+    @Test
+    void completeStrategyPersistsPromptPackagesSceneStatesAndStructuredIdentity() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        jdbc.update("update script_episode set content='林小满走进客厅。夜晚客厅灯光亮起。林小满穿着红裙拿着手机。' where id=?", episodeId);
+        var c = summaryContext();
+        c.runState().put("assetPromptContract", "complete");
+        c.runState().put("assetSkillCode", "short-drama-asset-recognition-live-action");
+        c.runState().put("assetSkillRevision", "frozen-r1");
+        service.readCurrentEpisode(c);
+        var payload = json.readTree("""
+            {"schemaVersion":1,
+             "characters":[{"localKey":"c1","name":"林小满","aliases":[],"evidence":"林小满",
+               "prompt":"成年真人演员，方圆脸，白底16:9左40%特写右60%三视图，同脸同衣。",
+               "negativePrompt":"不同面孔、额外人物、裁切、水印","aspectRatio":"16:9","promptMode":"FULL",
+               "visualIdentity":{"face":"方圆脸，杏眼，直鼻，薄上唇","hair":"齐肩黑发","body":"中等身材","gender":"女","age":"成年","clothing":"米色衬衫","fixedSides":"左腕手表"},
+               "artSupplement":"脸型和服装为制作补充"}],
+             "characterLooks":[{"localKey":"l1","characterLocalKey":"c1","name":"红裙造型","evidence":"林小满穿着红裙","preferred":true,
+               "prompt":"同一成年演员，方圆脸齐肩黑发，红裙，16:9白底完整四视图。","negativePrompt":"换脸、错误服装","aspectRatio":"16:9","promptMode":"FULL"}],
+             "scenes":[{"localKey":"s1","name":"客厅","aliases":[],"evidence":"客厅",
+               "prompt":"16:9真人住宅客厅四宫格：顶视、正面、左侧、右侧，同一布局无人空场。","negativePrompt":"人物、家具移位、镜像","aspectRatio":"16:9","promptMode":"FULL"}],
+             "sceneVariants":[{"localKey":"sv1","sceneLocalKey":"s1","name":"夜间灯光","evidence":"夜晚客厅灯光亮起","preferred":true,
+               "prompt":"同一客厅夜间照明，门窗家具保持一致，16:9顶正左右四宫格无人空场。","negativePrompt":"镜像、不同布局","aspectRatio":"16:9","promptMode":"FULL"}],
+             "props":[{"localKey":"p1","name":"手机","aliases":[],"ownerCharacterLocalKey":"c1","evidence":"拿着手机",
+               "prompt":"黑色手机，4:3纯白底单件完整特写，金属边框清晰。","negativePrompt":"手持、重复物件、水印","aspectRatio":"4:3","promptMode":"FULL"}],"propVariants":[]}
+            """);
+        assertThat(service.saveEpisodeAssets(c, payload).path("counts").path("sceneVariants").asInt()).isEqualTo(1);
+        long character = jdbc.queryForObject("select id from character_asset where script_id=?",Long.class,scriptId);
+        var details = new AssetCatalogService(jdbc, json, permissionGuard).details(c, json.readTree("{\"assetKeys\":[\"c_"+character+"\"]}"));
+        assertThat(details.path("items").get(0).path("content").path("visualIdentity").path("face").asText()).contains("方圆脸");
+        assertThat(jdbc.queryForObject("select count(*) from scene_asset where script_id=?",Integer.class,scriptId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from asset_visual_variant where project_id=? and asset_type='SCENE'",Integer.class,projectId)).isEqualTo(2);
+        var specs = new com.antshorttv.script.AssetGenerationSpecService(jdbc,json);
+        long prop = jdbc.queryForObject("select id from prop_asset where script_id=?",Long.class,scriptId);
+        assertThat(specs.read(tenantId, projectId, "PROP", prop).ratio("ASSET")).isEqualTo("4:3");
+        assertThat(specs.read(tenantId, projectId, "PROP", prop).negativePrompt()).contains("手持");
+        String before = jdbc.queryForObject("select content_json from prop_asset where id=?",String.class,prop);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)payload.path("props").get(0)).put("prompt","不应覆盖").put("negativePrompt","不应覆盖").put("aspectRatio","1:1");
+        service.saveEpisodeAssets(c,payload);
+        assertThat(jdbc.queryForObject("select prompt from prop_asset where id=?",String.class,prop)).contains("4:3");
+        assertThat(json.readTree(jdbc.queryForObject("select content_json from prop_asset where id=?",String.class,prop)).path("generationSpec"))
+            .isEqualTo(json.readTree(before).path("generationSpec"));
+    }
+
+    @Test
+    void completeStrategyRejectsMissingNegativePromptWithoutPartialAssets() throws Exception {
+        var c=summaryContext();
+        c.runState().put("assetPromptContract","complete");
+        service.readCurrentEpisode(c);
+        var payload=new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"schemaVersion":1,"characters":[],"scenes":[],"props":[{"localKey":"p1","name":"物件","aliases":[],"evidence":"Content 2",
+              "prompt":"完整物件描述","aspectRatio":"4:3","promptMode":"FULL"}],"characterLooks":[],"propVariants":[]}
+            """);
+        assertThatThrownBy(()->service.saveEpisodeAssets(c,payload)).hasMessageContaining("negativePrompt");
+        assertThat(jdbc.queryForObject("select count(*) from prop_asset where script_id=?",Integer.class,scriptId)).isZero();
+    }
+
     private ToolExecutionContext summaryContext() {
         return new ToolExecutionContext(
             tenantId, context.userId(), projectId, episodeId, scriptId, null, null, null,

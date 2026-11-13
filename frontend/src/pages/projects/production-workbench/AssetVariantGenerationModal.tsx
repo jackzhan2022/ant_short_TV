@@ -13,6 +13,7 @@ import styles from './AssetVariantGenerationModal.module.css';
 
 export type AssetVariantGenerationValues = {
   prompt: string;
+  negativePrompt?: string;
   modelId?: number;
   aspectRatio: string;
   imageCount: number;
@@ -197,6 +198,13 @@ function GenerationDialog({
             disabled={Boolean(busy)}
             onChange={(event) => onChange({ prompt: event.target.value })}
           />
+          <Input.TextArea
+            aria-label={`${variant.name}负向提示词`}
+            placeholder="负向提示词"
+            value={values.negativePrompt ?? variant.generationSpec?.negativePrompt ?? ''}
+            disabled={Boolean(busy)}
+            onChange={(event) => onChange({ negativePrompt: event.target.value })}
+          />
           {variant.errorMessage ? <div role="alert" className={styles.error}>{variant.errorMessage}</div> : null}
           <div className={styles.controls}>
             <div className={styles.selects}>
@@ -208,7 +216,7 @@ function GenerationDialog({
                 {[1, 2, 4].map((count) => <option key={count} value={count}>{count} 张</option>)}
               </select>
               <select aria-label="画面比例" disabled={Boolean(busy)} value={values.aspectRatio} onChange={(event) => onChange({ aspectRatio: event.target.value })}>
-                {['3:4', '1:1', '16:9'].map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+                {['ASSET', '3:4', '4:3', '1:1', '16:9', '9:16'].map((ratio) => <option key={ratio} value={ratio}>{ratio === 'ASSET' ? '按资产方案' : ratio}</option>)}
               </select>
               <span className={styles.priceNote}>积分按所选模型实时结算</span>
             </div>

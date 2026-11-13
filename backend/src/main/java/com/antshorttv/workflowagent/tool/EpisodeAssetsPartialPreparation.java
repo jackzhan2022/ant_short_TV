@@ -12,7 +12,7 @@ import java.util.Set;
 
 /** Validates items against the unchanged tool contract and trusted source text. */
 public final class EpisodeAssetsPartialPreparation {
-    private static final List<String> FIELDS = List.of("characters", "scenes", "props", "characterLooks", "propVariants");
+    private static final List<String> FIELDS = List.of("characters", "scenes", "props", "characterLooks", "propVariants", "sceneVariants");
 
     private EpisodeAssetsPartialPreparation() {}
 
@@ -76,8 +76,8 @@ public final class EpisodeAssetsPartialPreparation {
                         else warn(warnings, "INVALID_ALIAS", aliasPath, String.join("; ", aliasErrors), alias);
                     }
                 }
-                String ownerField = field.equals("characterLooks") ? "characterLocalKey" : field.equals("propVariants") ? "propLocalKey" : null;
-                if (ownerField != null && !keys.get(field.equals("characterLooks") ? "characters" : "props").contains(item.path(ownerField).asText())) {
+                String ownerField = field.equals("characterLooks") ? "characterLocalKey" : field.equals("propVariants") ? "propLocalKey" : field.equals("sceneVariants") ? "sceneLocalKey" : null;
+                if (ownerField != null && !keys.get(field.equals("characterLooks") ? "characters" : field.equals("sceneVariants") ? "scenes" : "props").contains(item.path(ownerField).asText())) {
                     errors.add(path + "." + ownerField + " 引用了不存在或无效的 localKey。提交值：" + item.path(ownerField).asText());
                 }
                 if (field.equals("props") && item.hasNonNull("ownerCharacterLocalKey")

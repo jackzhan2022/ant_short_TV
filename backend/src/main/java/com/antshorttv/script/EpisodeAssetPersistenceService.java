@@ -82,13 +82,25 @@ public class EpisodeAssetPersistenceService {
             "characterLocalKey", characters, preferredErrors);
         collectResolvedPreferredErrors(payload.path("propVariants"), "propVariants",
             "propLocalKey", props, preferredErrors);
+        collectResolvedPreferredErrors(payload.path("sceneVariants"), "sceneVariants",
+            "sceneLocalKey", scenes, preferredErrors);
         if (!preferredErrors.isEmpty()) throw WorkflowToolValidationException.aggregate(preferredErrors);
 
+        if ("complete".equals(context.runState().get("assetPromptContract", String.class))) {
+            // Reserve the canonical primary before adding explicit looks/states.
+            for (var group : List.of(characters, scenes, props)) for (var asset : group.values()) {
+                Integer count = jdbc.queryForObject("select count(*) from asset_visual_variant where tenant_id=? and project_id=? and asset_type=? and asset_id=? and deleted_at is null", Integer.class,
+                    context.tenantId(), context.projectId(), asset.type(), asset.id());
+                if (count != null && count == 0) insertVariant(context, asset.type(), asset.id(), defaultVariantName(asset.type()), null, null);
+            }
+        }
         List<Binding> bindings = new ArrayList<>();
         bindExplicitVariants(context, read.content(), "CHARACTER", "characterLocalKey",
             payload.path("characterLooks"), characters, bindings, promptPolicy);
         bindExplicitVariants(context, read.content(), "PROP", "propLocalKey",
             payload.path("propVariants"), props, bindings, promptPolicy);
+        bindExplicitVariants(context, read.content(), "SCENE", "sceneLocalKey",
+            payload.path("sceneVariants"), scenes, bindings, promptPolicy);
         addDefaultBindings(context, "CHARACTER", characters, bindings);
         addDefaultBindings(context, "SCENE", scenes, bindings);
         addDefaultBindings(context, "PROP", props, bindings);
@@ -102,6 +114,7 @@ public class EpisodeAssetPersistenceService {
         counts.put("scenes", scenes.size());
         counts.put("props", props.size());
         counts.put("propVariants", payload.path("propVariants").size());
+        counts.put("sceneVariants", payload.path("sceneVariants").size());
         ObjectNode diagnostic = json.createObjectNode();
         diagnostic.set("counts", counts.deepCopy());
         diagnostic.put("bindingCount", bindings.size());
@@ -263,7 +276,7 @@ public class EpisodeAssetPersistenceService {
                 invalid("候选资产身份尚待全剧归一，不能跨集复用；请清空assetKey并使用deferIdentity独立保存。");
             requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
             updateMetadata(context, type, id, item, normalized, false);
-            writeAssetPrompt(type, id, item, promptPolicy);
+            writeAssetPrompt(context, type, id, item, promptPolicy);
             return new ResolvedAsset(id, item.path("localKey").asText(), type);
         }
 
@@ -274,7 +287,7 @@ public class EpisodeAssetPersistenceService {
             long pendingId = ((Number) pending.get(0).get("id")).longValue();
             requirePromptIfMissing(item, promptIsEmpty(pending.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
             updateMetadata(context, type, pendingId, item, pendingName, false);
-            writeAssetPrompt(type, pendingId, item, promptPolicy);
+            writeAssetPrompt(context, type, pendingId, item, promptPolicy);
             return new ResolvedAsset(pendingId, item.path("localKey").asText(), type);
         }
         List<Map<String, Object>> matches = findExactMatches(context, type, normalized);
@@ -293,7 +306,7 @@ public class EpisodeAssetPersistenceService {
             ArrayNode candidates = resolution.putArray("candidateKeys");
             matches.forEach(row -> candidates.add(PREFIXES.get(type) + row.get("id")));
             jdbc.update("update " + TABLES.get(type) + " set content_json=? where id=?", metadata.toString(), pendingId);
-            writeAssetPrompt(type, pendingId, item, promptPolicy);
+            writeAssetPrompt(context, type, pendingId, item, promptPolicy);
             return new ResolvedAsset(pendingId, item.path("localKey").asText(), type);
         }
         long id;
@@ -308,7 +321,7 @@ public class EpisodeAssetPersistenceService {
             created = false;
         }
         updateMetadata(context, type, id, item, normalized, created);
-        writeAssetPrompt(type, id, item, promptPolicy);
+        writeAssetPrompt(context, type, id, item, promptPolicy);
         return new ResolvedAsset(id, item.path("localKey").asText(), type);
     }
 
@@ -602,7 +615,7 @@ public class EpisodeAssetPersistenceService {
                 """, id, context.tenantId(), context.projectId(), type, assetId);
             if (rows.size() != 1) invalid("形态 key 不属于对应资产。");
             requirePromptIfMissing(item, promptIsEmpty(rows.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
-            writeVariantPrompt(id, item, promptPolicy);
+            writeVariantPrompt(context, id, item, promptPolicy);
             return id;
         }
         String normalized = AssetIdentityNormalizer.normalize(item.path("name").asText());
@@ -622,40 +635,56 @@ public class EpisodeAssetPersistenceService {
         if (!matches.isEmpty()) {
             long id = ((Number) matches.get(0).get("id")).longValue();
             requirePromptIfMissing(item, promptIsEmpty(matches.get(0).get("prompt")) || promptPolicy == AssetPromptPolicy.REGENERATE_ALL);
-            writeVariantPrompt(id, item, promptPolicy);
+            writeVariantPrompt(context, id, item, promptPolicy);
             return id;
         }
         requirePromptIfMissing(item, true);
         long id = insertVariant(context, type, assetId, item.path("name").asText(),
             item.path("description").isNull() ? null : item.path("description").asText(), item);
-        writeVariantPrompt(id, item, promptPolicy);
+        writeVariantPrompt(context, id, item, promptPolicy);
         return id;
     }
 
-    private void writeAssetPrompt(String type, long id, JsonNode item, AssetPromptPolicy policy) {
-        String prompt = prompt(item);
-        if (prompt == null) return;
-        if (policy == AssetPromptPolicy.REGENERATE_ALL) {
-            jdbc.update("update " + TABLES.get(type) + " set prompt = ?, updated_at = now() where id = ?", prompt, id);
-            return;
-        }
-        jdbc.update("update " + TABLES.get(type)
-            + " set prompt = ?, updated_at = now() where id = ? and (prompt is null or trim(prompt) = '')",
-            prompt, id);
+    private void writeAssetPrompt(ToolExecutionContext context, String type, long id, JsonNode item, AssetPromptPolicy policy) {
+        writePromptPackage(context, TABLES.get(type), id, item, policy);
     }
 
-    private void writeVariantPrompt(long id, JsonNode item, AssetPromptPolicy policy) {
-        String prompt = prompt(item);
-        if (prompt == null) return;
-        if (policy == AssetPromptPolicy.REGENERATE_ALL) {
-            jdbc.update("update asset_visual_variant set prompt = ?, updated_at = now() where id = ?", prompt, id);
-            return;
+    private void writeVariantPrompt(ToolExecutionContext context, long id, JsonNode item, AssetPromptPolicy policy) {
+        writePromptPackage(context, "asset_visual_variant", id, item, policy);
+    }
+
+    private void writePromptPackage(ToolExecutionContext context, String table, long id, JsonNode item, AssetPromptPolicy policy) {
+        String value = prompt(item);
+        if (value == null) return;
+        var row = jdbc.queryForMap("select prompt,content_json from " + table + " where id=? for update", id);
+        if (policy == AssetPromptPolicy.FILL_EMPTY && !promptIsEmpty(row.get("prompt"))) return;
+        boolean complete = "complete".equals(context.runState().get("assetPromptContract", String.class));
+        if (complete) {
+            for (String field : List.of("prompt", "negativePrompt", "aspectRatio")) {
+                String text = item.path(field).asText("");
+                if (text.isBlank() || Set.of("同上", "无", "待补充", "参照基础版").contains(text)
+                    || text.contains("{值}") || text.contains("待开发"))
+                    invalid("完整提示词方案必须提供独立非空的 " + field + "，不能使用占位内容。");
+            }
+            if (!"FULL".equals(item.path("promptMode").asText())) invalid("完整提示词方案的promptMode必须为FULL。");
+            if (table.equals("character_asset")) {
+                for (String field : List.of("face", "hair", "body", "gender", "age", "clothing", "fixedSides"))
+                    if (item.path("visualIdentity").path(field).asText("").isBlank())
+                        invalid("完整方案角色必须提供visualIdentity." + field + "。");
+            }
         }
-        jdbc.update("""
-            update asset_visual_variant
-               set prompt = ?, updated_at = now()
-             where id = ? and (prompt is null or trim(prompt) = '')
-            """, prompt, id);
+        ObjectNode metadata = metadata(row.get("content_json"));
+        ObjectNode spec = metadata.putObject("generationSpec");
+        for (String field : List.of("negativePrompt", "aspectRatio", "promptMode"))
+            if (item.hasNonNull(field)) spec.set(field, item.get(field));
+        spec.put("promptMode", complete ? "FULL" : item.path("promptMode").asText("DELTA"));
+        String code = context.runState().get("assetSkillCode", String.class);
+        String revision = context.runState().get("assetSkillRevision", String.class);
+        if (code != null) spec.put("skillCode", code);
+        if (revision != null) spec.put("skillRevision", revision);
+        for (String field : List.of("visualIdentity", "artSupplement"))
+            if (item.hasNonNull(field)) metadata.set(field, item.get(field));
+        jdbc.update("update " + table + " set prompt=?,content_json=?,updated_at=now() where id=?", value, metadata.toString(), id);
     }
 
     private String prompt(JsonNode item) {
@@ -830,7 +859,7 @@ public class EpisodeAssetPersistenceService {
         if (scope == AssetRecognitionScope.ALL) return;
         Map<String, String> collections = Map.of(
             "characters", "CHARACTER", "characterLooks", "CHARACTER",
-            "scenes", "SCENE", "props", "PROP", "propVariants", "PROP");
+            "scenes", "SCENE", "sceneVariants", "SCENE", "props", "PROP", "propVariants", "PROP");
         collections.forEach((field, type) -> {
             if (!scope.name().equals(type) && !payload.path(field).isEmpty()) {
                 invalid("当前资产识别范围不允许提交 " + field + "。" );
@@ -839,7 +868,7 @@ public class EpisodeAssetPersistenceService {
     }
 
     private void validateAiCharacterPrompts(ToolExecutionContext context, JsonNode characters) {
-        if (context.agentRunId() == null) return;
+        if (context.agentRunId() == null || "complete".equals(context.runState().get("assetPromptContract", String.class))) return;
         for (JsonNode character : characters) {
             String value = prompt(character);
             if (value == null) continue;

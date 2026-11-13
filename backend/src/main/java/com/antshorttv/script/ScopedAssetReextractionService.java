@@ -281,7 +281,9 @@ class ScopedAssetReextractionService {
             String.class,snapshotId);
         try {
             if(saved!=null) return json.readValue(saved,WorkflowAgentExecutionPlan.class);
-            WorkflowAgentExecutionPlan plan=runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE);
+            WorkflowAgentExecutionPlan plan=runner.freezeFormal(AssetRecognitionAgentBootstrap.AGENT_CODE,
+                jdbc.queryForObject("select tenant_id from scoped_asset_reextraction_snapshot where id=?", Long.class, snapshotId),
+                jdbc.queryForObject("select project_id from scoped_asset_reextraction_snapshot where id=?", Long.class, snapshotId));
             jdbc.update("update scoped_asset_reextraction_snapshot set frozen_plan_json=?,updated_at=now() where id=?",
                 json.writeValueAsString(plan),snapshotId);
             return plan;

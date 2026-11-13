@@ -54,6 +54,7 @@ export type ScriptEpisode = {
 };
 
 export type VisualVariant = {
+  generationSpec?: { negativePrompt?: string | null; aspectRatio?: string | null; promptMode?: string | null } | null;
   id: number;
   assetType: Exclude<ScriptElementType, 'ALL'>;
   assetId: number;

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetExtractionCoordination {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.workflowagent.skill.AssetExtractionSkillService assetSkills;
     private final JdbcTemplate jdbc;
     public AssetExtractionCoordination(JdbcTemplate jdbc) { this.jdbc=jdbc; }
 
@@ -103,6 +104,7 @@ public class AssetExtractionCoordination {
             where tenant_id=? and project_id=? and script_id=? and status='ACTIVE' and retired_at is null order by id
             """,tenant,project,script);
         var revision=jdbc.queryForList("select revision from ai_workflow_agent where code='short-drama-asset-recognition'");
-        return EpisodePromptContextFactory.hash(List.of(user,version,model,request,episodes,revision).toString());
+        return EpisodePromptContextFactory.hash(List.of(user,version,model,request,episodes,revision,
+            assetSkills == null ? "" : assetSkills.fingerprint(tenant, project)).toString());
     }
 }

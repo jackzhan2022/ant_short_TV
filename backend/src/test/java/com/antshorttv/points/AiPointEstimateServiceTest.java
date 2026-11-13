@@ -99,7 +99,7 @@ class AiPointEstimateServiceTest {
         var agent = mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
         when(agent.maxTokens()).thenReturn(1024); when(agent.systemPrompt()).thenReturn("system");
         var runner = (WorkflowAgentRunner) org.springframework.test.util.ReflectionTestUtils.getField(service, "agents");
-        when(runner.freezeFormal(anyString(), eq(7L))).thenReturn(
+        when(runner.freezeFormal(anyString(), eq(7L), any())).thenReturn(
             new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent, List.of()));
         when(calculator.calculate(eq(7L), any(),any(AiPointEstimateCalculator.Context.class))).thenAnswer(call -> {
             AiPointEstimatePlan plan = call.getArgument(1);
@@ -115,7 +115,7 @@ class AiPointEstimateServiceTest {
         verify(versions,times(1)).selectEffective(eq(9L),any());
         verify(components,times(1)).selectByVersion(20L);
         verify(router,times(1)).route(9L,"TEXT");
-        verify(runner,times(1)).freezeFormal("short-drama-global-understanding",7L);
+        verify(runner,times(1)).freezeFormal("short-drama-global-understanding",7L,null);
         when(jdbc.queryForList(contains("team_point_account"),eq(7L))).thenReturn(List.of(
             Map.of("balance",new BigDecimal("3000"),"trial_balance",BigDecimal.ZERO)));
         var next=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects",data)));
@@ -183,10 +183,10 @@ class AiPointEstimateServiceTest {
         when(components.selectByVersion(20L)).thenReturn(List.of(component));
         var agent=mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);when(agent.maxTokens()).thenReturn(32768);when(agent.systemPrompt()).thenReturn("保留关键版本");
         var agents=(WorkflowAgentRunner)org.springframework.test.util.ReflectionTestUtils.getField(service,"agents");
-        when(agents.freezeFormal("short-drama-prop-simplification",7L)).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
+        when(agents.freezeFormal("short-drama-prop-simplification",7L,3L)).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
         var result=service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/projects/3/prop-simplification",null)));
         assertThat(result.lines()).hasSize(1);assertThat(result.lines().get(0).label()).isEqualTo("道具精简方案分析");
-        verify(agents).freezeFormal("short-drama-prop-simplification",7L);verifyNoInteractions(executions);
+        verify(agents).freezeFormal("short-drama-prop-simplification",7L,3L);verifyNoInteractions(executions);
     }
 
     @Test
@@ -258,7 +258,7 @@ class AiPointEstimateServiceTest {
         var agent=mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
         when(agent.maxTokens()).thenReturn(1024); when(agent.systemPrompt()).thenReturn("system");
         var runner=(WorkflowAgentRunner)org.springframework.test.util.ReflectionTestUtils.getField(service,"agents");
-        when(runner.freezeFormal("short-drama-episode-summary",7L)).thenReturn(
+        when(runner.freezeFormal("short-drama-episode-summary",7L,3L)).thenReturn(
             new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
         service.estimate(7L,List.of(new AiPointEstimateService.Operation("/api/tenants/7/ai-executions/51/retry",null)));
         var captured=org.mockito.ArgumentCaptor.forClass(AiPointEstimatePlan.class);
@@ -296,7 +296,7 @@ class AiPointEstimateServiceTest {
         when(components.selectByVersion(20L)).thenReturn(List.of(component));
         var agent=mock(com.antshorttv.workflowagent.agent.WorkflowAgentRecord.class);
         when(agent.maxTokens()).thenReturn(1024);when(agent.systemPrompt()).thenReturn("system");
-        when(runner.freezeFormal(anyString(),eq(7L))).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
+        when(runner.freezeFormal(anyString(),eq(7L),any())).thenReturn(new com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan(agent,List.of()));
         when(jdbc.queryForList(contains("select content from script where"),eq(7L),eq(3L))).thenReturn(List.of(Map.of("content","完整剧本")));
         var episodes=java.util.stream.LongStream.rangeClosed(1,20).mapToObj(id->Map.<String,Object>of("id",id,"content","第"+id+"集剧情")).toList();
         when(jdbc.queryForList(contains("select id, content from script_episode"),eq(7L),eq(3L))).thenReturn(episodes);
@@ -307,8 +307,8 @@ class AiPointEstimateServiceTest {
         verify(router,times(1)).route(9L,"TEXT");
         verify(versions,times(1)).selectEffective(eq(9L),any());
         verify(components,times(1)).selectByVersion(20L);
-        verify(runner,times(1)).freezeFormal("short-drama-asset-recognition",7L);
-        verify(runner,times(1)).freezeFormal("short-drama-storyboard",7L);
+        verify(runner,times(1)).freezeFormal("short-drama-asset-recognition",7L,3L);
+        verify(runner,times(1)).freezeFormal("short-drama-storyboard",7L,3L);
         verify(jdbc,times(1)).queryForList(contains("select distinct episode_id"),eq(Long.class),eq(7L),eq(3L));
         verify(jdbc,times(1)).queryForList(contains("select content from script where"),eq(7L),eq(3L));
     }

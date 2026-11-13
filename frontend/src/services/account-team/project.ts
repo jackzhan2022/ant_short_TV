@@ -27,6 +27,7 @@ export type ProjectFormValues = {
   scriptType?: string;
   breakdownStrength?: string;
   storyboardSkillVersion?: 'V1' | 'V2';
+  assetExtractionSkillCode?: string;
   visualStyleVersion?: 'V1' | 'V2';
   visualStyleCode?: string;
   visualStyle?: string;

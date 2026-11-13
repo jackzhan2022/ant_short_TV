@@ -1211,11 +1211,16 @@ public class ScriptWorkflowService {
             ? assetNormalization.committedEpisodeAssetRun(operation,episodeId,execution):null;
         java.util.List<com.antshorttv.workflowagent.run.WorkflowAgentModelCall> calls=new java.util.ArrayList<>();
         if(runId==null) {
-            var result = workflowAgentRunner.runFormal(new WorkflowAgentRunInput(agent,
+            var result = workflowAgentRunner.runFormal(
+                "SCRIPT_EPISODE_ASSETS".equals(operation.operationType) ? frozenAssetPlan(operation)
+                    : workflowAgentRunner.freezeFormal(agent, operation.tenantId, operation.projectId),
+                new WorkflowAgentRunInput(agent,
                 "根据当前正式剧本重新生成并覆盖本次操作对应的正式结果。",
                 operation.tenantId, operation.projectId, episodeId, operation.scriptId, operation.id, null,
                 operation.createdBy, execution.task().id, execution.claim().attemptId(),
-                execution.task().executionVersion, execution.task().requestedModelId));
+                execution.task().executionVersion, execution.task().requestedModelId)
+                .withTrustedToolState("SCRIPT_EPISODE_ASSETS".equals(operation.operationType)
+                    ? Map.of("assetPromptPolicy", "REGENERATE_ALL") : Map.of()));
             requireActiveExecutionClaim(execution);
             runId=result.runId();
             calls.addAll(result.modelCalls());
@@ -1223,6 +1228,18 @@ public class ScriptWorkflowService {
         if("SCRIPT_EPISODE_ASSETS".equals(operation.operationType)) calls.addAll(assetNormalization.normalize(operation.scriptId,operation.scriptVersionId,execution).calls());
         markOperationResult(operation, "WORKFLOW_AGENT_RUN", runId);
         return new ScriptAiOperationExecutionResult("WORKFLOW_AGENT_RUN", runId, List.of(), calls);
+    }
+
+    private com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan frozenAssetPlan(ScriptAiOperationEntity operation) {
+        String saved = jdbcTemplate.queryForObject("select asset_plan_json from script_ai_operation where id=?", String.class, operation.id);
+        try {
+            if (saved == null) {
+                var plan = workflowAgentRunner.freezeFormal("short-drama-asset-recognition", operation.tenantId, operation.projectId);
+                jdbcTemplate.update("update script_ai_operation set asset_plan_json=? where id=? and asset_plan_json is null", objectMapper.writeValueAsString(plan), operation.id);
+                saved = jdbcTemplate.queryForObject("select asset_plan_json from script_ai_operation where id=?", String.class, operation.id);
+            }
+            return objectMapper.readValue(saved, com.antshorttv.workflowagent.run.WorkflowAgentExecutionPlan.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("无法恢复资产提取规则。", e); }
     }
 
     private Map<String, Object> requireCurrentEpisode(Long tenantId, Long projectId, Long episodeId) {

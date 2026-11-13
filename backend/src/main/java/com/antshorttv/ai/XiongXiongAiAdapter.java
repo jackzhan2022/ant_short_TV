@@ -58,7 +58,8 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
             tool.put("action", hasReferences ? "edit" : "generate");
 
             List<Map<String, Object>> content = new ArrayList<>();
-            content.add(Map.of("type", "input_text", "text", request.prompt() == null ? "" : request.prompt()));
+            content.add(Map.of("type", "input_text", "text", (request.prompt() == null ? "" : request.prompt())
+                + (request.negativePrompt() == null || request.negativePrompt().isBlank() ? "" : "\n\n请避免以下内容：" + request.negativePrompt())));
             if (hasReferences) {
                 for (String reference : request.referenceImages()) {
                     if (reference != null && !reference.isBlank()) {
@@ -128,8 +129,8 @@ public class XiongXiongAiAdapter extends AbstractCompatibleProviderAdapter {
         if (request.size() != null && !request.size().isBlank()) return request.size();
         return switch (request.aspectRatio() == null ? "" : request.aspectRatio()) {
             case "1:1" -> "1024x1024";
-            case "3:4" -> "1024x1536";
-            case "4:3" -> "1536x1024";
+            case "3:4" -> "768x1024";
+            case "4:3" -> "1024x768";
             case "16:9" -> "1536x864";
             case "9:16" -> "864x1536";
             default -> "auto";

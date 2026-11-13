@@ -90,7 +90,7 @@ public class AssetRecognitionAgentAdapter {
                 throw new IllegalStateException("资产画风任务快照不存在。");
             artSnapshot = operation.artStyleSnapshot;
         }
-        String artRules = artStyles == null ? "" : artStyles.rules(artSnapshot,
+        String artRules = artStyles == null || plan.completeAssetPrompts() ? "" : artStyles.rules(artSnapshot,
             (scope == null ? AssetRecognitionScope.ALL : scope).name());
         Map<String, Object> toolState = new HashMap<>(trustedToolState);
         toolState.put("assetScope", (scope == null ? AssetRecognitionScope.ALL : scope).name());

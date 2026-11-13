@@ -17,6 +17,8 @@ public interface EpisodeFanoutStore {
         String episodeSetHash,
         boolean fullRegeneration);
 
+    default WorkflowAgentExecutionPlan freezePlan(long snapshotId, WorkflowAgentExecutionPlan plan) { return plan; }
+
     List<EpisodeFanoutCoordinator.EpisodeUnit> runnableUnits(long snapshotId);
 
     int markRunning(long snapshotId, Long episodeId);

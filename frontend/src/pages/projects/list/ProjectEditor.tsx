@@ -1,3 +1,4 @@
+import AssetExtractionSkillSelect, { defaultAssetExtractionSkill } from '@/components/AssetExtractionSkillSelect';
 import ProjectArtStylePicker, { type ArtStyleSelection } from '@/components/ProjectArtStylePicker';
 import { EditOutlined } from '@ant-design/icons';
 import {
@@ -36,6 +37,7 @@ export default function ProjectEditor({
   const { message } = App.useApp();
   const [draft, setDraft] = useState<ProjectCoverDraft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [assetSkill, setAssetSkill] = useState(project.assetExtractionSkillCode || defaultAssetExtractionSkill);
   const [artStyle, setArtStyle] = useState<ArtStyleSelection>({ visualStyleVersion: project.visualStyleVersion || 'V1', visualStyleCode: project.visualStyleCode, visualStyle: project.visualStyle || '' });
   const submitting = useRef(false);
   const mounted = useRef(true);
@@ -96,6 +98,7 @@ export default function ProjectEditor({
         },
       }}
       onOpenChange={(open) => {
+        if (open) setAssetSkill(project.assetExtractionSkillCode || defaultAssetExtractionSkill);
         if (open) setArtStyle({ visualStyleVersion: project.visualStyleVersion || 'V1', visualStyleCode: project.visualStyleCode, visualStyle: project.visualStyle || '' });
         if (!open) {
           clearUpload();
@@ -175,6 +178,7 @@ export default function ProjectEditor({
             visualStyle: project.visualStyle || undefined,
             initialScriptContent: project.initialScriptContent || undefined,
             ...fields,
+            assetExtractionSkillCode: assetSkill,
             ...artStyle,
             code: fields.code?.trim().toUpperCase(),
             ...(draft.removed ? { clearCover: true } : {}),
@@ -226,6 +230,8 @@ export default function ProjectEditor({
         rules={[{ required: true, message: '请选择负责人' }]}
       />
       <ProFormTextArea name="description" label="项目描述" />
+      <AssetExtractionSkillSelect value={assetSkill} onChange={setAssetSkill} disabled={saving} />
+      <p>更换方案后，新提交的提取任务使用新规则；已有资产可通过重新提取更新。</p>
       <ProjectArtStylePicker value={artStyle} onChange={setArtStyle} />
       <ProjectCoverPicker
         project={project}

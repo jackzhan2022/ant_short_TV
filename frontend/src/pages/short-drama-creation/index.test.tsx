@@ -61,6 +61,10 @@ class MockIntersectionObserver {
 
 vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
 
+vi.mock('@/components/AssetExtractionSkillSelect', () => ({
+  defaultAssetExtractionSkill: 'short-drama-asset-recognition-framework',
+  default: ({ value, onChange }: any) => <label>资产提取方案<select aria-label="资产提取方案" value={value} onChange={(event) => onChange(event.target.value)}><option value="short-drama-asset-recognition-framework">默认资产提取</option><option value="short-drama-asset-recognition-live-action">仿真人短剧资产提取</option></select></label>,
+}));
 vi.mock('@umijs/max', () => ({
   history: {
     push: mocks.historyPush,

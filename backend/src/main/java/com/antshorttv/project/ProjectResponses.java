@@ -27,6 +27,7 @@ record ProjectResponse(
     String scriptType,
     String breakdownStrength,
     String storyboardSkillVersion,
+    String assetExtractionSkillCode,
     String visualStyle,
     String visualStyleVersion,
     String visualStyleCode,

@@ -46,7 +46,11 @@ public class SkillDocumentParser {
         if (markdown.isBlank()) {
             throw invalid("SKILL.md Markdown 正文不能为空。");
         }
-        return new SkillDocument(code, name, description, markdown, content, sha256(content));
+        String purpose = frontmatter.get("purpose") instanceof String text ? text : null;
+        String contract = frontmatter.get("prompt-contract") instanceof String text ? text : "legacy";
+        if ("asset-extraction".equals(purpose) && !java.util.Set.of("legacy", "complete").contains(contract))
+            throw invalid("资产方案 prompt-contract 必须为 legacy 或 complete。");
+        return new SkillDocument(code, name, description, markdown, content, sha256(content), purpose, contract);
     }
 
     private String required(Object value, String field) {

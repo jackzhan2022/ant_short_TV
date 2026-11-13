@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   warning: vi.fn(),
 }));
+vi.mock('@/components/AssetExtractionSkillSelect', () => ({
+  defaultAssetExtractionSkill: 'short-drama-asset-recognition-framework',
+  default: ({ value, onChange }: any) => <label>资产提取方案<select aria-label="资产提取方案" value={value} onChange={(event) => onChange(event.target.value)}><option value="short-drama-asset-recognition-framework">默认资产提取</option><option value="short-drama-asset-recognition-live-action">仿真人短剧资产提取</option></select></label>,
+}));
 vi.mock('@/pages/style-library/service', () => ({ queryStyleLibrary: vi.fn().mockResolvedValue({ data: { data: [] } }) }));
 vi.mock('@/components/ProjectArtStylePicker/service', () => ({ queryArtStyles: vi.fn().mockResolvedValue({ data: [{ code: '3D_clay_stopmotion', name: '黏土定格', category: '三维风格', description: '手工质感' }] }) }));
 vi.mock('./service', () => ({

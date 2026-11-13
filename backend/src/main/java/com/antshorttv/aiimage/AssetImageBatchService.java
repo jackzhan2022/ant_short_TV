@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AssetImageBatchService {
+    @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetGenerationSpecService generationSpecs;
     @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.PropProductionService propProduction;
     @org.springframework.beans.factory.annotation.Autowired private com.antshorttv.script.AssetNormalizationGuard normalizationGuard;
     private static final Set<String> ASSET_TYPES = Set.of("CHARACTER", "SCENE", "PROP");
@@ -202,7 +203,9 @@ public class AssetImageBatchService {
             .filter(item -> Set.of("PENDING", "WAITING_DEPENDENCY").contains(item.classification()))
             .filter(item -> onlyVariants == null || onlyVariants.contains(item.variantId()))
             .map(item -> imageTaskService.pointEstimateBatch(tenantId, projectId, request.modelId(),
-                request.aspectRatio(), request.imageCount(), item.variantName())).toList();
+                (generationSpecs == null ? new com.antshorttv.script.AssetGenerationSpecService.Spec(null,null,null) :
+                    generationSpecs.read(tenantId, projectId, item.variantId() == null ? request.assetType() : "VISUAL_VARIANT",
+                        item.variantId() == null ? item.assetId() : item.variantId())).ratio(request.aspectRatio()), request.imageCount(), item.variantName())).toList();
     }
 
     private BatchPlan plan(Long tenantId, Long projectId, AssetImageBatchRequest request) {
@@ -416,7 +419,7 @@ public class AssetImageBatchService {
         if (!MODES.contains(request.mode())) throw invalid("请选择资产图生成范围。");
         if (request.assetIds() == null || request.assetIds().isEmpty()) throw invalid("请至少选择一个资产。");
         if (new HashSet<>(request.assetIds()).size() != request.assetIds().size()) throw invalid("资产不能重复选择。");
-        if (!ASPECT_RATIOS.contains(request.aspectRatio())) throw invalid("请选择图片比例。");
+        if (request.aspectRatio() == null || !("ASSET".equals(request.aspectRatio()) || ASPECT_RATIOS.contains(request.aspectRatio()))) throw invalid("请选择图片比例。");
         if (request.imageCount() == null || !Set.of(1, 2, 4).contains(request.imageCount())) {
             throw invalid("每个形象只能生成 1、2 或 4 张图片。");
         }

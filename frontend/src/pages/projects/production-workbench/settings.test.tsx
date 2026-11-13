@@ -1196,7 +1196,7 @@ describe('ProductionWorkbenchSettings', () => {
           assetIds: [1],
           mode: 'PRIMARY',
           modelId: 8,
-          aspectRatio: '16:9',
+          aspectRatio: 'ASSET',
           imageCount: 1,
         }),
       );
@@ -1216,7 +1216,7 @@ describe('ProductionWorkbenchSettings', () => {
           assetType: 'CHARACTER',
           assetIds: [1],
           mode: 'PRIMARY',
-          aspectRatio: '16:9',
+          aspectRatio: 'ASSET',
           imageCount: 1,
         }),
         expect.any(String),
@@ -1502,7 +1502,7 @@ describe('ProductionWorkbenchSettings', () => {
           prompt: '婚礼礼服，电影感',
           referenceImages: ['/daily.png'],
           modelId: 8,
-          aspectRatio: '16:9',
+          aspectRatio: 'ASSET',
           imageCount: 1,
         }),
       );

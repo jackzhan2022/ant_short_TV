@@ -28,11 +28,14 @@ import org.junit.jupiter.api.Test;
 class EpisodeFanoutCoordinatorTest {
     private final EpisodeFanoutStore store = mock(EpisodeFanoutStore.class);
     private final WorkflowAgentRunner runner = mock(WorkflowAgentRunner.class);
+    @org.junit.jupiter.api.BeforeEach void restorePlan() {
+        when(store.freezePlan(anyLong(), any())).thenAnswer(i -> i.getArgument(1));
+    }
 
     @Test
     void propagatesOwnershipLossWithoutPublishingAUnitFailure() {
         var coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan());
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan());
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units());
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(57L);
         when(store.runnableUnits(57L)).thenReturn(List.of(units().get(0)));
@@ -50,7 +53,7 @@ class EpisodeFanoutCoordinatorTest {
     @Test
     void resumesCommittedUnitWithoutAnotherModelCall() {
         var coordinator = new EpisodeFanoutCoordinator(store, runner, 1);
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan());
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan());
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units());
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(56L);
         when(store.runnableUnits(56L)).thenReturn(List.of(units().get(0)));
@@ -73,7 +76,7 @@ class EpisodeFanoutCoordinatorTest {
         EpisodeFanoutCoordinator coordinator = new EpisodeFanoutCoordinator(store, runner, 2);
         WorkflowAgentExecutionPlan plan = plan();
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
         when(store.openSnapshot(any(), any(), any(), eq(plan), eq(99L), eq(units), any(), eq(false))).thenReturn(50L);
         when(store.runnableUnits(50L)).thenReturn(units);
@@ -103,7 +106,7 @@ class EpisodeFanoutCoordinatorTest {
 
         assertThat(result.progress().completed()).isEqualTo(3);
         assertThat(maximum.get()).isLessThanOrEqualTo(2);
-        verify(runner).freezeFormal("short-drama-episode-summary");
+        verify(runner).freezeFormal("short-drama-episode-summary", 7L, 8L);
         verify(store).openSnapshot(any(), any(), any(), eq(plan), eq(99L), eq(units), any(), eq(false));
         verify(store, times(3)).markRunning(eq(50L), anyLong());
         verify(store, times(3)).markSucceeded(eq(50L), anyLong(), eq(1), anyLong());
@@ -116,7 +119,7 @@ class EpisodeFanoutCoordinatorTest {
         WorkflowAgentExecutionPlan plan = plan();
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
         EpisodeFanoutCoordinator.EpisodeUnit failed = units.get(1);
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(51L);
         when(store.runnableUnits(51L)).thenReturn(List.of(failed));
@@ -142,7 +145,7 @@ class EpisodeFanoutCoordinatorTest {
         EpisodeFanoutCoordinator coordinator = new EpisodeFanoutCoordinator(store, runner, 2);
         WorkflowAgentExecutionPlan plan = plan();
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(52L);
         when(store.runnableUnits(52L)).thenReturn(List.of(units.get(0)));
@@ -182,7 +185,7 @@ class EpisodeFanoutCoordinatorTest {
         WorkflowAgentExecutionPlan plan = plan();
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
         EpisodeFanoutCoordinator.EpisodeUnit contested = units.get(0);
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false))).thenReturn(54L);
         when(store.runnableUnits(54L)).thenReturn(List.of(contested));
@@ -209,7 +212,7 @@ class EpisodeFanoutCoordinatorTest {
         List<EpisodeFanoutCoordinator.EpisodeUnit> units = units();
         EpisodeFanoutCoordinator.Progress recovered = new EpisodeFanoutCoordinator.Progress(
             3, 1, 1, 0, 1, "PENDING");
-        when(runner.freezeFormal("short-drama-episode-summary")).thenReturn(plan);
+        when(runner.freezeFormal("short-drama-episode-summary", 7L, 8L)).thenReturn(plan);
         when(store.currentEpisodes(7L, 8L, 9L)).thenReturn(units);
         when(store.openSnapshot(any(), any(), any(), any(), any(), any(), any(), eq(false)))
             .thenReturn(55L);

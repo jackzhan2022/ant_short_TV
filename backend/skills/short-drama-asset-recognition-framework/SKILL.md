@@ -1,5 +1,7 @@
 ---
 name: 角色场景道具识别框架
+purpose: asset-extraction
+prompt-contract: legacy
 description: 从当前短剧的单集正文中识别正式角色、变装、实体场景、道具及道具状态。
 ---
 

@@ -470,6 +470,7 @@ public class ScreenplayToolConfiguration {
         fields.set("props", propArray(json));
         fields.set("characterLooks", variantArray(json, "characterLocalKey", 300));
         fields.set("propVariants", variantArray(json, "propLocalKey", 300));
+        fields.set("sceneVariants", variantArray(json, "sceneLocalKey", 300));
         return schema;
     }
 
@@ -487,6 +488,14 @@ public class ScreenplayToolConfiguration {
         fields.putObject("evidence").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         fields.set("evidenceRef", evidenceReference(json));
         fields.set("prompt", nullableType(json, "string").put("maxLength", 10_000));
+        fields.set("negativePrompt", nullableType(json, "string").put("maxLength", 3000));
+        fields.set("aspectRatio", nullableType(json, "string").set("enum", json.createArrayNode().add("1:1").add("3:4").add("4:3").add("9:16").add("16:9").addNull()));
+        fields.set("promptMode", nullableType(json, "string").set("enum", json.createArrayNode().add("FULL").add("DELTA").addNull()));
+        fields.set("artSupplement", nullableType(json, "string").put("maxLength", 4000));
+        ObjectNode visual = objectSchema(json);
+        for (String key : new String[]{"face", "hair", "body", "gender", "age", "clothing", "fixedSides"})
+            ((ObjectNode) visual.path("properties")).putObject(key).put("type", "string").put("maxLength", 2000);
+        fields.set("visualIdentity", visual);
         array.set("items", item);
         return array;
     }
@@ -537,6 +546,14 @@ public class ScreenplayToolConfiguration {
         fields.set("evidenceRef", evidenceReference(json));
         fields.putObject("preferred").put("type", "boolean");
         fields.set("prompt", nullableType(json, "string").put("maxLength", 10_000));
+        fields.set("negativePrompt", nullableType(json, "string").put("maxLength", 3000));
+        fields.set("aspectRatio", nullableType(json, "string").set("enum", json.createArrayNode().add("1:1").add("3:4").add("4:3").add("9:16").add("16:9").addNull()));
+        fields.set("promptMode", nullableType(json, "string").set("enum", json.createArrayNode().add("FULL").add("DELTA").addNull()));
+        fields.set("artSupplement", nullableType(json, "string").put("maxLength", 4000));
+        ObjectNode visual = objectSchema(json);
+        for (String key : new String[]{"face", "hair", "body", "gender", "age", "clothing", "fixedSides"})
+            ((ObjectNode) visual.path("properties")).putObject(key).put("type", "string").put("maxLength", 2000);
+        fields.set("visualIdentity", visual);
         array.set("items", item);
         return array;
     }

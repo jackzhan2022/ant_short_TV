@@ -40,6 +40,7 @@ public class ProjectEntity {
     public String breakdownStrength;
     @TableField(updateStrategy = FieldStrategy.NEVER)
     public String storyboardSkillVersion;
+    public String assetExtractionSkillCode;
     public String visualStyle;
     public String visualStyleVersion;
     public String visualStyleCode;

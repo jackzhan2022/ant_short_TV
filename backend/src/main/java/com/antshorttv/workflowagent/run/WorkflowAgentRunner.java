@@ -74,6 +74,8 @@ public class WorkflowAgentRunner {
     private final EpisodeSplittingRunPolicy splitPolicy;
     @Autowired
     private com.antshorttv.workflowagent.skill.ProjectStoryboardSkillSelector storyboardSkills;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.antshorttv.workflowagent.skill.AssetExtractionSkillService assetSkills;
 
     @Autowired
     public WorkflowAgentRunner(
@@ -150,7 +152,14 @@ public class WorkflowAgentRunner {
         WorkflowAgentRecord agent = agents.loadForRun(agentCode);
         List<String> codes = storyboardSkills == null ? agent.skillCodes()
             : storyboardSkills.select(agentCode, tenantId, projectId, agent.skillCodes());
+        if (assetSkills != null) codes = assetSkills.select(agentCode, tenantId, projectId, codes);
         return new WorkflowAgentExecutionPlan(agent, loadSkills(codes, agentCode, tenantId), tenantId);
+    }
+
+    public WorkflowAgentExecutionPlan freezeAssetSkill(Long tenant, String code) {
+        var agent = agents.loadForRun(com.antshorttv.workflowagent.skill.AssetExtractionSkillService.AGENT);
+        return new WorkflowAgentExecutionPlan(agent,
+            loadSkills(assetSkills.selectCode(code, agent.skillCodes()), agent.code(), tenant), tenant);
     }
 
     public WorkflowAgentRunResult runFormal(WorkflowAgentExecutionPlan plan, WorkflowAgentRunInput input) {
@@ -168,6 +177,18 @@ public class WorkflowAgentRunner {
                 "冻结的 Agent 配置与运行 code 不匹配。");
         }
         Map<String, Object> trustedState = new java.util.HashMap<>(input.trustedToolState());
+        if (com.antshorttv.workflowagent.skill.AssetExtractionSkillService.AGENT.equals(input.agentCode())) {
+            var parser = new com.antshorttv.workflowagent.skill.SkillDocumentParser();
+            for (var snapshot : plan.skillSnapshots()) {
+                if (!snapshot.content().startsWith("---\n")) continue;
+                var document = parser.parse(snapshot.code(), snapshot.content());
+                if (com.antshorttv.workflowagent.skill.AssetExtractionSkillService.selectable(document)) {
+                    trustedState.put("assetPromptContract", document.promptContract());
+                    trustedState.put("assetSkillCode", snapshot.code());
+                    trustedState.put("assetSkillRevision", snapshot.revision());
+                }
+            }
+        }
         trustedState.put("storyboardSkillV2", plan.skillSnapshots().stream().anyMatch(snapshot ->
             com.antshorttv.project.StoryboardSkillVersion.V2.skillCode().equals(snapshot.code())));
         return execute(plan.agent(), "FORMAL", input.withTrustedToolState(trustedState), plan.skillSnapshots());
