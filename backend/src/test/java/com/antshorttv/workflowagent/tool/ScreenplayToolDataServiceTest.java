@@ -950,6 +950,70 @@ class ScreenplayToolDataServiceTest {
             Integer.class, scriptId)).isZero();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void savesAiCharacterPromptWithCurrentOrHistoricalTaskHeading(boolean withAspectRatio) throws Exception {
+        jdbc.update("""
+            insert into ai_workflow_agent_run
+              (agent_code, run_type, tenant_id, user_id, project_id, status, model_id,
+               temperature, max_tokens, max_steps, prompt_snapshot, started_at, created_at)
+            values ('short-drama-asset-recognition', 'PROJECT', ?, ?, ?, 'RUNNING',
+                    (select min(id) from ai_model), 0.2, 16384, 8, 'prompt', now(), now())
+            """, tenantId, context.userId(), projectId);
+        long runId = jdbc.queryForObject("select id from ai_workflow_agent_run where project_id = ?", Long.class, projectId);
+        ToolExecutionContext assetContext = new ToolExecutionContext(
+            tenantId, context.userId(), projectId, episodeId, scriptId, null, null, runId,
+            Set.of("MENU:PROJECTS"), null, new WorkflowToolRunState());
+        jdbc.update("update script_episode set content = '林小满出现。' where id = ?", episodeId);
+        service.readCurrentEpisode(assetContext);
+        var payload = characterPromptPayload(withAspectRatio);
+
+        assertThat(service.saveEpisodeAssets(assetContext, payload).path("saved").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("select prompt from character_asset where script_id = ?",
+            String.class, scriptId)).isEqualTo(payload.path("characters").get(0).path("prompt").asText());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"missing", "empty", "placeholder"})
+    void reportsExactInvalidCharacterPromptFieldWithoutWritingAssets(String problem) throws Exception {
+        ToolExecutionContext assetContext = episodeContext();
+        jdbc.update("update script_episode set content = '林小满出现。' where id = ?", episodeId);
+        service.readCurrentEpisode(assetContext);
+        var payload = characterPromptPayload(false);
+        var character = (com.fasterxml.jackson.databind.node.ObjectNode) payload.path("characters").get(0);
+        String replacement = switch (problem) {
+            case "missing" -> "";
+            case "empty" -> "- **脸型**:   ";
+            default -> "- **脸型**: {完整面部设定}";
+        };
+        character.put("prompt", character.path("prompt").asText().replace("- **脸型**: 具体造型", replacement));
+
+        assertThatThrownBy(() -> service.saveEpisodeAssets(assetContext, payload))
+            .isInstanceOf(com.antshorttv.common.BusinessException.class)
+            .hasMessageContaining("characters[0].prompt")
+            .hasMessageContaining("林小满")
+            .hasMessageContaining("脸型");
+        assertThat(jdbc.queryForObject("select count(*) from character_asset where script_id = ?",
+            Integer.class, scriptId)).isZero();
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode characterPromptPayload(boolean withAspectRatio) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var config = new com.antshorttv.script.ManualAssetConfiguration(json);
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        config.definition("CHARACTER").fields().forEach(field ->
+            values.put(field.key(), field.unknown() == null ? "具体造型" : field.unknown()));
+        String prompt = config.build("CHARACTER", values).prompt()
+            .replace("整张图片必须为横向16:9宽高比。", "");
+        if (withAspectRatio) prompt = prompt.replace("## 任务：", "## 任务：整张图片必须为横向16:9宽高比。");
+        var payload = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree("""
+            {"schemaVersion":1,"characters":[{"localKey":"c1","name":"林小满","aliases":[],"evidence":"林小满"}],
+             "characterLooks":[],"scenes":[],"props":[],"propVariants":[]}
+            """);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) payload.path("characters").get(0)).put("prompt", prompt);
+        return payload;
+    }
+
     @Test
     void assetCatalogExposesPromptPresenceWithoutExposingPromptText() {
         jdbc.update("update script_episode set content = 'Serena walks into the room.' where id = ?", episodeId);

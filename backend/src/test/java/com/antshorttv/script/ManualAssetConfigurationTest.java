@@ -19,7 +19,8 @@ class ManualAssetConfigurationTest {
     @Test void characterHasExactAiFieldsAndFixedLayout() throws Exception {
         var built=config.build("CHARACTER", values(config,"CHARACTER"));
         assertThat(config.definition("CHARACTER").fields()).hasSize(14);
-        assertThat(built.prompt()).startsWith("## 任务：完成角色").contains("40%", "60%", "自然站立", "双手自然下垂", "中性表情");
+        assertThat(built.prompt()).startsWith("## 任务：整张图片必须为横向16:9宽高比。完成角色")
+            .contains("40%", "60%", "自然站立", "双手自然下垂", "中性表情");
         for(String label: new String[]{"时代基底","国家/朝代","人种","类型基底","脸型","发型","耳饰","身材","头身比","上身着装","下身着装","鞋子","性别","年龄"})
             assertThat(built.prompt()).contains("- **"+label+"**: ");
         String skill=Files.readString(Path.of("skills/short-drama-asset-recognition-framework/SKILL.md"));

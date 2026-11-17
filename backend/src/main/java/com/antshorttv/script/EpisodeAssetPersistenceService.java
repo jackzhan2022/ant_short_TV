@@ -869,19 +869,35 @@ public class EpisodeAssetPersistenceService {
 
     private void validateAiCharacterPrompts(ToolExecutionContext context, JsonNode characters) {
         if (context.agentRunId() == null || "complete".equals(context.runState().get("assetPromptContract", String.class))) return;
-        for (JsonNode character : characters) {
+        List<String> errors = new ArrayList<>();
+        for (int index = 0; index < characters.size(); index++) {
+            JsonNode character = characters.get(index);
             String value = prompt(character);
             if (value == null) continue;
-            boolean valid = value.startsWith("## 任务：完成角色的上半身正面平视特写")
-                && value.contains("角色描述:")
-                && !value.contains("{值}");
-            for (String field : CHARACTER_PROMPT_FIELDS) {
-                valid = valid && value.contains("- **" + field + "**:");
+            String path = "$.characters[" + index + "].prompt（" + character.path("name").asText("未命名角色") + "）角色主体提示词";
+            // Current Skill places the canvas requirement inside the task heading;
+            // historical prompts omit it. Accept both without rewriting persisted prompts.
+            String task = value.stripLeading().replaceFirst(
+                "^## 任务：整张图片必须为横向16:9宽高比。", "## 任务：");
+            if (!task.startsWith("## 任务：完成角色的上半身正面平视特写")) {
+                errors.add(path + "：必须使用 Markdown 任务标题“## 任务：完成角色的上半身正面平视特写…”；"
+                    + "允许在“任务：”后加入“整张图片必须为横向16:9宽高比。”。");
             }
-            if (!valid) {
-                invalid("角色主体提示词必须使用规定的 Markdown 角色设定图模板，并包含完整任务段、角色描述及全部字段；请移除单场地点、动作、临时表情情绪、手持剧情道具和镜头语言后重试。");
+            if (!value.contains("角色描述:")) errors.add(path + "：缺少“角色描述:”段。");
+            for (String field : CHARACTER_PROMPT_FIELDS) {
+                var matcher = java.util.regex.Pattern.compile(
+                    "(?m)^- \\*\\*" + java.util.regex.Pattern.quote(field) + "\\*\\*:[\\t ]*([^\\r\\n]*)$").matcher(value);
+                if (!matcher.find()) {
+                    errors.add(path + "：缺少字段“- **" + field + "**: 具体设定”。");
+                } else {
+                    String fieldValue = matcher.group(1).strip();
+                    if (fieldValue.isEmpty() || fieldValue.matches(".*\\{[^}]*}.*")) {
+                        errors.add(path + "：字段“" + field + "”不能为空或保留模板占位符，请填写具体设定。");
+                    }
+                }
             }
         }
+        if (!errors.isEmpty()) throw WorkflowToolValidationException.aggregate(errors);
     }
 
     private long upsertCoverage(
