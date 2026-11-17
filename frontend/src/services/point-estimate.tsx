@@ -1,8 +1,10 @@
 import type { RequestOptions } from '@@/plugin-request/request';
+import { CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { request } from '@umijs/max';
 import { App } from 'antd';
 import { type ReactNode, useLayoutEffect } from 'react';
 import { formatPoints } from '@/utils/points';
+import styles from './point-estimate.module.css';
 
 export { formatPoints } from '@/utils/points';
 
@@ -109,32 +111,56 @@ function EstimateContent({ estimate }: { estimate: PointEstimate }) {
     });
   }
   return (
-    <div aria-label="积分预估详情">
-      <p>
-        预计消耗 <strong>{formatPoints(estimate.estimatedPoints)}</strong> 积分
-      </p>
-      <p>当前可用：{formatPoints(estimate.availablePoints)} 积分</p>
-      <ul>
-        {[...grouped].map(([label, item]) => (
-          <li key={label}>
-            {label}
-            {item.count > 1 ? ` × ${item.count}` : ''}：
-            {formatPoints(item.points)} 积分
-          </li>
-        ))}
-      </ul>
+    <div aria-label="积分预估详情" className={styles.content}>
+      <div className={styles.summary}>
+        <div aria-label="预计消耗">
+          <span className={styles.label}>预计消耗</span>
+          <div className={styles.total}>
+            <strong>{formatPoints(estimate.estimatedPoints)}</strong>
+            <span>积分</span>
+          </div>
+        </div>
+        <div className={styles.balanceRow}>
+          <div aria-label="当前可用积分" className={styles.balance}>
+            <span>当前可用</span>
+            <strong>{formatPoints(estimate.availablePoints)}</strong>
+            <span>积分</span>
+          </div>
+          <span className={estimate.sufficient ? styles.sufficient : styles.insufficient}>
+            {estimate.sufficient ? <CheckCircleOutlined aria-hidden /> : <ExclamationCircleOutlined aria-hidden />}
+            {estimate.sufficient ? '余额充足' : '余额不足'}
+          </span>
+        </div>
+      </div>
+      <div className={styles.breakdown}>
+        <table aria-label="积分费用明细">
+          <thead>
+            <tr><th scope="col">费用项目</th><th scope="col">数量</th><th scope="col">积分</th></tr>
+          </thead>
+          <tbody>
+            {[...grouped].map(([label, item]) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                <td>{item.count}</td>
+                <td>{formatPoints(item.points)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {estimate.lines.some((line) => !line.trialEligible) ? (
-        <p>
+        <p className={styles.videoBalance}>
           视频生成可用：{formatPoints(estimate.paidAvailablePoints)}{' '}
           积分（试用积分不可用于视频生成）
         </p>
       ) : null}
       {!estimate.sufficient ? (
-        <p role="alert">可用积分不足，请充值后重试。</p>
+        <p role="alert" className={styles.alert}>可用积分不足，请充值后重试。</p>
       ) : null}
-      <p style={{ color: 'var(--app-color-text-secondary)' }}>
-        {estimate.notice}
-      </p>
+      {estimate.notice ? <div className={styles.notice}>
+        <span className={styles.noticeTitle}>计费说明</span>
+        <p>{estimate.notice}</p>
+      </div> : null}
     </div>
   );
 }
@@ -154,8 +180,17 @@ export function confirmPointEstimates(
     let estimate: PointEstimate | undefined;
     let closed = false;
     const dialog = modal.confirm({
-      title: '积分消耗预估',
-      content: <div role="status">正在计算本次操作预计消耗的积分…</div>,
+      title: <div className={styles.header}>
+        <span>确认本次操作</span>
+        <p>核对积分明细后继续</p>
+      </div>,
+      icon: null,
+      className: styles.dialog,
+      width: 500,
+      centered: true,
+      closable: true,
+      autoFocusButton: 'cancel',
+      content: <div role="status" className={styles.loading}>正在计算本次操作预计消耗的积分…</div>,
       okText: '确认消耗并继续',
       cancelText: '取消',
       okButtonProps: { disabled: true },

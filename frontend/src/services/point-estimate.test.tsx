@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { submitAssetNormalization } from '@/pages/projects/production-workbench/normalization-service';
 import {
@@ -78,7 +78,7 @@ describe('point estimates before submission', () => {
       }),
     );
     render(mocks.update.mock.calls[0][0].content);
-    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('预计消耗')).getByText('12')).toBeInTheDocument();
     mocks.confirm.mock.calls[0][0].onOk();
     await expect(pending).resolves.toEqual({ data: { id: 9 } });
     expect(mocks.request).toHaveBeenCalledTimes(2);

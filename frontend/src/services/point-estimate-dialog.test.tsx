@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -69,8 +69,10 @@ describe('point estimate confirmation dialog', () => {
   it('shows the server estimate and balance before creating any task', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    expect(await screen.findByText('25')).toBeInTheDocument();
-    expect(screen.getByText('当前可用：100 积分')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: '积分费用明细' })).toBeInTheDocument();
+    expect(within(screen.getByLabelText('预计消耗')).getByText('25')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('当前可用积分')).getByText('100')).toBeInTheDocument();
+    expect(screen.getByText('余额充足')).toBeInTheDocument();
     expect(mocks.request).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: '确认消耗并继续' }));
     await waitFor(() => expect(mocks.submitted).toHaveBeenCalled());
@@ -83,11 +85,34 @@ describe('point estimate confirmation dialog', () => {
   it('leaves points and tasks untouched when the user cancels', async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
-    await screen.findByText('25');
+    await screen.findByRole('table', { name: '积分费用明细' });
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     await waitFor(() => expect(mocks.cancelled).toHaveBeenCalled());
     expect(mocks.request).toHaveBeenCalledTimes(1);
     expect(mocks.submitted).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
+  });
+
+  it('keeps confirmation disabled when the server reports insufficient points', async () => {
+    mocks.request.mockReset().mockResolvedValueOnce({
+      success: true,
+      data: {
+        estimatedPoints: 588,
+        availablePoints: 100,
+        paidAvailablePoints: 0,
+        sufficient: false,
+        lines: [{ label: '生成视频', points: 588, estimated: true, trialEligible: false }],
+        notice: '实际按模型用量结算。',
+      },
+    });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '生成两张图片' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('可用积分不足');
+    expect(screen.getByText(/试用积分不可用于视频生成/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认消耗并继续' })).toBeDisabled();
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => expect(mocks.cancelled).toHaveBeenCalled());
+    expect(mocks.submitted).not.toHaveBeenCalled();
   });
 });
