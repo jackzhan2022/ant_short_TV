@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AssetCatalogService {
     static final int BYTE_LIMIT = 32768;
+    static final int DETAIL_BYTE_LIMIT = 128 * 1024;
     private static final Map<String,String> TABLES = Map.of(
         "CHARACTER","character_asset","SCENE","scene_asset","PROP","prop_asset");
     private static final Map<String,String> PREFIXES = Map.of("CHARACTER","c_","SCENE","s_","PROP","p_");
@@ -171,7 +172,7 @@ public class AssetCatalogService {
             assets.add(asset);
         }
         // Only response size selects the fallback. Scope, cursor, metadata and database errors propagate.
-        return bytes(result) > BYTE_LIMIT - 2048 ? detailSummaries(context, assets) : result;
+        return bytes(result) > DETAIL_BYTE_LIMIT - 2048 ? detailSummaries(context, assets) : result;
     }
 
     private ObjectNode detailSummaries(ToolExecutionContext context, ArrayNode fullAssets) {
@@ -183,7 +184,7 @@ public class AssetCatalogService {
             + "按 hasMore/nextCursor 续页；hasPrompt=true 的已有提示词不得因省略而重新生成。");
         ArrayNode assets = result.putArray("items");
         // Reserve space for every requested identity rather than letting the first asset consume it all.
-        int perAssetBudget = (BYTE_LIMIT - 2048) / fullAssets.size();
+        int perAssetBudget = (DETAIL_BYTE_LIMIT - 2048) / fullAssets.size();
         for (JsonNode fullAsset : fullAssets) {
             ObjectNode asset = json.createObjectNode();
             for (String field : List.of("assetKey", "name", "normalizedName", "hasPrompt")) {
@@ -213,7 +214,7 @@ public class AssetCatalogService {
             asset.put("nextCursor", more ? remember(context, "variant:" + asset.path("assetKey").asText(), last) : "");
             assets.add(asset);
         }
-        if (bytes(result) > BYTE_LIMIT) throw invalid("详情摘要响应过大，请减少每次读取的资产 key。");
+        if (bytes(result) > DETAIL_BYTE_LIMIT) throw invalid("详情摘要响应过大，请减少每次读取的资产 key。");
         return result;
     }
 

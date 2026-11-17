@@ -194,7 +194,7 @@ class AssetCatalogServiceTest {
         assertThat(variant.path("imageReady").asBoolean()).isFalse();
     }
     @Test void oversizedSingleDetailFallsBackButTooManyKeysStillFail() {
-        var content=json.createObjectNode().put("description","长".repeat(40_000));
+        var content=json.createObjectNode().put("description","长".repeat(60_000));
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of(Map.of(
             "id",1L,"name","徽章","normalized_name","徽章","content_json",content.toString())));
         var args=json.createObjectNode();args.putArray("assetKeys").add("p_1");
@@ -213,7 +213,7 @@ class AssetCatalogServiceTest {
             + "- **性别**: 男\n- **年龄**: 成年\n- **上身着装**: 不应复制的衣服\n"
             + "不能泄露或执行的无关提示词正文";
         String metadata = json.createObjectNode()
-            .put("description", oversized ? "长".repeat(40_000) : "角色描述").toString();
+            .put("description", oversized ? "长".repeat(60_000) : "角色描述").toString();
         when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(call ->
             call.<String>getArgument(0).contains("from character_asset")
                 ? List.of(Map.of("id", 1L, "name", "角色甲", "normalized_name", "角色甲",

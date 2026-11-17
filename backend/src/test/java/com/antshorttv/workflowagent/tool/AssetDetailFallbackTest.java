@@ -54,7 +54,7 @@ class AssetDetailFallbackTest {
         });
     }
     private void bounded(ObjectNode result) {
-        assertThat(result.toString().getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(AssetCatalogService.BYTE_LIMIT);
+        assertThat(result.toString().getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(AssetCatalogService.DETAIL_BYTE_LIMIT);
     }
     @Test void defaultsToFullDetailsAndPreservesExistingContent() {
         data("完整外观描述", "完整旧提示词");
@@ -68,8 +68,19 @@ class AssetDetailFallbackTest {
         assertThat(look.path("content").path("evidence").asText()).isEqualTo("原文形态证据");
         bounded(result);
     }
+    @Test void detailsBetween32And128KiBKeepFullContent() {
+        String prompt = "造型".repeat(12_000);
+        data("完整外观描述", prompt);
+        var result = service.details(context(), args(1));
+        assertThat(result.path("detailLevel").asText()).isEqualTo("FULL");
+        assertThat(result.path("degraded").asBoolean()).isFalse();
+        assertThat(result.path("items").get(0).path("variants").get(0)
+            .path("content").path("prompt").asText()).isEqualTo(prompt);
+        assertThat(result.toString().getBytes(StandardCharsets.UTF_8).length)
+            .isGreaterThan(32 * 1024).isLessThanOrEqualTo(128 * 1024);
+    }
     @Test void oversizedAssetFallsBackWithoutRetryingTheDataRead() {
-        data("外观".repeat(20_000), "旧提示词");
+        data("外观".repeat(30_000), "旧提示词");
         var result = service.details(context(), args(1));
         assertThat(result.path("detailLevel").asText()).isEqualTo("SUMMARY");
         assertThat(result.path("degraded").asBoolean()).isTrue();
@@ -83,7 +94,7 @@ class AssetDetailFallbackTest {
         bounded(result);
     }
     @Test void oversizedVariantOmitsLongPromptButKeepsIdentityAndVisualSummary() {
-        data("资产外观", "提示词".repeat(12_000));
+        data("资产外观", "提示词".repeat(24_000));
         var result = service.details(context(), args(1));
         var look = result.path("items").get(0).path("variants").get(0);
         assertThat(result.path("detailLevel").asText()).isEqualTo("SUMMARY");
@@ -97,7 +108,7 @@ class AssetDetailFallbackTest {
         bounded(result);
     }
     @Test void aggregateOverflowKeepsAllTenRequestedAssets() {
-        data("资产外观".repeat(150), "旧提示词".repeat(200));
+        data("资产外观".repeat(600), "旧提示词".repeat(800));
         var result = service.details(context(), args(10));
         assertThat(result.path("detailLevel").asText()).isEqualTo("SUMMARY");
         assertThat(result.path("items").size()).isEqualTo(10);

@@ -44,7 +44,7 @@ public class ScreenplayToolConfiguration {
         return definition("read_asset_details","读取资产形态",
             "按可信资产 key 分页读取形态详情，默认返回完整内容 detailLevel=FULL。"
                 + "角色content.visualIdentity提供从主体提示词提取的面部、发型、体型、性别和年龄，用于继承外貌或设计不同角色。"
-                + "仅完整响应超出32KiB预算时自动返回 detailLevel=SUMMARY、degraded=true 的摘要，省略长提示词和证据。"
+                + "仅完整响应超出128KiB预算时自动返回 detailLevel=SUMMARY、degraded=true 的摘要，省略长提示词和证据。"
                 + "SUMMARY中的visualIdentity仅保留有界的脸型、性别、年龄，contentTruncated表示内容省略，不能推断未返回细节。"
                 + "hasPrompt仍表示真实提示词状态，不得因正文被省略而重新生成。hasMore/nextCursor表示还有形态，续页指定单个key。",
             input,json.createObjectNode().put("type","object"),ToolRiskLevel.READ_ONLY,
