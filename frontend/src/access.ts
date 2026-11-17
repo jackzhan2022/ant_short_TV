@@ -34,6 +34,8 @@ export default function access(
     !initialState?.bootstrap?.session?.impersonation &&
     platformPermissions.includes(permission);
   return {
+    canViewCustomerService: hasOperationsPermission('PLATFORM_CUSTOMER_SERVICE_VIEW'),
+    canEditCustomerService: hasOperationsPermission('PLATFORM_CUSTOMER_SERVICE_EDIT'),
     canViewOperations: hasOperationsPermission('PLATFORM_OPERATIONS_VIEW'),
     canViewOperationsLogs: hasOperationsPermission('PLATFORM_OPERATIONS_LOG_VIEW'),
     canEditOperationsRules: hasOperationsPermission('PLATFORM_OPERATIONS_RULE_EDIT'),
@@ -71,6 +73,7 @@ export default function access(
     canViewAiCallLogs:
       currentUser && hasMenu('AI_MANAGEMENT'),
     canViewAiManagement:
+      hasOperationsPermission('PLATFORM_CUSTOMER_SERVICE_VIEW') ||
       hasOperationsPermission('PLATFORM_OPERATIONS_VIEW') ||
       currentUser &&
       (hasMenu('AI_MANAGEMENT') ||

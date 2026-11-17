@@ -4,6 +4,7 @@ import { Tabs } from 'antd';
 import { useMemo, useState } from 'react';
 import OperationsPage from '../../operations';
 import ConcurrencyConfigPage from '../concurrency-config';
+import CustomerServicePage from '../customer-service';
 import AiCallLogsPage from '../logs';
 import PlatformModelsPage from '../platform-models';
 import PlatformProvidersPage from '../providers';
@@ -93,6 +94,9 @@ const ModelManagementPage = () => {
       : []),
     ...(access.canViewOperations
       ? [{ key: 'operations', label: '运维中心', children: <OperationsPage />, destroyOnHidden: true }]
+      : []),
+    ...(access.canViewCustomerService
+      ? [{ key: 'customer-service', label: '客服配置', children: <CustomerServicePage /> }]
       : []),
   ];
   const selectedSystemTab = systemItems.some((item) => item.key === activeSystemTab)

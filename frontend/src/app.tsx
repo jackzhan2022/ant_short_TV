@@ -5,6 +5,7 @@ import { App as AntdApp } from 'antd';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
+import CustomerServiceFloat from '@/components/CustomerServiceFloat';
 import SystemMonitoring from '@/components/SystemMonitoring';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import { PointEstimateProvider } from '@/services/point-estimate';
@@ -265,6 +266,7 @@ export function rootContainer(container: React.ReactNode) {
         <PointEstimateProvider>
           <ErrorBoundary>{container}</ErrorBoundary>
         </PointEstimateProvider>
+        <CustomerServiceFloat />
       </AntdApp>
     </>
   );

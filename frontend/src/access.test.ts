@@ -2,6 +2,18 @@ import routes from '../config/routes';
 import access from './access';
 
 describe('access', () => {
+  it('keeps customer service view and edit permissions separate from tenant permissions', () => {
+    const state = { currentUser: { userid: '1' } };
+    const viewer = access({ ...state, platformPermissions: ['PLATFORM_CUSTOMER_SERVICE_VIEW'] });
+    expect(viewer.canViewAiManagement).toBe(true);
+    expect(viewer.canViewCustomerService).toBe(true);
+    expect(viewer.canEditCustomerService).toBe(false);
+    const editor = access({ ...state, platformPermissions: ['PLATFORM_CUSTOMER_SERVICE_EDIT'] });
+    expect(editor.canEditCustomerService).toBe(true);
+    expect(editor.canViewCustomerService).toBe(false);
+    expect(access({ ...state, tenantPermissions: ['PLATFORM_CUSTOMER_SERVICE_EDIT'] }).canEditCustomerService).toBe(false);
+    expect(access(undefined).canViewCustomerService).toBe(false);
+  });
   it('only platform administrators outside impersonation can switch member login', () => {
     const state = { currentUser: { userid: '1' }, bootstrap: { platform: { roles: ['PLATFORM_ADMIN'] } } };
     expect(access(state).canImpersonateTenantMember).toBe(true);

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     canViewTenantWorkflowSkills: false,
     canViewPlatformAiConcurrency: false,
     canViewOperations: false,
+    canViewCustomerService: false,
   },
 }));
 
@@ -53,6 +54,7 @@ vi.mock('../logs', () => ({ default: () => <div>call-log-page</div> }));
 vi.mock('../concurrency-config', () => ({
   default: () => <div>concurrency-config-page</div>,
 }));
+vi.mock('../customer-service', () => ({ default: () => <div>customer-service-page</div> }));
 vi.mock('../../operations', () => ({
   default: () => <div>operations-page</div>,
 }));
@@ -79,6 +81,7 @@ describe('ModelManagementPage', () => {
     mocks.access.canViewTenantWorkflowSkills = false;
     mocks.access.canViewPlatformAiConcurrency = false;
     mocks.access.canViewOperations = false;
+    mocks.access.canViewCustomerService = false;
   });
 
   it('opens system management for an operations-only viewer', () => {
@@ -92,6 +95,15 @@ describe('ModelManagementPage', () => {
     expect(screen.queryByRole('button', { name: '并行配置' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '大模型管理' })).not.toBeInTheDocument();
     expect(screen.getByText('operations-page')).toBeInTheDocument();
+  });
+
+  it('opens customer service for a viewer without access to other management modules', () => {
+    for (const key of Object.keys(mocks.access)) mocks.access[key as keyof typeof mocks.access] = false;
+    mocks.access.canViewCustomerService = true;
+    render(<ModelManagementPage />);
+    expect(screen.getByRole('button', { name: '系统管理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '客服配置' })).toBeInTheDocument();
+    expect(screen.getByText('customer-service-page')).toBeInTheDocument();
   });
 
   it('switches between concurrency and operations under system management', () => {
