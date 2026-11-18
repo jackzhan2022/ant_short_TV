@@ -224,14 +224,14 @@ const ModelEditor = ({
       <ProFormSwitch
         name="enabled"
         label="状态"
-        checkedChildren="启用"
-        unCheckedChildren="停用"
+        checkedChildren={<span className={styles.switchLabel}>启用</span>}
+        unCheckedChildren={<span className={styles.switchLabel}>停用</span>}
       />
       <ProFormSwitch
         name="isDefault"
         label="默认模型"
-        checkedChildren="默认"
-        unCheckedChildren="默认"
+        checkedChildren={<span className={styles.switchLabel}>默认</span>}
+        unCheckedChildren={<span className={styles.switchLabel}>默认</span>}
       />
       <ProFormTextArea name="description" label="模型描述" />
       <ProFormTextArea name="configJson" label="扩展配置" />
@@ -448,13 +448,13 @@ const PlatformModelsPage = () => {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 70,
+      width: 100,
       render: (_, record) => (
         <Switch
-          size="small"
+          size="medium"
           checked={record.status === 'ENABLED'}
-          checkedChildren="启用"
-          unCheckedChildren="停用"
+          checkedChildren={<span className={styles.switchLabel}>启用</span>}
+          unCheckedChildren={<span className={styles.switchLabel}>停用</span>}
           disabled={!access.canEnablePlatformAiModels}
           onChange={async (checked) => {
             await updatePlatformModelStatus(record.id, checked);

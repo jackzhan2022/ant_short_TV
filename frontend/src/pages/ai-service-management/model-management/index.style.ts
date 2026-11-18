@@ -21,7 +21,7 @@ export const useStyles = createStyles(({ token }) => ({
       padding: '7px 14px',
       borderRadius: token.borderRadius,
       color: token.colorTextSecondary,
-      fontSize: 12,
+      fontSize: token.fontSize,
     },
     '& > .ant-tabs-nav .ant-tabs-tab-active': {
       background: token.colorPrimaryBg,

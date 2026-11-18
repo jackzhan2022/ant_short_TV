@@ -438,7 +438,7 @@ const WorkflowAgentsPage = () => {
                   key={code}
                   title={tools.find((tool) => tool.code === code)?.description}
                 >
-                  <Tag color="blue">
+                  <Tag>
                     {tools.find((tool) => tool.code === code)?.name || code}
                   </Tag>
                 </Tooltip>
@@ -463,14 +463,14 @@ const WorkflowAgentsPage = () => {
       {
         title: '状态',
         dataIndex: 'status',
-        width: 65,
+        width: 100,
         render: (_, record) =>
           editable ? (
             <Switch
-              size="small"
+              size="medium"
               checked={record.status === 'ENABLED'}
-              checkedChildren="启用"
-              unCheckedChildren="停用"
+              checkedChildren={<span className={styles.switchLabel}>启用</span>}
+              unCheckedChildren={<span className={styles.switchLabel}>停用</span>}
               onChange={async (checked) => {
                 await setWorkflowAgentEnabled(record.code, checked);
                 await load('');

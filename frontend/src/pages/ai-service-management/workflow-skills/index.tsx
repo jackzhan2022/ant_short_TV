@@ -346,7 +346,7 @@ const WorkflowSkillsPage = ({ tenantId }: { tenantId?: number }) => {
         dataIndex: 'scope',
         width: 90,
         render: (scope) => (
-          <Tag color={scope === 'TENANT' ? 'blue' : 'default'}>
+          <Tag>
             {scope === 'TENANT' ? '租户级' : '系统内置'}
           </Tag>
         ),

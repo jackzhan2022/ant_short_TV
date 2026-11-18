@@ -161,8 +161,8 @@ const ProviderEditor = ({
       <ProFormSwitch
         name="enabled"
         label="状态"
-        checkedChildren="启用"
-        unCheckedChildren="停用"
+        checkedChildren={<span className={styles.switchLabel}>启用</span>}
+        unCheckedChildren={<span className={styles.switchLabel}>停用</span>}
       />
       <ProFormTextArea name="description" label="描述" />
     </ModalForm>
@@ -225,10 +225,10 @@ const PlatformProvidersPage = () => {
       render: (_, record) => (
         <Space orientation="vertical" size={8}>
           <Switch
-            size="small"
+            size="medium"
             checked={record.status === 'ENABLED'}
-            checkedChildren="启用"
-            unCheckedChildren="停用"
+            checkedChildren={<span className={styles.switchLabel}>启用</span>}
+            unCheckedChildren={<span className={styles.switchLabel}>停用</span>}
             disabled={!access.canEnablePlatformAiProviders}
             onChange={async (checked) => {
               await updatePlatformProviderStatus(record.id, checked);

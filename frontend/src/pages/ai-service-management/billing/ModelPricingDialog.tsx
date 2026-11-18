@@ -418,7 +418,6 @@ const ModelPricingDialog = ({
       <p
         className={styles.muted}
         style={{
-          fontSize: 12,
           margin: '8px 0 20px',
         }}
       >
