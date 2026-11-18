@@ -35,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProjectService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.context.ApplicationEventPublisher titleEvents;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
     private static final List<DefaultProjectRole> DEFAULT_ROLES = List.of(
@@ -176,6 +178,7 @@ public class ProjectService {
             now
         );
         if (initialVersion != null) {
+            if (titleEvents != null) titleEvents.publishEvent(new com.antshorttv.script.ScriptTitleRequested(tenantId, project.id));
             ScriptEntity initialScript = scriptMapper.selectById(initialVersion.getScriptId());
             try {
                 scriptAnalysisTaskService.createInitialTaskIfAbsent(

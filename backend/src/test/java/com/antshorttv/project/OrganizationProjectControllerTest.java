@@ -50,6 +50,29 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void committedScriptSaveAutomaticallyNamesProjectWithoutChargingPoints() throws Exception {
+        String token = registerUser("13800011989", "Auto Title Owner");
+        Long tenant = createTenant(token, "自动命名测试团队");
+        Long owner = userIdByMobile("13800011989");
+        Long project = createProject(token, tenant, owner, "未命名短剧", "AUTO_TITLE_SAVE");
+        mockMvc.perform(put("/api/projects/%d/scripts/current".formatted(project))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"title":"未命名剧本","content":"剧名：《归途》\\n第一集\\n主角回到故乡，与家人重逢。","status":"DRAFT"}
+                    """))
+            .andExpect(status().isOk());
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+            org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select name from project where id=?", String.class, project)).isEqualTo("归途");
+            org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "select title from script where project_id=?", String.class, project)).isEqualTo("归途");
+        });
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from ai_point_reservation where tenant_id=?", Integer.class, tenant)).isZero();
+    }
+
+    @Test
     void artV2SelectionIsIndependentAndAnalysisFreezesItsRules() throws Exception {
         String token = registerUser("13800011987", "Art Style Owner");
         Long tenant = createTenant(token, "画风版本测试团队");

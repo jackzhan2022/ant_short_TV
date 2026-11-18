@@ -54,6 +54,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 @Service
 public class ScriptWorkflowService {
+    @Autowired(required = false) private org.springframework.context.ApplicationEventPublisher titleEvents;
     @Autowired private com.antshorttv.style.AssetArtStyleService artStyles;
     @org.springframework.beans.factory.annotation.Autowired
     private com.antshorttv.querycache.QueryResultCache queryCache = com.antshorttv.querycache.QueryResultCache.disabled();
@@ -242,6 +243,7 @@ public class ScriptWorkflowService {
             script.setCurrentVersionId(created.getId());
             scriptMapper.updateById(script);
             markOperationResult(operation, "SCRIPT_VERSION", created.getId());
+            requestAutoTitle(operation.tenantId, operation.projectId);
             return created;
         });
         return new ScriptAiOperationExecutionResult("SCRIPT_VERSION", version.getId(), List.of(invocation));
@@ -1101,6 +1103,7 @@ public class ScriptWorkflowService {
         reconcileEpisodes(script, version);
         version.setStatus("APPLIED");
         scriptVersionMapper.updateById(version);
+        requestAutoTitle(tenantId, projectId);
         queryCache.invalidateProjectAfterCommit(version.getTenantId(),version.getProjectId(),
             com.antshorttv.querycache.QueryResultCache.Region.SCRIPT);
         return null;
@@ -1878,6 +1881,7 @@ public class ScriptWorkflowService {
 
 
     private ScriptVersionEntity createVersion(TenantContext context, Long projectId, Long scriptId, String sourceType, String inputSummary, String content, Long callLogId, LocalDateTime now) {
+        requestAutoTitle(context.tenantId(), projectId);
         ScriptVersionEntity version = new ScriptVersionEntity();
         version.setTenantId(context.tenantId());
         version.setProjectId(projectId);
@@ -1898,6 +1902,10 @@ public class ScriptWorkflowService {
             reconcileEpisodes(script, version);
         }
         return version;
+    }
+
+    private void requestAutoTitle(Long tenantId, Long projectId) {
+        if (titleEvents != null) titleEvents.publishEvent(new ScriptTitleRequested(tenantId, projectId));
     }
 
     private void reconcileEpisodes(ScriptEntity script, ScriptVersionEntity version) {
