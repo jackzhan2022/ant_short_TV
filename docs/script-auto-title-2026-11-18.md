@@ -14,7 +14,7 @@
 
 调用模型时不持有命名写入锁；写回时锁定并核对正文、比较原名称，保留生成期间发生的人工改名。更新后失效剧本缓存。
 
-代码修改未发布到线上，需随后端版本发布后才对后续创建/保存自动生效。本次没有发布整个工作区或重启线上服务。
+2026-11-18 已随提交 `3be1e09f` 发布线上，与自由创作比例及紧凑参考素材区一起生效。仅发布本次相关后端类和前端构建，未发布原工作区其他改动。发布记录见 `docs/free-creation-auto-title-release-2026-11-18.md`。
 
 ## 历史执行结果
 
@@ -33,7 +33,7 @@
 
 ## 维护命令
 
-验证通过：`ScriptTitleRulesTest` 4 项、`ScriptAutoTitleServiceTest` 6 项、`ProjectControllerTest` 10 项、`ScriptWorkflowControllerTest` 30 项，共 50 项，零失败。维护脚本通过 Python 语法检查，并完成线上逐项回读校验。
+验证通过：`ScriptTitleRulesTest` 4 项、`ScriptAutoTitleServiceTest` 6 项、`ProjectControllerTest` 10 项、`ScriptWorkflowControllerTest` 30 项，共 50 项，零失败。发布前另补接口测试 `committedScriptSaveAutomaticallyNamesProjectWithoutChargingPoints` 并单独运行通过，验证真实保存事务提交后自动补齐项目名、剧本标题，且无积分预占记录；合计 51 项。维护脚本通过 Python 语法检查，并完成历史数据线上逐项回读校验。
 
 首轮回归遇到构建目录残留的旧 `V178__customer_service_configuration.sql`，与源代码现有 V179 重复建表；清除该无对应源文件的生成产物后重跑通过，没有修改数据库迁移源文件。
 
