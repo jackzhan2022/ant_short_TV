@@ -260,12 +260,11 @@ export default function ReferenceFiles({
     ?.map((format) => `.${format.replace(/^\./, '')}`)
     .join(',');
   const limitText = [
-    constraints?.formats?.join(' / ').toUpperCase(),
     constraints?.maxCount !== undefined
-      ? `最多 ${constraints.maxCount} 个`
+      ? `最多 ${constraints.maxCount} ${kind === 'image' ? '张' : '个'}`
       : undefined,
     constraints?.maxBytes !== undefined
-      ? `单个 ≤ ${(constraints.maxBytes / 1024 / 1024).toFixed(1)} MB`
+      ? `单个 ≤ ${Number((constraints.maxBytes / 1024 / 1024).toFixed(1))} MB`
       : undefined,
     constraints?.maxTotalDurationSeconds !== undefined
       ? `总时长 ≤ ${constraints.maxTotalDurationSeconds} 秒`
@@ -274,18 +273,24 @@ export default function ReferenceFiles({
     .filter(Boolean)
     .join(' · ');
   return (
-    <div ref={field} className={styles.field}>
+    <div ref={field} className={`${styles.field} ${styles.referenceField}`}>
       <div className={styles.fieldLabel}>
         <span>{labels[kind]}</span>
         <span className={styles.muted}>
-          {files.length ? `${files.length} 个` : '可选'}
+          {[
+            files.length
+              ? `已选 ${files.length} ${kind === 'image' ? '张' : '个'}`
+              : undefined,
+            constraints?.minCount
+              ? `至少 ${constraints.minCount} ${kind === 'image' ? '张' : '个'}`
+              : files.length
+                ? undefined
+                : '可选',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
       </div>
-      {constraints?.minCount ? (
-        <p className={styles.help}>
-          模型要求至少 {constraints.minCount} 个{labels[kind]}
-        </p>
-      ) : null}
       <label className={styles.upload} htmlFor={id}>
         <PlusOutlined aria-hidden="true" />
         <span>
@@ -355,6 +360,12 @@ export default function ReferenceFiles({
         />
       ) : null}
       {limitText ? <p className={styles.help}>{limitText}</p> : null}
+      {constraints?.formats?.length ? (
+        <details className={styles.referenceFormats}>
+          <summary>支持格式</summary>
+          <p>{constraints.formats.join(' / ').toUpperCase()}</p>
+        </details>
+      ) : null}
       {files.length ? (
         <ul className={styles.referenceList}>
           {files.map((item) => {

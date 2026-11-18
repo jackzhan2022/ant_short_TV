@@ -62,6 +62,31 @@ beforeEach(() => {
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
 });
 describe('reference upload lifecycle', () => {
+  it('shows required counts and compact limits while keeping supported formats expandable', () => {
+    render(
+      <ReferenceFiles
+        kind="image"
+        constraints={{
+          minCount: 1,
+          maxCount: 9,
+          maxBytes: 30 * 1024 * 1024,
+          formats: ['png', 'jpg'],
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('至少 1 张')).toBeInTheDocument();
+    expect(screen.queryByText('可选')).not.toBeInTheDocument();
+    expect(screen.getByText('最多 9 张 · 单个 ≤ 30 MB')).toBeInTheDocument();
+    expect(screen.getByLabelText('选择参考图片')).toHaveAttribute(
+      'accept',
+      '.png,.jpg',
+    );
+    const formats = screen.getByText('支持格式').closest('details');
+    expect(formats).not.toHaveAttribute('open');
+    expect(formats).toHaveTextContent('PNG / JPG');
+  });
+
   it.each([
     'IMAGE',
     'VIDEO',

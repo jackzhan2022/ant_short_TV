@@ -217,6 +217,43 @@ export default function Composer({
       ) : null}
       {selected ? (
         <div key={selected.id}>
+          {mode === 'VIDEO' ? (
+            <div className={styles.field}>
+              <div className={styles.fieldLabel}>画面比例</div>
+              <fieldset
+                className={styles.videoRatios}
+                aria-label="画面比例"
+              >
+                {[
+                  { value: '16:9', label: '横屏' },
+                  { value: '9:16', label: '竖屏' },
+                  { value: '1:1', label: '方形' },
+                  ...(draft.parameters.aspectRatio &&
+                  !['16:9', '9:16', '1:1'].includes(
+                    draft.parameters.aspectRatio,
+                  )
+                    ? [
+                        {
+                          value: draft.parameters.aspectRatio,
+                          label: '历史比例',
+                        },
+                      ]
+                    : []),
+                ].map(({ value, label }) => (
+                  <button
+                    type="button"
+                    key={value}
+                    aria-pressed={
+                      (draft.parameters.aspectRatio || '9:16') === value
+                    }
+                    onClick={() => setParameters({ aspectRatio: value })}
+                  >
+                    {value} {label}
+                  </button>
+                ))}
+              </fieldset>
+            </div>
+          ) : null}
           {(['image', 'video', 'audio'] as const).map((kind) =>
             (mode === 'IMAGE' && kind === 'image') ||
             (selected.references[kind] &&

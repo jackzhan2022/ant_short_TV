@@ -119,6 +119,75 @@ beforeEach(() => {
 });
 
 describe('自由创作页面', () => {
+  it.each([
+    '16:9',
+    '21:9',
+  ])('复用视频记录保留 %s 比例且不自动生成', async (aspectRatio) => {
+    const record = {
+      id: 19,
+      mediaType: 'VIDEO',
+      status: 'SUCCEEDED',
+      prompt: '历史视频',
+      creatorId: 1,
+      creatorName: '作者',
+      createdAt: '2026-11-18T10:00:00',
+      modelId: 3,
+      modelName: '长视频模型',
+      parameters: { aspectRatio, durationSeconds: 4, resolution: '1080p' },
+      references: [],
+      outputs: [],
+    };
+    mocks.list.mockResolvedValue({
+      records: [record],
+      total: 1,
+      current: 1,
+      pageSize: 10,
+    });
+    mocks.detail.mockResolvedValue(record);
+    render(<FreeCreationPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '复用参数' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', {
+          name: aspectRatio === '16:9' ? '16:9 横屏' : '21:9 历史比例',
+        }),
+      ).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('视频默认竖屏，切换创作类型保留比例并提交所选横屏', async () => {
+    render(<FreeCreationPage />);
+    await screen.findByRole('option', { name: '系统图片模型' });
+    fireEvent.click(screen.getByRole('tab', { name: '视频创作' }));
+    expect(screen.getByRole('button', { name: '9:16 竖屏' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: '生成模型' }), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '16:9 横屏' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '创意描述' }), {
+      target: { value: '横屏风景' },
+    });
+    fireEvent.click(screen.getByRole('tab', { name: '图片创作' }));
+    fireEvent.click(screen.getByRole('tab', { name: '视频创作' }));
+    expect(screen.getByRole('button', { name: '16:9 横屏' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(await readyButton('生成视频'));
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({ aspectRatio: '16:9' }),
+        }),
+        expect.any(AbortSignal),
+      ),
+    );
+  });
+
   it('shows the current automatic recovery round on the original generating card', async () => {
     const item = { id: 9, mediaType: 'VIDEO', status: 'RUNNING', phase: 'AVATAR_PREPARING', prompt: '第二轮补充图片', creatorId: 1, creatorName: '作者',
       createdAt: '2026-10-27T19:08:13', modelId: 2, modelName: '视频模型', parameters: {}, references: [], outputs: [],

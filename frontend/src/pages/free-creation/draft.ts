@@ -25,6 +25,7 @@ export function newDraft(model?: CreationModel): CreationDraft {
     parameters:
       model?.serviceType === 'VIDEO'
         ? {
+            aspectRatio: '9:16',
             ...(model.duration ? { durationSeconds: model.duration.min } : {}),
             ...(model.resolutions[0]
               ? { resolution: model.resolutions[0] }
