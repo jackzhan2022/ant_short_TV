@@ -43,7 +43,7 @@ describe('PlatformTenantManagementPage', () => {
   it('sends server filters and resets page while preserving zero balance', async () => {
     mocks.queryTenants.mockResolvedValue(page([tenant], 42)); render(<PlatformTenantManagementPage />); await screen.findByText('Alpha Studio');
     expect(screen.getByRole('textbox', { name: '搜索租户名称或编码' })).toBeInTheDocument(); expect(screen.getByText('暂无套餐')).toBeInTheDocument(); expect(screen.getByText('0')).toBeInTheDocument();
-    fireEvent.click(within(screen.getByTitle('Next Page')).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
     await waitFor(() => expect(mocks.queryTenants).toHaveBeenLastCalledWith({ current: 2, pageSize: 20 }));
     fireEvent.click(within(screen.getByRole('group', { name: '租户状态' })).getByRole('button', { name: '已停用' }));
     fireEvent.change(screen.getByRole('combobox', { name: '当前套餐类型' }), { target: { value: 'SUBSCRIPTION' } });

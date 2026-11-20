@@ -45,7 +45,7 @@ describe('PlatformCommercialOrderPage', () => {
   it('sends keyword, status and package type to the server and resets pagination', async () => {
     mocks.listOrders.mockResolvedValue(page([order], 42)); render(<PlatformCommercialOrderPage />);
     await screen.findByText(order.merchantOrderNo);
-    fireEvent.click(within(screen.getByTitle('Next Page')).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next Page' }));
     await waitFor(() => expect(mocks.listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ current: 2, pageSize: 20 })));
     fireEvent.click(within(screen.getByRole('group', { name: '订单状态' })).getByRole('button', { name: '权益发放中' }));
     await waitFor(() => expect(mocks.listOrders).toHaveBeenLastCalledWith(expect.objectContaining({ current: 1, status: 'ENTITLEMENT_PENDING' })));

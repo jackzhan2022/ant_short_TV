@@ -128,7 +128,7 @@ describe('MessageCenter', () => {
     expect(within(counts).getByText('12')).toBeInTheDocument();
     expect(within(counts).getByText('5')).toBeInTheDocument();
     expect(within(counts).getByText('7')).toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('dialog')).getByTitle('2'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Page 2' }));
     await waitFor(() =>
       expect(mocks.listDeliveries).toHaveBeenLastCalledWith('sent-1', 2, 10),
     );
