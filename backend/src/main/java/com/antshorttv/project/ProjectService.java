@@ -152,9 +152,9 @@ public class ProjectService {
         project.status = ProjectStatus.NOT_STARTED.name();
         project.startDate = request.startDate();
         project.endDate = request.endDate();
-        project.aspectRatio = request.aspectRatio();
+        project.aspectRatio = storyboardAspectRatio(request.aspectRatio(), request.storyboardSkillVersion());
         project.videoResolution = normalizeVideoResolution(request.videoResolution(), "720p");
-        project.videoGenerateAudio = request.videoGenerateAudio() == null || request.videoGenerateAudio();
+        project.videoGenerateAudio = storyboardGenerateAudio(request.videoGenerateAudio(), request.storyboardSkillVersion());
         project.videoWatermark = Boolean.TRUE.equals(request.videoWatermark());
         project.fileFormat = request.fileFormat();
         project.scriptType = request.scriptType();
@@ -242,10 +242,10 @@ public class ProjectService {
         }
         project.startDate = request.startDate();
         project.endDate = request.endDate();
-        project.aspectRatio = request.aspectRatio();
+        project.aspectRatio = storyboardAspectRatio(request.aspectRatio(), project.storyboardSkillVersion);
         project.videoResolution = normalizeVideoResolution(request.videoResolution(), project.videoResolution);
-        if (request.videoGenerateAudio() != null) {
-            project.videoGenerateAudio = request.videoGenerateAudio();
+        if (request.videoGenerateAudio() != null || StoryboardSkillVersion.resolve(project.storyboardSkillVersion) == StoryboardSkillVersion.V3) {
+            project.videoGenerateAudio = storyboardGenerateAudio(request.videoGenerateAudio(), project.storyboardSkillVersion);
         }
         if (request.videoWatermark() != null) {
             project.videoWatermark = request.videoWatermark();
@@ -696,6 +696,22 @@ public class ProjectService {
             project.createdAt,
             project.updatedAt
         );
+    }
+
+    private boolean storyboardGenerateAudio(Boolean value, String version) {
+        if (StoryboardSkillVersion.resolve(version) == StoryboardSkillVersion.V3 && Boolean.FALSE.equals(value)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜技能3.0必须开启声音生成。");
+        }
+        return value == null || value;
+    }
+
+    private String storyboardAspectRatio(String value, String version) {
+        if (StoryboardSkillVersion.resolve(version) != StoryboardSkillVersion.V3) return value;
+        if (value == null || value.isBlank()) return "9:16";
+        if (!"9:16".equals(value.trim())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜技能3.0仅支持 9:16 竖屏。");
+        }
+        return "9:16";
     }
 
     private String normalizeVideoResolution(String value, String fallback) {

@@ -50,6 +50,57 @@ class ProjectControllerTest extends com.antshorttv.support.RegistrationTestSuppo
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void createsAndReadsV3WithPortraitDefaultsAndRejectsLandscapeOverrides() throws Exception {
+        String token = registerUser("13800011988", "V3 Owner");
+        Long tenant = createTenant(token, "分镜3.0测试团队");
+        Long owner = userIdByMobile("13800011988");
+        MvcResult created = mockMvc.perform(post("/api/projects")
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"导演分镜","code":"STORYBOARD_V3","ownerId":%d,
+                     "storyboardSkillVersion":"V3","visualStyle":"现代都市通用"}
+                    """.formatted(owner)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.storyboardSkillVersion", is("V3")))
+            .andExpect(jsonPath("$.data.videoGenerateAudio", is(true)))
+            .andExpect(jsonPath("$.data.aspectRatio", is("9:16"))).andReturn();
+        Number id = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
+        mockMvc.perform(get("/api/projects/" + id).with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.storyboardSkillVersion", is("V3")));
+        org.assertj.core.api.Assertions.assertThat(storyboardRunner.freezeFormal(
+            "short-drama-storyboard", tenant, id.longValue()).skillSnapshots())
+            .extracting(com.antshorttv.workflowagent.run.WorkflowAgentSkillSnapshot::code)
+            .containsExactly("short-drama-storyboard-production-v3");
+        mockMvc.perform(post("/api/projects").with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"横屏不允许","code":"STORYBOARD_V3_WIDE","ownerId":%d,
+                     "storyboardSkillVersion":"V3","aspectRatio":"16:9"}
+                    """.formatted(owner)))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorMessage", containsString("9:16")));
+        mockMvc.perform(put("/api/projects/" + id).with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"导演分镜\",\"aspectRatio\":\"16:9\"}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorMessage", containsString("9:16")));
+        mockMvc.perform(get("/api/projects/" + id).with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.aspectRatio", is("9:16")));
+        mockMvc.perform(post("/api/projects").with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"静音不允许","code":"STORYBOARD_V3_MUTE","ownerId":%d,
+                     "storyboardSkillVersion":"V3","videoGenerateAudio":false}
+                    """.formatted(owner)))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorMessage", containsString("声音")));
+        mockMvc.perform(put("/api/projects/" + id).with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenant).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"导演分镜\",\"videoGenerateAudio\":false}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorMessage", containsString("声音")));
+    }
+
+    @Test
     void committedScriptSaveAutomaticallyNamesProjectWithoutChargingPoints() throws Exception {
         String token = registerUser("13800011989", "Auto Title Owner");
         Long tenant = createTenant(token, "自动命名测试团队");

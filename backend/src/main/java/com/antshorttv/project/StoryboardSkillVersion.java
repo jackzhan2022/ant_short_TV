@@ -6,7 +6,8 @@ import java.math.BigDecimal;
 
 public enum StoryboardSkillVersion {
     V1("short-drama-storyboard-production"),
-    V2("short-drama-storyboard-production-v2");
+    V2("short-drama-storyboard-production-v2"),
+    V3("short-drama-storyboard-production-v3");
 
     private final String skillCode;
 
@@ -14,16 +15,28 @@ public enum StoryboardSkillVersion {
 
     public String skillCode() { return skillCode; }
 
-    public int minimumShots() { return this == V2 ? 1 : 2; }
-    public BigDecimal minimumBoardDuration() { return this == V2 ? new BigDecimal("4") : BigDecimal.TEN; }
-    public BigDecimal maximumShotDuration() { return this == V2 ? new BigDecimal("6.5") : new BigDecimal("4"); }
+    public int minimumShots() { return this == V1 ? 2 : 1; }
+    public BigDecimal minimumBoardDuration() {
+        return switch (this) {
+            case V1 -> BigDecimal.TEN;
+            case V2 -> new BigDecimal("4");
+            case V3 -> new BigDecimal("15");
+        };
+    }
+    public BigDecimal maximumShotDuration() {
+        return switch (this) {
+            case V1 -> new BigDecimal("4");
+            case V2 -> new BigDecimal("6.5");
+            case V3 -> new BigDecimal("15");
+        };
+    }
 
     public static StoryboardSkillVersion resolve(String value) {
         if (value == null || value.isBlank()) return V1;
         try {
             return valueOf(value);
         } catch (IllegalArgumentException exception) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择原分镜或分镜技能2.0。");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择原分镜、分镜技能2.0或分镜技能3.0。");
         }
     }
 }

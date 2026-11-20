@@ -214,7 +214,7 @@ export type Project = {
   fileFormat?: string | null;
   scriptType?: string | null;
   breakdownStrength?: string | null;
-  storyboardSkillVersion?: 'V1' | 'V2' | null;
+  storyboardSkillVersion?: 'V1' | 'V2' | 'V3' | null;
   assetExtractionSkillCode?: string | null;
   visualStyleVersion?: 'V1' | 'V2';
   visualStyleCode?: string;

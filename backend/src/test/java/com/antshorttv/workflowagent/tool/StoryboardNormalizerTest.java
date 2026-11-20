@@ -47,6 +47,102 @@ class StoryboardNormalizerTest {
     }
 
     @Test
+    void v3PreservesFullFifteenSecondShotAndLeavesInvalidDurationForValidation() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.");
+        var normalizer = new StoryboardNormalizer(json);
+        var version = com.antshorttv.project.StoryboardSkillVersion.resolve("V3");
+        for (int duration : new int[] {15, 16}) {
+            JsonNode submitted = json.readTree("""
+                [{"sourceTo":"S0001","shots":[{"durationSeconds":%d}]}]
+                """.formatted(duration));
+            var normalized = normalizer.normalize(submitted, segments, version);
+            assertThat(normalized.storyboards().get(0).path("shots").get(0).path("durationSeconds").asInt())
+                .isEqualTo(duration);
+        }
+    }
+
+    @Test
+    void v3ContinuityShotsNeverOwnOriginalDialogueEvenWhenItIsTheFirstSourceSegment() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.\nSerena: Do not move.\nSerena: Listen.");
+        JsonNode submitted = json.readTree("""
+            [{"sourceTo":"S0001","shots":[
+              {"durationSeconds":13,"sourceAnchor":"S0001"},
+              {"durationSeconds":2,"shotPurpose":"CONTINUITY_END"}
+            ]},{"sourceTo":"S0002","shots":[
+              {"durationSeconds":2,"shotPurpose":"CONTINUITY_START"},
+              {"durationSeconds":11,"shotPurpose":"NARRATIVE","sourceAnchor":"S0002"},
+              {"durationSeconds":2,"shotPurpose":"CONTINUITY_END"}
+            ]},{"sourceTo":"S0003","shots":[
+              {"durationSeconds":2,"shotPurpose":"CONTINUITY_START"},
+              {"durationSeconds":13,"sourceAnchor":"S0003"}
+            ]}]
+            """);
+        var result = new StoryboardNormalizer(json).normalize(submitted, segments,
+            com.antshorttv.project.StoryboardSkillVersion.resolve("V3"));
+        var shots = result.storyboards().get(1).path("shots");
+        assertThat(shots.get(0).path("soundSegmentIds").isEmpty()).isTrue();
+        assertThat(shots.get(0).has("sourceAnchor")).isFalse();
+        assertThat(shots.get(1).path("soundSegmentIds").toString()).isEqualTo("[\"S0002\"]");
+        assertThat(shots.get(2).path("soundSegmentIds").isEmpty()).isTrue();
+        assertThat(shots.get(2).has("sourceAnchor")).isFalse();
+        assertThat(result.storyboards().get(0).path("shots").get(0).path("soundSegmentIds").toString())
+            .isEqualTo("[\"S0001\"]");
+        assertThat(result.storyboards().get(2).path("shots").get(1).path("soundSegmentIds").toString())
+            .isEqualTo("[\"S0003\"]");
+    }
+
+    @Test
+    void rejectsUnknownShotPurposeBeforeAssigningSourceSounds() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.");
+        JsonNode submitted = json.readTree("""
+            [{"sourceTo":"S0001","shots":[{"durationSeconds":15,"shotPurpose":"UNKNOWN"}]}]
+            """);
+        assertThatThrownBy(() -> new StoryboardNormalizer(json).normalize(submitted, segments,
+            com.antshorttv.project.StoryboardSkillVersion.resolve("V3"))).hasMessageContaining("用途不受支持");
+    }
+
+    @Test
+    void v3RequiresContinuityAtEveryAdjacentBoardBoundary() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.\nSerena: Do not move.");
+        JsonNode submitted = json.readTree("""
+            [{"sourceTo":"S0001","shots":[{"durationSeconds":15}]},
+             {"sourceTo":"S0002","shots":[{"durationSeconds":15}]}]
+            """);
+        assertThatThrownBy(() -> new StoryboardNormalizer(json).normalize(submitted, segments,
+            com.antshorttv.project.StoryboardSkillVersion.resolve("V3"))).hasMessageContaining("续接");
+    }
+
+    @Test
+    void continuityOnlyBoardsAndLegacyContinuityPurposesAreRejected() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.");
+        JsonNode submitted = json.readTree("""
+            [{"sourceTo":"S0001","shots":[{"durationSeconds":15,"shotPurpose":"CONTINUITY_END"}]}]
+            """);
+        var normalizer = new StoryboardNormalizer(json);
+        assertThatThrownBy(() -> normalizer.normalize(submitted, segments,
+            com.antshorttv.project.StoryboardSkillVersion.resolve("V3")))
+            .hasMessageContaining("叙事镜头");
+        assertThatThrownBy(() -> normalizer.normalize(submitted, segments))
+            .hasMessageContaining("3.0");
+    }
+
+    @Test
+    void v3RejectsContinuityBlocksWithWrongLengthOrPosition() throws Exception {
+        var segments = segmenter.segment("Serena: Stay here.");
+        String[] arrangements = {
+            "{\"durationSeconds\":3,\"shotPurpose\":\"CONTINUITY_START\"},{\"durationSeconds\":12}",
+            "{\"durationSeconds\":13},{\"durationSeconds\":2,\"shotPurpose\":\"CONTINUITY_START\"}",
+            "{\"durationSeconds\":2,\"shotPurpose\":\"CONTINUITY_END\"},{\"durationSeconds\":13}",
+            "{\"durationSeconds\":2,\"shotPurpose\":\"CONTINUITY_START\"},{\"durationSeconds\":2,\"shotPurpose\":\"CONTINUITY_START\"},{\"durationSeconds\":11}"
+        };
+        for (String shots : arrangements) {
+            JsonNode submitted = json.readTree("[{\"sourceTo\":\"S0001\",\"shots\":[" + shots + "]}]");
+            assertThatThrownBy(() -> new StoryboardNormalizer(json).normalize(submitted, segments,
+                com.antshorttv.project.StoryboardSkillVersion.resolve("V3"))).hasMessageContaining("续接");
+        }
+    }
+
+    @Test
     void canonicalizesNumbersRangesAnchorsAndSoundOwnershipIdempotently() throws Exception {
         var segments = segmenter.segment("开场\nSerena: one\n转场\n旁白 VO: two\n结束");
         ArrayNode submitted = (ArrayNode) json.readTree("""

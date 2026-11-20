@@ -1,0 +1,305 @@
+{
+  "source": "张正阳猛地将手机摔碎在地上。\n张正阳：你敢耍我？！\n张正阳蹲下拨开碎片翻找。\n张正阳：我会让你付出代价...\n张正阳背对镜头拨开散落在地面的手机外壳与玻璃碎片，在破裂机身下方发现一张仍然完整的手机卡，拇指与食指缓慢捏起手机卡。掌心血液沿指缝滑落，一滴血落在布满灰尘的水泥地面。\n张正阳盯着手中的手机卡停顿半拍，原本剧烈起伏的肩背逐渐平稳，愤怒转化为克制而明确的狠意。\n张正阳缓慢收拢五指，将手机卡紧紧攥入掌心。\n仓库深处突然传来节奏稳定的皮鞋脚步声。第一声脚步响起时，张正阳的动作骤然停住；第二声脚步靠近时，他将手机卡放入上衣的口袋；第三声脚步响起时，他缓慢抬起头，肩背逐渐绷紧。张正阳仍然背对摄影机蹲在原处，只将上半身极轻地向声音方向转动，侧脸轮廓短暂进入画面，脚步声在画外近处突然停止，张正阳维持蹲姿，身体完全戒备。\n杨梓突然出现在画面下方。\n杨梓从后景走近至中景俯视在前景蹲着的张正阳，皮鞋踩碎玻璃。杨梓右眼微眯，嘴角斜向上勾起一抹讥讽的冷笑；张正阳眉头紧皱，深吸一口气。\n杨梓：怎么？这就发火了？",
+  "payload": {
+    "schemaVersion": 3,
+    "episodeFingerprint": "teaching-only",
+    "storyboards": [
+      {
+        "storyboardNo": 1,
+        "sourceTo": "S0004",
+        "visualSummary": "展示张正阳的极端愤怒爆发。",
+        "time": "沿用废弃仓库场景资产时段",
+        "lighting": "严格仅使用废弃仓库场景资产已有光源，光向和光区与资产一致。",
+        "usedAssetKeys": {
+          "characters": [
+            {
+              "assetKey": "c_1",
+              "role": "VISIBLE",
+              "sourceName": "张正阳"
+            }
+          ],
+          "scenes": [
+            {
+              "assetKey": "s_1",
+              "role": "MAIN",
+              "sourceName": "废弃仓库"
+            }
+          ],
+          "props": [
+            {
+              "assetKey": "p_1",
+              "role": "VISIBLE",
+              "sourceName": "手机"
+            },
+            {
+              "assetKey": "p_2",
+              "role": "VISIBLE",
+              "sourceName": "手机卡"
+            }
+          ]
+        },
+        "unmatchedMaterials": {
+          "characters": [],
+          "scenes": [],
+          "props": []
+        },
+        "shots": [
+          {
+            "durationSeconds": 5,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0002",
+            "shotTitle": "张正阳摔手机中景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T2",
+            "positioning": "张正阳位于中景层画面正中面向镜头，",
+            "action": "猛地将手机摔碎在地上，",
+            "performance": "瞳孔极速放大，咬紧下颌线，脖颈青筋暴起",
+            "cameraMovement": "中景+仰视+纵向快速推镜",
+            "soundEffects": "玻璃碎裂声+急促呼吸声",
+            "shotNo": 1
+          },
+          {
+            "durationSeconds": 8,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0004",
+            "shotTitle": "张正阳蹲下翻找高机位大全景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：24mm；光圈：T4",
+            "positioning": "张正阳位于后景层，",
+            "action": "蹲下拨开碎片翻找，",
+            "performance": "下眼睑绷紧，嘴角因极度愤怒而轻微抽搐",
+            "cameraMovement": "大全景+高角度大俯视+缓慢横移",
+            "soundEffects": "衣服摩擦声",
+            "shotNo": 2
+          },
+          {
+            "durationSeconds": 2,
+            "shotPurpose": "CONTINUITY_END",
+            "shotTitle": "张正阳蹲姿全景站位图",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4",
+            "positioning": "9:16竖屏；摄影机位于仓库门口上方朝室内俯拍，铁门在画面下缘，货架与立柱沿纵深延伸。张正阳位于后景层、距铁门约3米，背对镜头蹲在手机碎片前，",
+            "action": "身体朝仓库深处，右手停在碎片旁，左手支撑蹲姿，手机卡仍在破裂机身下方；服装、配饰、手机碎片位置和场景光区保持一致，",
+            "performance": "肩背紧绷，双腿保持屈曲，手指停在刚完成翻找的姿态",
+            "cameraMovement": "远景+俯视+固定镜头，展现纵向仓库空间与距离",
+            "soundEffects": "音效骤然静默",
+            "shotNo": 3
+          }
+        ]
+      },
+      {
+        "storyboardNo": 2,
+        "sourceTo": "S0007",
+        "visualSummary": "张正阳发现手机卡，从极端愤怒逐渐转为克制而明确的狠意。",
+        "time": "沿用废弃仓库场景资产时段",
+        "lighting": "严格仅使用废弃仓库场景资产已有光源，光向和光区与资产一致。",
+        "usedAssetKeys": {
+          "characters": [
+            {
+              "assetKey": "c_1",
+              "role": "VISIBLE",
+              "sourceName": "张正阳"
+            }
+          ],
+          "scenes": [
+            {
+              "assetKey": "s_1",
+              "role": "MAIN",
+              "sourceName": "废弃仓库"
+            }
+          ],
+          "props": [
+            {
+              "assetKey": "p_1",
+              "role": "VISIBLE",
+              "sourceName": "手机"
+            },
+            {
+              "assetKey": "p_2",
+              "role": "VISIBLE",
+              "sourceName": "手机卡"
+            }
+          ]
+        },
+        "unmatchedMaterials": {
+          "characters": [],
+          "scenes": [],
+          "props": []
+        },
+        "shots": [
+          {
+            "durationSeconds": 2,
+            "shotPurpose": "CONTINUITY_START",
+            "shotTitle": "张正阳蹲姿全景站位图",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4",
+            "positioning": "9:16竖屏；摄影机位于仓库门口上方朝室内俯拍，铁门在画面下缘，货架与立柱沿纵深延伸。张正阳位于后景层、距铁门约3米，背对镜头蹲在手机碎片前，",
+            "action": "身体朝仓库深处，右手停在碎片旁，左手支撑蹲姿，手机卡仍在破裂机身下方；服装、配饰、手机碎片位置和场景光区保持一致，",
+            "performance": "肩背紧绷，双腿保持屈曲，手指停在刚完成翻找的姿态",
+            "cameraMovement": "远景+俯视+固定镜头，展现纵向仓库空间与距离",
+            "soundEffects": "音效骤然静默",
+            "shotNo": 1
+          },
+          {
+            "durationSeconds": 3,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0005",
+            "shotTitle": "地面特写",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：75mm；光圈：T2",
+            "positioning": "地面上的手机碎片在中景层，前景是张正阳的肩膀，",
+            "action": "张正阳背对镜头拨开散落在地面的手机外壳与玻璃碎片，在破裂机身下方发现一张仍然完整的手机卡，拇指与食指缓慢捏起手机卡。掌心血液沿指缝滑落，一滴血落在布满灰尘的水泥地面。",
+            "performance": "肩膀保持低伏，拇指与食指缓慢合拢并捏起手机卡",
+            "cameraMovement": "地面特写+高角度俯视+缓慢前推",
+            "soundEffects": "玻璃碎片轻微碰撞声、血滴落地声、逐渐平稳的呼吸声",
+            "shotNo": 2
+          },
+          {
+            "durationSeconds": 3,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0006",
+            "shotTitle": "张正阳平复心情近景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：75mm；光圈：T2",
+            "positioning": "张正阳位于前景层，",
+            "action": "他盯着手中的手机卡停顿半拍，原本剧烈起伏的肩背逐渐平稳。",
+            "performance": "张正阳瞳孔从散乱迅速重新聚焦，咬紧的下颌逐渐放松，嘴角停止抽搐，愤怒转化为克制而明确的狠意",
+            "cameraMovement": "单人近景+平视+缓慢前推",
+            "soundEffects": "玻璃碎片轻微碰撞声、血滴落地声、逐渐平稳的呼吸声",
+            "shotNo": 3
+          },
+          {
+            "durationSeconds": 5,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0007",
+            "shotTitle": "手部捏紧手机卡特写",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：135mm；光圈：T2",
+            "positioning": "张正阳的手掌以及手机卡在前景层。",
+            "action": "张正阳缓慢收拢五指，将手机卡紧紧攥入掌心；动作完成后保持握紧状态，右手随呼吸轻微起伏。",
+            "performance": "手指逐根合拢，指节绷紧，手机卡被掌心包住",
+            "cameraMovement": "手部极近特写+高角度俯视+缓慢前推",
+            "soundEffects": "玻璃碎片轻微碰撞声、血滴落地声、逐渐平稳的呼吸声",
+            "shotNo": 4
+          },
+          {
+            "durationSeconds": 2,
+            "shotPurpose": "CONTINUITY_END",
+            "shotTitle": "张正阳蹲姿全景站位图",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4",
+            "positioning": "9:16竖屏；摄影机位于仓库门口上方朝室内俯拍，铁门在画面下缘，货架与立柱沿纵深延伸。张正阳位于后景层、距铁门约3米，背对镜头保持蹲姿，",
+            "action": "右手将手机卡攥入掌心并垂在膝侧，另一只手撑在布满手机碎片的地面上；指缝与水泥地面的血迹、服装配饰、碎片及场景光区保持一致，",
+            "performance": "右拳收紧，肩背已经趋于平稳，双腿维持蹲姿支撑",
+            "cameraMovement": "远景+俯视+固定镜头，展现纵向仓库空间与距离",
+            "soundEffects": "音效骤然静默",
+            "shotNo": 5
+          }
+        ]
+      },
+      {
+        "storyboardNo": 3,
+        "sourceTo": "S0011",
+        "visualSummary": "[竖屏双人前后层次]，杨梓介入，产生强压迫对峙。",
+        "time": "沿用废弃仓库场景资产时段",
+        "lighting": "严格仅使用废弃仓库场景资产已有光源，光向和光区与资产一致。",
+        "usedAssetKeys": {
+          "characters": [
+            {
+              "assetKey": "c_1",
+              "role": "VISIBLE",
+              "sourceName": "张正阳"
+            },
+            {
+              "assetKey": "c_2",
+              "role": "VISIBLE",
+              "sourceName": "杨梓"
+            }
+          ],
+          "scenes": [
+            {
+              "assetKey": "s_1",
+              "role": "MAIN",
+              "sourceName": "废弃仓库"
+            }
+          ],
+          "props": [
+            {
+              "assetKey": "p_1",
+              "role": "VISIBLE",
+              "sourceName": "手机"
+            },
+            {
+              "assetKey": "p_2",
+              "role": "VISIBLE",
+              "sourceName": "手机卡"
+            }
+          ]
+        },
+        "unmatchedMaterials": {
+          "characters": [],
+          "scenes": [],
+          "props": []
+        },
+        "shots": [
+          {
+            "durationSeconds": 2,
+            "shotPurpose": "CONTINUITY_START",
+            "shotTitle": "张正阳蹲姿全景站位图",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4",
+            "positioning": "9:16竖屏；摄影机位于仓库门口上方朝室内俯拍，铁门在画面下缘，货架与立柱沿纵深延伸。张正阳位于后景层、距铁门约3米，背对镜头保持蹲姿，",
+            "action": "右手将手机卡攥入掌心并垂在膝侧，另一只手撑在布满手机碎片的地面上；指缝与水泥地面的血迹、服装配饰、碎片及场景光区保持一致，",
+            "performance": "右拳收紧，肩背已经趋于平稳，双腿维持蹲姿支撑",
+            "cameraMovement": "远景+俯视+固定镜头，展现纵向仓库空间与距离",
+            "soundEffects": "音效骤然静默",
+            "shotNo": 1
+          },
+          {
+            "durationSeconds": 4,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0008",
+            "shotTitle": "张正阳警觉回头中景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T4",
+            "positioning": "张正阳位于中景层中央保持蹲姿，背部朝向摄影机，右手攥住手机卡垂在膝侧，另一只手撑在布满手机碎片的地面上。仓库后景保持空旷纵深，废弃货架、立柱与半开的铁门依次向远处延伸。",
+            "action": "仓库深处突然传来节奏稳定的皮鞋脚步声。第一声脚步响起时，张正阳的动作骤然停住；第二声脚步靠近时，他将手机卡放入上衣的口袋；第三声脚步响起时，他缓慢抬起头，肩背逐渐绷紧。张正阳仍然背对摄影机蹲在原处，只将上半身极轻地向声音方向转动，侧脸轮廓短暂进入画面，脚步声在画外近处突然停止，张正阳维持蹲姿，身体完全戒备。",
+            "performance": "张正阳侧脸眼皮压低，下颌重新绷紧",
+            "cameraMovement": "单人中景+贴近地面的后侧低机位+沿仓库纵深极缓慢推镜",
+            "soundEffects": "皮鞋脚步声由远及近、衣料绷紧声、玻璃碎片轻响、呼吸骤停声",
+            "shotNo": 2
+          },
+          {
+            "durationSeconds": 1,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0009",
+            "shotTitle": "杨梓出现远景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4",
+            "positioning": "张正阳位于后景层保持蹲姿背对镜头，",
+            "action": "杨梓突然出现在画面下方，两人沿仓库纵深形成前后站位，",
+            "performance": "张正阳肩背绷紧；杨梓的背影保持直立，双脚落定",
+            "cameraMovement": "远景+俯视+固定镜头，展现纵向仓库空间与距离",
+            "soundEffects": "音效骤然静默",
+            "shotNo": 3
+          },
+          {
+            "durationSeconds": 5,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0011",
+            "shotTitle": "杨梓从后景缓慢走近中景",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T4",
+            "positioning": "侧前方低机位朝门口拍摄，杨梓位于后景，张正阳蹲在前景，",
+            "action": "杨梓从后景走近至中景俯视在前景蹲着的张正阳，皮鞋踩碎玻璃，",
+            "performance": "杨梓右眼微眯，嘴角斜向上勾起一抹讥讽的冷笑；张正阳眉头紧皱，深吸一口气",
+            "cameraMovement": "中景+仰视+跟随脚步纵向推镜",
+            "soundEffects": "清脆脚步声与玻璃渣摩擦声",
+            "shotNo": 4
+          },
+          {
+            "durationSeconds": 3,
+            "shotPurpose": "NARRATIVE",
+            "sourceAnchor": "S0011",
+            "shotTitle": "末组三秒悬念钩子",
+            "camera": "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T4",
+            "positioning": "张正阳保持前景蹲姿，杨梓停在中景俯视张正阳，两人沿竖屏纵深排列，",
+            "action": "极慢动作延续杨梓俯视与张正阳深吸一口气后的对峙，最后定格；手机卡仍在张正阳上衣口袋中，",
+            "performance": "杨梓右眼微眯、嘴角保持讥讽的冷笑；张正阳眉头紧皱、下颌绷紧",
+            "cameraMovement": "纵深双人中景+仰视+固定镜头，极慢动作转定格",
+            "soundEffects": "延续上一时间块的呼吸尾音",
+            "shotNo": 5
+          }
+        ]
+      }
+    ]
+  }
+}

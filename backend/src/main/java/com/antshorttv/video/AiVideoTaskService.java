@@ -306,6 +306,7 @@ public class AiVideoTaskService {
         PreparedVideoRequest prepared = isSeedance(route)
             ? prepareSeedanceRequest(project, storyboard, route, request)
             : prepareLegacyRequest(storyboard, route, request);
+        validateStoryboardV3Video(project, prepared);
         String requestHash = prepared.requestHash();
         AiVideoTaskEntity duplicate = aiVideoTaskMapper.selectActiveDuplicate(tenantId, projectId, requestHash);
         if (duplicate != null) {
@@ -1010,7 +1011,9 @@ public class AiVideoTaskService {
         VideoReferenceSubsetSelector.Selection selection = referenceSubsetSelector.select(
             resolvedReferences, constraints);
         List<VideoTaskReferenceResolver.ResolvedReference> references = characterVoices.selectedReferences(selection.kept());
-        String compiledPrompt = characterVoices.prompt(compiled.text(), references);
+        String compiledPrompt = characterVoices.prompt(compiled.text(), references,
+            com.antshorttv.project.StoryboardSkillVersion.resolve(project.storyboardSkillVersion)
+                == com.antshorttv.project.StoryboardSkillVersion.V3);
         if(propProduction!=null) {
             for(var row:formalRows) if("SCENE".equals(row.assetType) && row.assetId!=null)
                 compiledPrompt+=propProduction.sceneContext(storyboard.tenantId,storyboard.projectId,row.assetId);
@@ -1092,6 +1095,20 @@ public class AiVideoTaskService {
             entity.sortOrder = source.sortOrder();
             entity.createdAt = now;
             referenceMapper.insert(entity);
+        }
+    }
+
+    private void validateStoryboardV3Video(ProjectEntity project, PreparedVideoRequest prepared) {
+        if (com.antshorttv.project.StoryboardSkillVersion.resolve(project.storyboardSkillVersion)
+            != com.antshorttv.project.StoryboardSkillVersion.V3) return;
+        if (!"9:16".equals(prepared.aspectRatio())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜技能3.0仅支持 9:16 竖屏。");
+        }
+        if (prepared.durationSeconds() != 15) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜技能3.0的视频时长必须为 15 秒。");
+        }
+        if (!prepared.generateAudio()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "分镜技能3.0必须开启声音生成。");
         }
     }
 
@@ -1683,6 +1700,7 @@ public class AiVideoTaskService {
         PreparedVideoRequest prepared = isSeedance(route)
             ? prepareSeedanceRequest(project, storyboard, route, request)
             : prepareLegacyRequest(storyboard, route, request);
+        validateStoryboardV3Video(project, prepared);
         AiVideoTaskEntity task = new AiVideoTaskEntity();
         task.providerCode = route.provider().getCode();
         task.resolution = prepared.resolution();

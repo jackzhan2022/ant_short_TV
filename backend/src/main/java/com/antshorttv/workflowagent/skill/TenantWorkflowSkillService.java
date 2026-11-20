@@ -97,7 +97,7 @@ public class TenantWorkflowSkillService {
 
     private void requireEditable(String code) {
         if (!TenantStoryboardSkillPolicy.EDITABLE_CODES.contains(code)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "团队仅支持原分镜和分镜技能2.0。");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "团队仅支持原分镜、分镜技能2.0和分镜技能3.0。");
         }
     }
 

@@ -55,6 +55,7 @@ import {
   breakdownStrengthOptions,
   fileFormatOptions,
   scriptTypeOptions,
+  storyboardSkillDescriptions,
   storyboardSkillOptions,
 } from './options';
 import ScriptContentImport from './ScriptContentImport';
@@ -609,19 +610,25 @@ const ShortDramaCreationPage = () => {
           aria-label="分镜技能"
           value={projectForm.storyboardSkillVersion}
           options={storyboardSkillOptions}
-          onChange={(value) => updateForm({ storyboardSkillVersion: value })}
+          onChange={(value) =>
+            updateForm({
+              storyboardSkillVersion: value,
+              ...(value === 'V3'
+                ? { aspectRatio: '9:16', videoGenerateAudio: true }
+                : {}),
+            })
+          }
         />
       </div>
       <p className={styles.settingHelp}>
-        {projectForm.storyboardSkillVersion === 'V2'
-          ? '按完整叙事片段拆分，支持 4–15 秒片段，镜头数量随剧情调整。'
-          : '沿用现有分镜方式，以中近景和特写推进剧情。'}
+        {storyboardSkillDescriptions[projectForm.storyboardSkillVersion ?? 'V1']}
       </p>
       <div className={styles.popoverRow}>
         <span>生成音频</span>
         <Switch
           aria-label="默认生成音频"
           checked={projectForm.videoGenerateAudio !== false}
+          disabled={projectForm.storyboardSkillVersion === 'V3'}
           onChange={(checked) => updateForm({ videoGenerateAudio: checked })}
         />
       </div>
@@ -780,6 +787,7 @@ const ShortDramaCreationPage = () => {
             aria-label="画面比例"
             variant="borderless"
             value={projectForm.aspectRatio}
+            disabled={projectForm.storyboardSkillVersion === 'V3'}
             options={aspectRatioOptions}
             onChange={(value) => updateForm({ aspectRatio: value })}
           />

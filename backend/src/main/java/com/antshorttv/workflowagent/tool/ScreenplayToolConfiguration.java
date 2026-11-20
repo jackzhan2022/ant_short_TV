@@ -179,6 +179,9 @@ public class ScreenplayToolConfiguration {
             .add("NARRATION").add("INNER_OS");
         segmentFields.putObject("text").put("type", "string").put("maxLength", 200000);
         segmentFields.putObject("requiredCoverage").put("type", "boolean");
+        segmentFields.putObject("speaker").put("type", "string").put("maxLength", 200000);
+        segmentFields.putObject("utterance").put("type", "string").put("maxLength", 200000);
+        segmentFields.putObject("minimumSpeechSeconds").put("type", "number").put("minimum", 0);
         segmentFields.putObject("classificationWarning").put("type", "string").put("maxLength", 100);
         segments.set("items", segment);
         ObjectNode warnings = fields.putObject("classificationWarnings").put("type", "array")
@@ -406,21 +409,32 @@ public class ScreenplayToolConfiguration {
             .put("description", "必须放在每个分镜对象内部，表示该分镜覆盖的末个来源片段 ID；根对象禁止出现此字段。");
         boardFields.set("time", nullableType(json, "string").put("maxLength", 100));
         boardFields.set("lighting", nullableType(json, "string").put("maxLength", 1000));
+        boardFields.set("visualSummary", nullableType(json, "string").put("maxLength", 1000)
+            .put("description", "3.0原模板的完整画面描述：概括本组可见事件与情绪变化。"));
         boardFields.set("usedAssetKeys", materialGroups(json));
         boardFields.set("unmatchedMaterials", materialNameGroups(json));
         ObjectNode shots = boardFields.putObject("shots").put("type", "array")
             .put("minItems", 1).put("maxItems", 20)
-            .put("description", "镜头数量与时长按项目所选分镜技能校验；2.0 可用单镜头表达完整短片段，不为凑数增加镜头。");
+            .put("description", "镜头数量与时长按项目所选分镜技能校验；2.0 为4–15秒，3.0每条严格15秒、单镜大于0且不超过15秒；均可使用单镜头，不为凑数增加镜头。");
         ObjectNode shot = objectSchema(json);
         shot.putArray("required").add("positioning").add("action");
         ObjectNode shotFields = (ObjectNode) shot.path("properties");
         shotFields.putObject("shotNo").put("type", "integer");
         shotFields.putObject("durationSeconds").put("type", "number");
+        ObjectNode purpose = shotFields.putObject("shotPurpose").put("type", "string")
+            .put("description", "默认NARRATIVE。仅3.0可用CONTINUITY_START/CONTINUITY_END表示2秒全景续接；非首组首镜必须START，非末组末镜必须END。首组无START、末组无END。续接镜不提交sourceAnchor、不承载原文声音，制作口令由后端追加。");
+        purpose.putArray("enum").add("NARRATIVE").add("CONTINUITY_START").add("CONTINUITY_END");
         shotFields.putObject("positioning").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.putObject("action").put("type", "string").put("minLength", 1).put("maxLength", 1000);
         shotFields.set("performance", nullableType(json, "string").put("maxLength", 1000));
         shotFields.set("emotion", nullableType(json, "string").put("maxLength", 1000));
         shotFields.set("camera", nullableType(json, "string").put("maxLength", 1000));
+        shotFields.set("shotTitle", nullableType(json, "string").put("maxLength", 200)
+            .put("description", "3.0摄影参数后的动作与景别小标题。"));
+        shotFields.set("cameraMovement", nullableType(json, "string").put("maxLength", 1000)
+            .put("description", "3.0正文微表情后的景别、角度、运镜方式与速度。"));
+        shotFields.set("soundEffects", nullableType(json, "string").put("maxLength", 1000)
+            .put("description", "3.0运镜后的环境声、动作声和呼吸声，无BGM，不含剧情对白。"));
         shotFields.putObject("sourceAnchor").put("type", "string").put("pattern", "^S\\d{4,}$")
             .put("maxLength", 16)
             .put("description", "Schema v3 可选来源锚点；必须按镜头顺序非递减。未提供时由后端按来源顺序和镜头时长推导。");

@@ -10,6 +10,58 @@ class EpisodeSourceSegmenterTest {
     private final EpisodeSourceSegmenter segmenter = new EpisodeSourceSegmenter();
 
     @Test
+    void v3SplitsLongSpeechIntoExactSlicesWithTheSameSpeaker() {
+        String utterance = "“第二，做人要有点边界感！不能主动联系我，晚上八点后更不能给承泽打电话！他现在是我老公，不是你们随叫随到的跑腿！”";
+        String source = "郑怡（咄咄逼人）：" + utterance;
+        var context = new EpisodeSourceSegmenter.SegmentationContext(Set.of("郑怡"), Set.of());
+        var segments = segmenter.segmentStoryboardV3(source, context);
+        assertThat(segments.size()).isGreaterThan(1);
+        assertThat(segments.stream().map(EpisodeSourceSegmenter.EpisodeSourceSegment::text)
+            .collect(java.util.stream.Collectors.joining())).isEqualTo(source);
+        StringBuilder spoken = new StringBuilder();
+        for (int index = 0; index < segments.size(); index++) {
+            var segment = segments.get(index);
+            assertThat(source.substring(segment.startOffset(), segment.endOffset())).isEqualTo(segment.text());
+            var speech = segmenter.speechText(segments, index);
+            assertThat(speech.speaker()).isEqualTo("郑怡（咄咄逼人）");
+            assertThat(speech.utterance().codePoints().filter(Character::isLetterOrDigit).count()).isLessThanOrEqualTo(32);
+            spoken.append(speech.utterance());
+        }
+        assertThat(spoken.toString()).isEqualTo(utterance);
+        assertThat(segmenter.segment(source, context)).hasSize(1);
+    }
+
+    @Test
+    void v3KeepsMultilineVoiceoverSpeakerAndPunctuationAcrossSlices() {
+        String utterance = "“直播没要到钱，承泽就自己找去了福利院，认定亲爹妈能让他过好日子。当年办领养，我们打听过那两口子：孩子没少生，病了嫌花钱，能挣钱了又追着要钱。”";
+        String source = "苏贞（VO）：\n" + utterance;
+        var segments = segmenter.segmentStoryboardV3(source,
+            new EpisodeSourceSegmenter.SegmentationContext(Set.of("苏贞"), Set.of()));
+        assertThat(segments.size()).isGreaterThan(2);
+        StringBuilder spoken = new StringBuilder();
+        for (int index = 1; index < segments.size(); index++) {
+            assertThat(segments.get(index).type()).isEqualTo(EpisodeSourceSegmenter.SourceSegmentType.NARRATION);
+            var speech = segmenter.speechText(segments, index);
+            assertThat(speech.speaker()).isEqualTo("苏贞（VO）");
+            spoken.append(speech.utterance());
+        }
+        assertThat(spoken.toString()).isEqualTo(utterance);
+    }
+
+    @Test
+    void separatesTrustedSoundLabelsWithoutChangingUtterancePunctuation() {
+        var segments = segmenter.segment("甲：18:30见，带20元；回答\"Yes: now\"。\n旁白VO：时钟指向18:30。\n乙OS：甲会来吗？\n甲：\n18:30见，别迟到。");
+        assertThat(segmenter.speechText(segments, 0)).isEqualTo(new EpisodeSourceSegmenter.SpeechText(
+            "甲", "18:30见，带20元；回答\"Yes: now\"。"));
+        assertThat(segmenter.speechText(segments, 1)).isEqualTo(new EpisodeSourceSegmenter.SpeechText(
+            "旁白VO", "时钟指向18:30。"));
+        assertThat(segmenter.speechText(segments, 2)).isEqualTo(new EpisodeSourceSegmenter.SpeechText(
+            "乙OS", "甲会来吗？"));
+        assertThat(segmenter.speechText(segments, 4)).isEqualTo(new EpisodeSourceSegmenter.SpeechText(
+            "甲", "18:30见，别迟到。"));
+    }
+
+    @Test
     void structuralLabelsOnSeparateLinesDoNotIntroduceDialogue() {
         var segments = segmenter.segment("时间：\n晚上\n镜头：\n拉近\nSerena：\n别动。");
         assertThat(segments).extracting(EpisodeSourceSegmenter.EpisodeSourceSegment::type)

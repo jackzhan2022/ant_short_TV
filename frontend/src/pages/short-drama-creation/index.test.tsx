@@ -980,6 +980,80 @@ describe('ShortDramaCreationPage', () => {
     );
   });
 
+  it('submits the fixed fifteen-second V3 storyboard skill when creating a project', async () => {
+    mocks.createProject.mockResolvedValue({ data: { id: 9 } });
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '更多设置' }));
+    fireEvent.click(screen.getByRole('switch', { name: '默认生成音频' }));
+    expect(screen.getByRole('switch', { name: '默认生成音频' })).not.toBeChecked();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '分镜技能' }));
+    fireEvent.click(await screen.findByText('分镜技能3.0'));
+    expect(screen.getByRole('combobox', { name: '画面比例' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: '默认生成音频' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: '默认生成音频' })).toBeDisabled();
+    expect(
+      screen.getByText(
+        '按标杆规则编排，使用9:16竖屏，每条15秒，包含全景续接与固定摄影风格。',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    await waitFor(() =>
+      expect(mocks.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          storyboardSkillVersion: 'V3',
+          aspectRatio: '9:16',
+          videoGenerateAudio: true,
+        }),
+      ),
+    );
+  });
+
+  it.each([
+    ['V1', '原分镜'],
+    ['V2', '分镜技能2.0'],
+  ])('allows changing ratio and audio after switching from V3 to %s', async (version, label) => {
+    mocks.createProject.mockResolvedValue({ data: { id: 9 } });
+    render(
+      <App>
+        <ShortDramaCreationPage />
+      </App>,
+    );
+    await waitFor(() => expect(mocks.queryStyleLibrary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '更多设置' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '分镜技能' }));
+    fireEvent.click(await screen.findByText('分镜技能3.0'));
+    expect(screen.getByRole('combobox', { name: '画面比例' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: '默认生成音频' })).toBeDisabled();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '分镜技能' }));
+    fireEvent.click(await screen.findByText(label));
+    expect(screen.getByRole('switch', { name: '默认生成音频' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('switch', { name: '默认生成音频' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('combobox', { name: '画面比例' })).toBeEnabled();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '画面比例' }));
+    fireEvent.click(
+      await screen.findByText('16:9', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /开始创作/ }));
+    await waitFor(() =>
+      expect(mocks.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          storyboardSkillVersion: version,
+          aspectRatio: '16:9',
+          videoGenerateAudio: false,
+        }),
+      ),
+    );
+  });
+
   it('uploads a cover through a controlled session and never persists its data URL', async () => {
     mocks.createProject.mockResolvedValue({ data: { id: 9 } });
     render(

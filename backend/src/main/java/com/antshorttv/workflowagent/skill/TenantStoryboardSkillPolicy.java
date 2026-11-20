@@ -5,7 +5,8 @@ import java.util.Set;
 
 public final class TenantStoryboardSkillPolicy {
     public static final Set<String> EDITABLE_CODES = Set.of(StoryboardAgentBootstrap.SKILL_CODE,
-        com.antshorttv.project.StoryboardSkillVersion.V2.skillCode());
+        com.antshorttv.project.StoryboardSkillVersion.V2.skillCode(),
+        com.antshorttv.project.StoryboardSkillVersion.V3.skillCode());
 
     private TenantStoryboardSkillPolicy() { }
 

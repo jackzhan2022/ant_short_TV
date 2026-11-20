@@ -189,8 +189,11 @@ public class WorkflowAgentRunner {
                 }
             }
         }
-        trustedState.put("storyboardSkillV2", plan.skillSnapshots().stream().anyMatch(snapshot ->
-            com.antshorttv.project.StoryboardSkillVersion.V2.skillCode().equals(snapshot.code())));
+        trustedState.put("storyboardSkipLegacyFallback", plan.skillSnapshots().stream().anyMatch(snapshot ->
+            com.antshorttv.project.StoryboardSkillVersion.V2.skillCode().equals(snapshot.code())
+                || com.antshorttv.project.StoryboardSkillVersion.V3.skillCode().equals(snapshot.code())));
+        trustedState.put("storyboardV3SpeechSlices", plan.skillSnapshots().stream().anyMatch(snapshot ->
+            com.antshorttv.project.StoryboardSkillVersion.V3.skillCode().equals(snapshot.code())));
         return execute(plan.agent(), "FORMAL", input.withTrustedToolState(trustedState), plan.skillSnapshots());
     }
 
@@ -556,7 +559,7 @@ public class WorkflowAgentRunner {
                     if ("short-drama-storyboard".equals(agent.code())
                         && "save_episode_storyboards".equals(call.code())
                         && storyboardSaveCorrections >= STORYBOARD_SAVE_CORRECTIONS
-                        && !Boolean.TRUE.equals(context.runState().get("storyboardSkillV2", Boolean.class))
+                        && !Boolean.TRUE.equals(context.runState().get("storyboardSkipLegacyFallback", Boolean.class))
                         && isCorrectableStoryboardSaveFailure(exception, toolReturned)
                         && exception instanceof WorkflowToolValidationException validation) {
                         ObjectNode fallbackArguments = storyboardFallbackCompleter.complete(

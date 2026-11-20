@@ -232,7 +232,17 @@ describe('WorkflowSkillsPage', () => {
     );
   });
 
-  it('edits only its own tenant Skill using its tenant revision', async () => {
+  it.each([
+    planning,
+    {
+      ...planning,
+      code: 'short-drama-storyboard-production-v3',
+      name: '分镜技能3.0',
+      content: '---\nname: 分镜技能3.0\ndescription: 分镜规则\n---\n本团队正文',
+    },
+  ])('edits its own $name using its tenant revision', async (skill) => {
+    mocks.queryTenantSkills.mockResolvedValue({ data: [skill] });
+    mocks.queryTenantSkill.mockResolvedValue({ data: skill });
     render(
       <App>
         <WorkflowSkillsPage tenantId={7} />
@@ -241,14 +251,14 @@ describe('WorkflowSkillsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
     const editor = await screen.findByLabelText('完整 SKILL.md');
     fireEvent.change(editor, {
-      target: { value: `${planning.content}\n团队规则` },
+      target: { value: `${skill.content}\n团队规则` },
     });
     fireEvent.click(screen.getByRole('button', { name: '保存并立即生效' }));
     await waitFor(() =>
       expect(mocks.updateTenantSkill).toHaveBeenCalledWith(
         7,
-        planning.code,
-        `${planning.content}\n团队规则`,
+        skill.code,
+        `${skill.content}\n团队规则`,
         'tenant-rev',
       ),
     );

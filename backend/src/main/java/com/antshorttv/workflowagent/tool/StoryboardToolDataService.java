@@ -99,14 +99,14 @@ public class StoryboardToolDataService {
                 }
             }
         }
-        String visualStyle = projectVisualStyle(context);
+        StoryboardSkillVersion skillVersion = StoryboardSkillVersion.resolve(jdbc.queryForObject(
+            "select storyboard_skill_version from project where id=? and tenant_id=? and deleted_at is null",
+            String.class, context.projectId(), context.tenantId()));
+        String visualStyle = skillVersion == StoryboardSkillVersion.V3 ? "" : projectVisualStyle(context);
         List<EpisodeSourceSegment> segments = trustedSegments(context);
         LockedMaterialSnapshot lockedMaterials = loadLockedMaterials(context);
         boolean materialOverwrite = Boolean.TRUE.equals(
             context.runState().get("materialOverwrite", Boolean.class));
-        StoryboardSkillVersion skillVersion = StoryboardSkillVersion.resolve(jdbc.queryForObject(
-            "select storyboard_skill_version from project where id=? and tenant_id=? and deleted_at is null",
-            String.class, context.projectId(), context.tenantId()));
         StoryboardNormalizer.Result normalization = new StoryboardNormalizer(json).normalize(submitted, segments, skillVersion);
         submitted = normalization.storyboards();
         List<ValidatedStoryboard> validated;
@@ -317,9 +317,11 @@ public class StoryboardToolDataService {
                     throw invalid("每个分镜内的镜头编号必须从 1 连续递增。");
                 }
                 BigDecimal duration = shot.path("durationSeconds").decimalValue();
-                if (duration.compareTo(new BigDecimal("1.5")) < 0
+                if ((skillVersion == StoryboardSkillVersion.V3 ? duration.signum() <= 0 : duration.compareTo(new BigDecimal("1.5")) < 0)
                     || duration.compareTo(skillVersion.maximumShotDuration()) > 0) {
-                    throw invalid("内部镜头时长必须为 1.5 至 " + skillVersion.maximumShotDuration() + " 秒。");
+                    throw invalid(skillVersion == StoryboardSkillVersion.V3
+                        ? "内部镜头时长必须大于 0 且不超过 15 秒。"
+                        : "内部镜头时长必须为 1.5 至 " + skillVersion.maximumShotDuration() + " 秒。");
                 }
                 total = total.add(duration);
                 String action = requiredText(shot, "action");
@@ -337,17 +339,33 @@ public class StoryboardToolDataService {
                 }
                 injectSounds(shot, validatedShot, byId, submittedSounds, storyboardNo,
                     from.ordinal, to.ordinal);
+                if (skillVersion == StoryboardSkillVersion.V3) {
+                    long spokenCharacters = 0;
+                    for (JsonNode soundId : shot.path("soundSegmentIds")) {
+                        IndexedSegment sound = byId.get(soundId.asText());
+                        spokenCharacters += EpisodeSourceSegmenter.spokenCharacters(
+                            new EpisodeSourceSegmenter().speechText(segments, sound.ordinal).utterance());
+                    }
+                    if (BigDecimal.valueOf(spokenCharacters).compareTo(duration.multiply(new BigDecimal("4"))) > 0) {
+                        throw validation("SPEECH_DURATION_EXCEEDED", storyboardNo, null, null,
+                            "第" + storyboardNo + "组第" + (shotIndex + 1) + "镜台词时长不足："
+                                + spokenCharacters + "个非标点字符至少需要" + (spokenCharacters / 4.0)
+                                + "秒。请按可信声音片段拆分到相邻叙事镜头或分镜组，不能删改台词或占用两秒续接。");
+                    }
+                }
             }
             if (total.compareTo(skillVersion.minimumBoardDuration()) < 0 || total.compareTo(new BigDecimal("15")) > 0) {
                 throw validation("STORYBOARD_DURATION_OUT_OF_RANGE", storyboardNo, null, null,
-                    "每个正式分镜总时长必须为 " + skillVersion.minimumBoardDuration() + " 至 15 秒。");
+                    skillVersion == StoryboardSkillVersion.V3 ? "每个正式分镜总时长必须为 15 秒。"
+                        : "每个正式分镜总时长必须为 " + skillVersion.minimumBoardDuration() + " 至 15 秒。");
             }
-            MaterialSet materials = resolveMaterials(context, board, index);
+            MaterialSet materials = resolveMaterials(context, board, index, skillVersion);
             if (!materialOverwrite) {
                 List<Material> locked = lockedMaterials.consume(fromId + "|" + toId);
-                if (!locked.isEmpty()) materials = mergeLockedMaterials(materials, locked);
+                if (!locked.isEmpty()) materials = mergeLockedMaterials(materials, locked, skillVersion);
             }
-            RenderedPrompt prompt = render(visualStyle, validatedBoard, total, materials);
+            RenderedPrompt prompt = skillVersion == StoryboardSkillVersion.V3
+                ? renderV3(validatedBoard, materials, segments, byId) : render(visualStyle, validatedBoard, total, materials);
             values.add(new ValidatedStoryboard(storyboardNo, total, validatedBoard, prompt,
                 materials.pending() ? "ASSET_PENDING" : "BOUND", materials));
         }
@@ -364,7 +382,8 @@ public class StoryboardToolDataService {
         return values;
     }
 
-    private MaterialSet resolveMaterials(ToolExecutionContext context, JsonNode board, int boardIndex) {
+    private MaterialSet resolveMaterials(ToolExecutionContext context, JsonNode board, int boardIndex,
+                                         StoryboardSkillVersion skillVersion) {
         List<Material> materials = new ArrayList<>();
         JsonNode used = board.path("usedAssetKeys");
         for (AssetKind kind : AssetKind.values()) {
@@ -377,14 +396,19 @@ public class StoryboardToolDataService {
                         + kind.jsonField + "[" + referenceIndex + "]";
                     String key = keyNode.isTextual() ? keyNode.asText()
                         : keyNode.path("assetKey").asText();
-                    if (!seen.add(key)) throw validation("ASSET_REFERENCE_DUPLICATE", path + ".assetKey",
+                    if (skillVersion != StoryboardSkillVersion.V3 && !seen.add(key))
+                        throw validation("ASSET_REFERENCE_DUPLICATE", path + ".assetKey",
                         boardIndex + 1, "同一分镜不得重复引用素材 key。");
                     String variantKey = keyNode.isObject() && keyNode.path("variantKey").isTextual()
                         ? keyNode.path("variantKey").asText() : null;
                     String role = keyNode.isObject() ? keyNode.path("role").asText() : defaultRole(kind);
                     String sourceName = keyNode.isObject() ? keyNode.path("sourceName").asText() : null;
-                    materials.add(resolveKey(context, kind, key, variantKey, role, sourceName,
-                        path, boardIndex + 1, referenceIndex));
+                    Material material = resolveKey(context, kind, key, variantKey, role, sourceName,
+                        path, boardIndex + 1, referenceIndex);
+                    if (skillVersion == StoryboardSkillVersion.V3 && !seen.add(key + "|" + material.variantId))
+                        throw validation("ASSET_REFERENCE_DUPLICATE", path + ".variantKey",
+                            boardIndex + 1, "同一分镜不得重复引用同一素材形态：" + key + " / " + material.variantId);
+                    materials.add(material);
                 }
             }
             JsonNode unmatched = board.path("unmatchedMaterials").path(kind.jsonField);
@@ -401,7 +425,8 @@ public class StoryboardToolDataService {
         return new MaterialSet(List.copyOf(materials));
     }
 
-    private MaterialSet mergeLockedMaterials(MaterialSet proposed, List<Material> locked) {
+    private MaterialSet mergeLockedMaterials(MaterialSet proposed, List<Material> locked,
+                                            StoryboardSkillVersion skillVersion) {
         List<Material> merged = new ArrayList<>();
         for (AssetKind kind : AssetKind.values()) {
             List<Material> values = new ArrayList<>(proposed.materials.stream()
@@ -410,7 +435,9 @@ public class StoryboardToolDataService {
                 .filter(material -> material.kind == kind)
                 .sorted(Comparator.comparingInt(Material::sortOrder)).toList()) {
                 values.removeIf(material -> material.assetId != null
-                    && material.assetId.equals(lockedMaterial.assetId));
+                    && material.assetId.equals(lockedMaterial.assetId)
+                    && (skillVersion != StoryboardSkillVersion.V3
+                        || java.util.Objects.equals(material.variantId, lockedMaterial.variantId)));
                 values.add(Math.min(lockedMaterial.sortOrder, values.size()), lockedMaterial);
             }
             for (int index = 0; index < values.size(); index++) {
@@ -548,6 +575,123 @@ public class StoryboardToolDataService {
 
     private String defaultRole(AssetKind kind) {
         return kind == AssetKind.SCENE ? "MAIN" : "VISIBLE";
+    }
+
+    private RenderedPrompt renderV3(JsonNode board, MaterialSet materialSet,
+        List<EpisodeSourceSegment> segments, Map<String, IndexedSegment> byId) {
+        StringBuilder text = new StringBuilder();
+        ObjectNode document = json.createObjectNode();
+        document.put("version", 2);
+        ArrayNode nodes = document.putArray("nodes");
+        text.append("【镜").append(String.format("%02d", board.path("storyboardNo").asInt()))
+            .append("】 时间范围：00:00至00:15\n\n延长视频生成以下内容\n\n🎬 本镜资产锁定：\n\n");
+        addText(nodes, text.toString());
+        appendV3Assets(text, nodes, materialSet, AssetKind.CHARACTER);
+        appendV3Assets(text, nodes, materialSet, AssetKind.SCENE);
+        String voicePlaceholder = "\n• 音色资产：平台已绑定的角色参考音频由视频生成阶段注入。\n";
+        text.append(voicePlaceholder);
+        addText(nodes, voicePlaceholder);
+        appendV3Assets(text, nodes, materialSet, AssetKind.PROP);
+        int bodyStart = text.length();
+        text.append("\n人物站位图是，根据造型匹配人物资产。\n\n")
+            .append("风格锚点：shot on ARRI ALEXA 65, Kodak Vision3 500T, dark thriller atmosphere, high contrast chiaroscuro lighting, desaturated cold tones, noir shadows, tension，low saturation，电影胶片颗粒，暗部青绿偏移(G+3%)，高光柔和光晕(Black Pro-Mist 1/4)，真实皮肤质感，电影感写实，物理电影镜头，180°快门运动模糊。\n\n")
+            .append("灯光：严格仅使用场景资产的光源。禁止一切电影补光——禁正面光、侧面补光、顶光、底光、反光板、柔光箱、LED灯带、霓虹及任何画外光源。\n\n")
+            .append("视频全程禁止出现外形、着装、配饰完全相同的两个人，杜绝双胞胎同款人物，所有角色面部稳定不变形、五官清晰、不换脸、不串脸。\n\n");
+        String time = optionalText(board, "time");
+        if (!time.isBlank()) text.append("时间：").append(time).append('\n');
+        String lighting = optionalText(board, "lighting");
+        if (!lighting.isBlank()) text.append("本镜光线：").append(lighting).append('\n');
+        String summary = optionalText(board, "visualSummary");
+        if (summary.isBlank()) {
+            // Older V3 plans have no summary; reuse their actions without inventing a new story.
+            List<String> actions = new ArrayList<>();
+            for (JsonNode shot : board.path("shots")) {
+                if ("NARRATIVE".equals(shot.path("shotPurpose").asText("NARRATIVE"))) {
+                    actions.add(requiredText(shot, "action"));
+                }
+            }
+            summary = String.join("；", actions);
+        }
+        text.append("\n完整画面描述：").append(summary).append('\n');
+        String scene = materialSet.materials.stream().filter(m -> m.kind == AssetKind.SCENE)
+            .map(m -> m.name).collect(java.util.stream.Collectors.joining("、"));
+        BigDecimal elapsed = BigDecimal.ZERO;
+        for (JsonNode shot : board.path("shots")) {
+            BigDecimal end = elapsed.add(shot.path("durationSeconds").decimalValue());
+            text.append("\n【").append(timecode(elapsed)).append("至").append(timecode(end)).append("】");
+            String purpose = shot.path("shotPurpose").asText("NARRATIVE");
+            if (!"NARRATIVE".equals(purpose)) text.append("【全景站位图】⚠️全景续接锚点\n");
+            String camera = optionalText(shot, "camera");
+            text.append("⚠️").append(camera.isBlank()
+                ? ("NARRATIVE".equals(purpose) ? "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T4；固定镜头"
+                    : "摄影机：ARRI ALEXA 65；焦段：25mm；光圈：T4；远景+俯视+固定镜头") : camera);
+            String title = optionalText(shot, "shotTitle");
+            if (!title.isBlank()) text.append('，').append(title);
+            text.append("\n\n场景为").append(scene.isBlank() ? "当前场景" : scene).append("，光影色彩完全参考\n\n")
+                .append(requiredText(shot, "positioning"))
+                .append(requiredText(shot, "action"));
+            String performance = optionalText(shot, "performance");
+            if (!performance.isBlank()) text.append("[微表情：").append(performance).append("]，");
+            String movement = optionalText(shot, "cameraMovement");
+            if (!movement.isBlank()) text.append(movement).append('，');
+            String soundEffects = optionalText(shot, "soundEffects");
+            if (!soundEffects.isBlank()) text.append(soundEffects).append('，');
+            if (!"NARRATIVE".equals(purpose)) {
+                String cue = "CONTINUITY_START".equals(purpose) ? "321开始" : "321卡";
+                text.append("【配音：").append(cue).append("】，台词：「").append(cue).append("」");
+            } else if (shot.path("soundSegmentIds").isEmpty()) {
+                text.append("【配音：无】，台词：「无」");
+            }
+            for (JsonNode soundId : shot.path("soundSegmentIds")) {
+                IndexedSegment indexed = byId.get(soundId.asText());
+                var spoken = new EpisodeSourceSegmenter().speechText(segments, indexed.ordinal);
+                if (!spoken.speaker().isBlank()) text.append(spoken.speaker()).append('的');
+                text.append(switch (indexed.segment.type()) {
+                    case DIALOGUE -> "台词配音是：";
+                    case NARRATION -> "旁白VO配音是：";
+                    case INNER_OS -> "内心OS配音是：";
+                    default -> throw new IllegalStateException("非声音来源片段");
+                });
+                text.append('「').append(spoken.utterance()).append('」');
+            }
+            text.append("负面提示词：（无背景音乐，无字幕 ）。\n");
+            elapsed = end;
+        }
+        // Asset labels bind references; body and original utterances must retain literal character names.
+        addText(nodes, text.substring(bodyStart));
+        return new RenderedPrompt(text.toString(), document);
+    }
+
+    private void appendV3Assets(StringBuilder text, ArrayNode nodes, MaterialSet materialSet, AssetKind kind) {
+        List<Material> materials = materialSet.materials.stream().filter(m -> m.kind == kind).toList();
+        if (materials.isEmpty()) return;
+        String heading = switch (kind) {
+            case CHARACTER -> "• 人物资产：";
+            case SCENE -> "• 场景资产：";
+            case PROP -> "• 道具资产：";
+        };
+        text.append(heading);
+        addText(nodes, heading);
+        for (Material material : materials) {
+            boolean multipleVariants = material.assetId != null && materials.stream()
+                .anyMatch(other -> other != material && material.assetId.equals(other.assetId));
+            String label = multipleVariants
+                ? (material.sourceName != null && !material.sourceName.equals(material.name) ? material.sourceName
+                    : material.name + " / " + material.variantName)
+                : material.name;
+            text.append(label).append("为").append(material.name).append('；');
+            addText(nodes, label + "为");
+            addMentionNodes(nodes, material.name, List.of(material));
+            addText(nodes, "；");
+        }
+        text.append('\n');
+        addText(nodes, "\n");
+    }
+
+    private String timecode(BigDecimal seconds) {
+        BigDecimal remaining = seconds.remainder(BigDecimal.valueOf(60));
+        return String.format("%02d:", seconds.divideToIntegralValue(BigDecimal.valueOf(60)).intValue())
+            + (remaining.compareTo(BigDecimal.TEN) < 0 ? "0" : "") + formatDuration(remaining);
     }
 
     private RenderedPrompt render(String visualStyle, JsonNode board, BigDecimal total, MaterialSet materialSet) {

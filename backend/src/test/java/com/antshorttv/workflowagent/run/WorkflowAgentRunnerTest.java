@@ -1456,8 +1456,9 @@ class WorkflowAgentRunnerTest {
         verify(invocation, org.mockito.Mockito.times(2)).invokeText(any());
     }
 
-    @Test
-    void storyboardSkillV2StopsAfterCorrectionInsteadOfInventingFallbackShots() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"short-drama-storyboard-production-v2", "short-drama-storyboard-production-v3"})
+    void selectedStoryboardSkillsStopAfterCorrectionInsteadOfInventingFallbackShots(String skillCode) throws Exception {
         List<String> codes = List.of("read_current_episode", "read_adjacent_episodes",
             "read_script_analysis", "read_project_context", "read_script_assets", "save_episode_storyboards");
         List<WorkflowToolDefinition> definitions = new ArrayList<>();
@@ -1468,7 +1469,7 @@ class WorkflowAgentRunnerTest {
         when(invocation.invokeText(any()))
             .thenReturn(result(null, List.of(new AiToolCall("bad-1", "save_episode_storyboards", "{}")), 970L))
             .thenReturn(result(null, List.of(new AiToolCall("bad-2", "save_episode_storyboards", "{}")), 971L));
-        var snapshot = new WorkflowAgentSkillSnapshot("short-drama-storyboard-production-v2",
+        var snapshot = new WorkflowAgentSkillSnapshot(skillCode,
             "分镜技能2.0", "v2", "保留必要镜头", "SYSTEM", null);
         var plan = new WorkflowAgentExecutionPlan(storyboardAgent(codes), List.of(snapshot), 7L);
         assertThatThrownBy(() -> runner.runFormal(plan, new WorkflowAgentRunInput(

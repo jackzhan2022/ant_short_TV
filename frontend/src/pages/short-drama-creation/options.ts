@@ -22,7 +22,14 @@ export const breakdownStrengthOptions = [
 export const storyboardSkillOptions = [
   { label: '原分镜', value: 'V1' },
   { label: '分镜技能2.0', value: 'V2' },
+  { label: '分镜技能3.0', value: 'V3' },
 ];
+
+export const storyboardSkillDescriptions = {
+  V1: '沿用现有分镜方式，以中近景和特写推进剧情。',
+  V2: '按完整叙事片段拆分，支持 4–15 秒片段，镜头数量随剧情调整。',
+  V3: '按标杆规则编排，使用9:16竖屏，每条15秒，包含全景续接与固定摄影风格。',
+};
 
 export const coverSourceOptions = [
   { label: '默认分镜首图', value: 'FIRST_FRAME' },

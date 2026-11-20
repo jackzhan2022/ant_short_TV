@@ -11,6 +11,38 @@ class StoryboardToolSchemaTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
+    void acceptsBenchmarkSummaryTitlesMovementAndSoundEffects() throws Exception {
+        JsonNode schema = new ScreenplayToolConfiguration().saveEpisodeStoryboardsTool(null, json).inputSchema();
+        JsonNode input = json.readTree("""
+            {"schemaVersion":3,"episodeFingerprint":"fp","storyboards":[{
+              "storyboardNo":1,"sourceTo":"S0001","visualSummary":"愤怒爆发。",
+              "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
+              "shots":[{"durationSeconds":15,"positioning":"人物在前景。","action":"摔手机。",
+                "shotTitle":"摔手机中景","cameraMovement":"中景+仰视+纵向快速推镜",
+                "soundEffects":"玻璃碎裂声+急促呼吸声"}]
+            }]}
+            """);
+        new WorkflowToolSchemaValidator().validate(schema, input);
+    }
+
+    @Test
+    void acceptsTypedContinuityShotsWithoutSourceAnchors() throws Exception {
+        JsonNode schema = new ScreenplayToolConfiguration().saveEpisodeStoryboardsTool(null, json).inputSchema();
+        JsonNode input = json.readTree("""
+            {"schemaVersion":3,"episodeFingerprint":"fp","storyboards":[{
+              "storyboardNo":1,"sourceTo":"S0001",
+              "usedAssetKeys":{"characters":[],"scenes":[],"props":[]},
+              "shots":[
+                {"durationSeconds":13,"sourceAnchor":"S0001","positioning":"门内","action":"说话"},
+                {"durationSeconds":2,"shotPurpose":"CONTINUITY_END","positioning":"门内","action":"全景站位"}
+              ]
+            }]}
+            """);
+        var validator = new WorkflowToolSchemaValidator();
+        validator.validate(schema, input);
+    }
+
+    @Test
     void acceptsV3SourceAnchorsWithoutRequiringModelAuthoredSoundOwnership() throws Exception {
         WorkflowToolDefinition tool = new ScreenplayToolConfiguration()
             .saveEpisodeStoryboardsTool(null, json);

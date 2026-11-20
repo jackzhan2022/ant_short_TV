@@ -76,7 +76,11 @@ public class CharacterVoiceVideoReferences {
         }
 
         public String prompt(String original, List<VideoTaskReferenceResolver.ResolvedReference> kept) {
-            StringBuilder text = new StringBuilder(original);
+            return prompt(original, kept, false);
+        }
+
+        public String prompt(String original, List<VideoTaskReferenceResolver.ResolvedReference> kept, boolean storyboardV3) {
+            StringBuilder text = new StringBuilder(storyboardV3 ? "• 音色资产：" : original);
             for (var voice : assignments) {
                 boolean included = kept.stream().anyMatch(ref -> "AUDIO".equals(ref.reference().mediaType())
                     && ref.reference().sourceType().equals(voice.resourceType()) && ref.reference().sourceId().equals(voice.resourceId()));
@@ -90,10 +94,28 @@ public class CharacterVoiceVideoReferences {
                     if ("CHARACTER".equals(ref.assetType()) && Objects.equals(ref.assetId(), voice.characterId())
                         && Objects.equals(ref.variantId(), voice.variantId())) { image = "图片" + imageIndex; break; }
                 }
-                text.append("\n角色音色：角色「").append(voice.characterName()).append("」");
+                if (storyboardV3) {
+                    text.append(voice.characterName()).append("的声音是").append(voice.audioLabel());
+                } else {
+                    text.append("\n角色音色：角色「").append(voice.characterName()).append("」");
+                }
                 if (voice.variantName() != null && !voice.variantName().isBlank()) text.append("（形态「").append(voice.variantName()).append("」）");
-                if (image != null) text.append("对应").append(image).append("，");
-                text.append("使用").append(voice.audioLabel()).append("作为音色参考，保持该角色发声与参考音色一致。");
+                if (image != null) text.append("对应").append(image).append(storyboardV3 ? "" : "，");
+                if (storyboardV3) {
+                    text.append("，保持该角色发声与参考音色一致；");
+                } else {
+                    text.append("使用").append(voice.audioLabel()).append("作为音色参考，保持该角色发声与参考音色一致。");
+                }
+            }
+            if (storyboardV3) {
+                String placeholder = "• 音色资产：平台已绑定的角色参考音频由视频生成阶段注入。";
+                if (assignments.isEmpty()) text.append("本镜未绑定角色参考音频。");
+                int placeholderAt = original.indexOf(placeholder);
+                if (placeholderAt >= 0) {
+                    return original.substring(0, placeholderAt) + text
+                        + original.substring(placeholderAt + placeholder.length());
+                }
+                return assignments.isEmpty() ? original : original + "\n\n" + text;
             }
             return text.toString();
         }

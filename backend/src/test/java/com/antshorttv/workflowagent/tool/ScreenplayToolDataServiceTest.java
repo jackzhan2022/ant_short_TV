@@ -907,6 +907,26 @@ class ScreenplayToolDataServiceTest {
     }
 
     @Test
+    void v3PreloadExposesTrustedSpeechSlicesAndTheirTimingBudget() {
+        String utterance = "“直播没要到钱，承泽就自己找去了福利院，认定亲爹妈能让他过好日子。当年办领养，我们打听过那两口子：孩子没少生，病了嫌花钱，能挣钱了又追着要钱。”";
+        String source = "苏贞（VO）：" + utterance;
+        jdbc.update("update script_episode set content=? where id=?", source, episodeId);
+        ToolExecutionContext scoped = episodeContext();
+        scoped.runState().put("storyboardV3SpeechSlices", true);
+        JsonNode episode = service.readCurrentEpisode(scoped);
+        assertThat(episode.path("content").asText()).isEqualTo(source);
+        assertThat(episode.path("sourceSegments").size()).isGreaterThan(1);
+        StringBuilder restored = new StringBuilder();
+        for (JsonNode segment : episode.path("sourceSegments")) {
+            assertThat(segment.path("speaker").asText()).isEqualTo("苏贞（VO）");
+            assertThat(segment.path("minimumSpeechSeconds").asDouble()).isPositive().isLessThanOrEqualTo(8);
+            restored.append(segment.path("utterance").asText());
+        }
+        assertThat(restored.toString()).isEqualTo(utterance);
+        schemaValidator.validate(registry.require("read_current_episode").outputSchema(), episode);
+    }
+
+    @Test
     void rejectsNewAssetWithoutPromptAndRollsBackWholePayload() throws Exception {
         jdbc.update("update script_episode set content = '林小满出现。', content_fingerprint = 'prompt-required-fp' where id = ?",
             episodeId);

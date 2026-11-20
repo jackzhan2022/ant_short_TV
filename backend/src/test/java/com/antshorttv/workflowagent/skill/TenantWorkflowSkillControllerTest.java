@@ -176,19 +176,22 @@ class TenantWorkflowSkillControllerTest extends RegistrationTestSupport {
             .andExpect(status().is4xxClientError());
     }
 
-    @Test
-    void tenantCanCustomizeBothVersionsWithoutMixingTheirContent() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"V2", "V3"})
+    void tenantCanCustomizeVersionsWithoutMixingTheirContent(String version) throws Exception {
         Actor owner = actor(null);
-        String v2 = com.antshorttv.project.StoryboardSkillVersion.V2.skillCode();
+        String v2 = com.antshorttv.project.StoryboardSkillVersion.resolve(version).skillCode();
         mvc.perform(get(path(owner) + "/" + v2 + "/template")
                 .with(SessionTestSupport.authenticated(owner.credential())))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.name", is("分镜技能2.0")));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.name", is("分镜技能" + version.substring(1) + ".0")));
         save(owner, PLANNING, "旧版专属规则", TenantWorkflowSkillService.NEW_REVISION);
         save(owner, v2, "新版专属规则", TenantWorkflowSkillService.NEW_REVISION);
         assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, owner.tenantId(), v2).content())
             .contains("新版专属规则").doesNotContain("旧版专属规则");
         assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, owner.tenantId(), PLANNING).content())
             .contains("旧版专属规则").doesNotContain("新版专属规则");
+        Actor other = actor(null);
+        assertThat(skills.findTenantOverride(StoryboardAgentBootstrap.AGENT_CODE, other.tenantId(), v2)).isNull();
     }
 
     @Test

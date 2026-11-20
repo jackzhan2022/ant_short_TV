@@ -30,6 +30,61 @@ public class EpisodeSourceSegmenter {
         return segment(source, SegmentationContext.legacy());
     }
 
+    public List<EpisodeSourceSegment> segmentStoryboardV3(String source, SegmentationContext context) {
+        List<EpisodeSourceSegment> lines = segment(source, context);
+        List<EpisodeSourceSegment> result = new ArrayList<>();
+        for (int index = 0; index < lines.size(); index++) {
+            EpisodeSourceSegment line = lines.get(index);
+            if (!isSound(line.type()) || spokenCharacters(speechText(lines, index).utterance()) <= 32) {
+                appendSlice(result, line, 0, line.text().length());
+                continue;
+            }
+            String utterance = speechText(lines, index).utterance();
+            int prefixLength = line.text().length() - utterance.length();
+            int from = 0;
+            int textFrom = 0;
+            while (from < utterance.length()) {
+                int to = speechSliceEnd(utterance, from);
+                appendSlice(result, line, textFrom, prefixLength + to);
+                from = to;
+                textFrom = prefixLength + to;
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private void appendSlice(List<EpisodeSourceSegment> result, EpisodeSourceSegment line, int from, int to) {
+        result.add(new EpisodeSourceSegment("S%04d".formatted(result.size() + 1), line.type(),
+            line.text().substring(from, to), line.startOffset() + from, line.startOffset() + to,
+            line.requiredCoverage(), line.classificationWarning()));
+    }
+
+    private int speechSliceEnd(String utterance, int from) {
+        int count = 0;
+        int boundary = -1;
+        int cursor = from;
+        while (cursor < utterance.length()) {
+            int codePoint = utterance.codePointAt(cursor);
+            if (Character.isLetterOrDigit(codePoint)) {
+                if (count == 32) break;
+                count++;
+            }
+            cursor += Character.charCount(codePoint);
+            if (count >= 16 && (Character.isWhitespace(codePoint)
+                || "，。！？；：、,.!?;:".indexOf(codePoint) >= 0)) boundary = cursor;
+        }
+        return cursor == utterance.length() || boundary < 0 ? cursor : boundary;
+    }
+
+    static long spokenCharacters(String utterance) {
+        return utterance.codePoints().filter(Character::isLetterOrDigit).count();
+    }
+
+    private static boolean isSound(SourceSegmentType type) {
+        return type == SourceSegmentType.DIALOGUE || type == SourceSegmentType.NARRATION
+            || type == SourceSegmentType.INNER_OS;
+    }
+
     public List<EpisodeSourceSegment> segment(String source, SegmentationContext context) {
         if (source == null || source.isEmpty()) return List.of();
         SegmentationContext effectiveContext = context == null
@@ -66,6 +121,29 @@ public class EpisodeSourceSegmenter {
         }
         return List.copyOf(segments);
     }
+
+    SpeechText speechText(List<EpisodeSourceSegment> segments, int ordinal) {
+        EpisodeSourceSegment sound = segments.get(ordinal);
+        int lineStart = ordinal;
+        while (lineStart > 0 && segments.get(lineStart - 1).endOffset() == segments.get(lineStart).startOffset()
+            && segments.get(lineStart - 1).type() == sound.type()) lineStart--;
+        if (lineStart < ordinal) {
+            return new SpeechText(speechText(segments, lineStart).speaker(), sound.text());
+        }
+        if (ordinal > 0) {
+            String previous = segments.get(ordinal - 1).text().strip().replaceFirst("^#+\\s*", "");
+            var cue = SPEECH_CUE.matcher(previous);
+            if (cue.matches() && speechCueType(previous, SegmentationContext.legacy()) == sound.type()) {
+                return new SpeechText(cue.group(1), sound.text());
+            }
+        }
+        String line = sound.text().stripLeading().replaceFirst("^#+\\s*", "");
+        var speech = SPEECH_LINE.matcher(line);
+        if (speech.matches()) return new SpeechText(speech.group(1), speech.group(2));
+        return new SpeechText("", sound.text());
+    }
+
+    record SpeechText(String speaker, String utterance) {}
 
     private Classification classify(String text, SegmentationContext context) {
         String value = text.strip();

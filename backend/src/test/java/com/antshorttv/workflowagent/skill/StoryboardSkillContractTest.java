@@ -11,9 +11,22 @@ class StoryboardSkillContractTest {
     @Autowired private WorkflowSkillService skills;
 
     @Test
-    void discoversV2AsAnIndependentProjectSelectableSkill() {
-        String code = com.antshorttv.project.StoryboardSkillVersion.V2.skillCode();
-        assertThat(skills.detail(code).name()).isEqualTo("分镜技能2.0");
+    void v3RetainsOriginalRulesFormulaAndFullSourceInsideTheLoadedSkill() throws Exception {
+        String original = java.nio.file.Files.readString(java.nio.file.Path.of(
+            "skills/short-drama-storyboard-production-v3/references/seedance-2.5-original.txt")).replace("\r\n", "\n");
+        String content = skills.detail("short-drama-storyboard-production-v3").content().replace("\r\n", "\n");
+        String rulesAndFormula = original.substring(original.indexOf("## ⚠️ 十五大不可违背之绝对铁律"),
+            original.indexOf("## 📋 最终输出模板范例")).strip();
+        rulesAndFormula = rulesAndFormula.substring(0, rulesAndFormula.lastIndexOf("---")).strip()
+            .replace("30秒", "15秒").replace("30s", "15s");
+        assertThat(content).contains(rulesAndFormula, original.strip(), "## 原示例15秒拆组版", "visualSummary", "cameraMovement", "soundEffects");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"V2", "V3"})
+    void discoversIndependentProjectSelectableSkills(String version) {
+        String code = com.antshorttv.project.StoryboardSkillVersion.resolve(version).skillCode();
+        assertThat(skills.detail(code).name()).isEqualTo("分镜技能" + version.substring(1) + ".0");
         assertThat(skills.list(null)).extracting(WorkflowSkillView::code)
             .contains(code, "short-drama-storyboard-production");
         assertThat(TenantStoryboardSkillPolicy.canOverride("short-drama-storyboard", code)).isTrue();

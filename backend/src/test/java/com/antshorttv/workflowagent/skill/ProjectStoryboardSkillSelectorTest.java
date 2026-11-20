@@ -28,6 +28,17 @@ class ProjectStoryboardSkillSelectorTest {
     }
 
     @Test
+    void selectsV3WithoutMixingOtherProductionSkills() {
+        ProjectEntity project = new ProjectEntity();
+        project.storyboardSkillVersion = "V3";
+        when(projects.selectByTenantIdAndId(7L, 12L)).thenReturn(project);
+        assertThat(selector.select("short-drama-storyboard", 7L, 12L,
+            List.of(StoryboardSkillVersion.V1.skillCode(), StoryboardSkillVersion.V2.skillCode(),
+                "short-drama-storyboard-production-v3", "short-drama-storyboard-planning", "custom")))
+            .containsExactly("short-drama-storyboard-production-v3", "custom");
+    }
+
+    @Test
     void refusesUnknownVersionsAndProjectsOutsideTheTenant() {
         assertThatThrownBy(() -> StoryboardSkillVersion.resolve("other-skill"))
             .isInstanceOf(BusinessException.class);

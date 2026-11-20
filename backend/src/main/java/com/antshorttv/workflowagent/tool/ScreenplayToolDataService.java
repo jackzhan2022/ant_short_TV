@@ -421,8 +421,11 @@ public class ScreenplayToolDataService {
         List<EpisodeSourceSegmenter.EpisodeSourceSegment> sourceSegments =
             context.analysisStageId() != null
                 ? episodeSourceSegmenter.segment(content)
-                : episodeSourceSegmenter.segment(content,
-                    speakerContext((ArrayNode) catalogs.episodeAssets(context, content).path("characters")));
+                : Boolean.TRUE.equals(context.runState().get("storyboardV3SpeechSlices", Boolean.class))
+                    ? episodeSourceSegmenter.segmentStoryboardV3(content,
+                        speakerContext((ArrayNode) catalogs.episodeAssets(context, content).path("characters")))
+                    : episodeSourceSegmenter.segment(content,
+                        speakerContext((ArrayNode) catalogs.episodeAssets(context, content).path("characters")));
         if (sourceSegments.size() > 10_000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                 "当前剧集原文片段过多，无法交给 Agent 处理。");
@@ -444,6 +447,15 @@ public class ScreenplayToolDataService {
             value.put("type", segment.type().name());
             value.put("text", segment.text());
             value.put("requiredCoverage", segment.requiredCoverage());
+            if (Boolean.TRUE.equals(context.runState().get("storyboardV3SpeechSlices", Boolean.class))
+                && (segment.type() == EpisodeSourceSegmenter.SourceSegmentType.DIALOGUE
+                    || segment.type() == EpisodeSourceSegmenter.SourceSegmentType.NARRATION
+                    || segment.type() == EpisodeSourceSegmenter.SourceSegmentType.INNER_OS)) {
+                var speech = episodeSourceSegmenter.speechText(sourceSegments, segmentValues.size() - 1);
+                value.put("speaker", speech.speaker());
+                value.put("utterance", speech.utterance());
+                value.put("minimumSpeechSeconds", EpisodeSourceSegmenter.spokenCharacters(speech.utterance()) / 4.0);
+            }
             if (segment.classificationWarning() != null) {
                 value.put("classificationWarning", segment.classificationWarning());
                 ObjectNode warning = classificationWarnings.addObject();

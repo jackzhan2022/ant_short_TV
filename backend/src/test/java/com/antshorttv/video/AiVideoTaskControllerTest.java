@@ -100,6 +100,47 @@ class AiVideoTaskControllerTest extends com.antshorttv.support.RegistrationTestS
     }
 
     @Test
+    void v3RejectsLandscapeRequestInsteadOfOverridingPortraitProject() throws Exception {
+        String token = registerUser("13800016039", "V3 Video Owner");
+        Long tenantId = createTenant(token, "分镜3.0视频团队");
+        Long ownerId = userIdByMobile("13800016039");
+        Long projectId = createProject(token, tenantId, ownerId, "分镜3.0视频", "V3_VIDEO_PORTRAIT");
+        Long modelId = enableSeedanceMini();
+        Long storyboardId = createStoryboard(tenantId, projectId, ownerId);
+        jdbc.update("update project set storyboard_skill_version='V3',aspect_ratio='9:16' where id=?", projectId);
+        jdbc.update("update storyboard set duration_seconds=15 where id=?", storyboardId);
+        grantTeamPoints(tenantId, 100);
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyboardId":%d,"modelId":%d,"prompt":"人物在仓库对峙",
+                     "durationSeconds":15,"aspectRatio":"16:9","resolution":"720p","textOnly":true}
+                    """.formatted(storyboardId, modelId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorMessage", containsString("9:16")));
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyboardId":%d,"modelId":%d,"prompt":"人物在仓库对峙",
+                     "durationSeconds":14,"aspectRatio":"9:16","resolution":"720p","textOnly":true}
+                    """.formatted(storyboardId, modelId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorMessage", containsString("15 秒")));
+        mockMvc.perform(post("/api/projects/%d/ai-video-tasks".formatted(projectId))
+                .with(com.antshorttv.support.SessionTestSupport.authenticated(token))
+                .header("X-Tenant-Id", tenantId).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"storyboardId":%d,"modelId":%d,"prompt":"人物在仓库对峙",
+                     "durationSeconds":15,"aspectRatio":"9:16","generateAudio":false,"resolution":"720p","textOnly":true}
+                    """.formatted(storyboardId, modelId)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorMessage", containsString("声音")));
+        assertThat(jdbc.queryForObject("select count(*) from ai_video_task where project_id=?", Integer.class, projectId)).isZero();
+    }
+
+    @Test
     void skipsOneMissingImageButKeepsAvailableReferencesAndPublishesAnExtractedCover() throws Exception {
         String token = registerUser("13800016029", "Partial Image Owner");
         Long tenantId = createTenant(token, "缺图跳过团队");

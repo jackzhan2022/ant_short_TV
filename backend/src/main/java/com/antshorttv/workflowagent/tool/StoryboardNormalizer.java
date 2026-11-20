@@ -97,7 +97,9 @@ final class StoryboardNormalizer {
                     ? shot.path("durationSeconds").decimalValue() : DEFAULT_SHOT_DURATION;
                 String code = shot.path("durationSeconds").isNumber()
                     ? "SHOT_DURATION_CLAMPED" : "SHOT_DURATION_DEFAULTED";
-                BigDecimal bounded = duration.max(MIN_SHOT_DURATION).min(version.maximumShotDuration());
+                // V3 uses an exact total: silently clamping a 16s shot to 15s would hide an invalid plan.
+                BigDecimal bounded = version == StoryboardSkillVersion.V3
+                    ? duration : duration.max(MIN_SHOT_DURATION).min(version.maximumShotDuration());
                 if (!shot.path("durationSeconds").isNumber()
                     || shot.path("durationSeconds").decimalValue().compareTo(bounded) != 0) {
                     shot.put("durationSeconds", bounded);
@@ -106,16 +108,45 @@ final class StoryboardNormalizer {
                     normalized++;
                 }
             }
-            List<Integer> anchors = anchors(shots, byId, boardNo, start.ordinal, end.ordinal,
-                boardPath, findings);
+            ArrayNode narrativeShots = json.createArrayNode();
+            List<Integer> narrativeIndexes = new ArrayList<>();
+            for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
+                JsonNode shot = shots.get(shotIndex);
+                String purpose = shot.path("shotPurpose").asText("NARRATIVE");
+                if (!List.of("NARRATIVE", "CONTINUITY_START", "CONTINUITY_END").contains(purpose)) {
+                    throw failure("SHOT_PURPOSE_INVALID", boardNo, null, "镜头用途不受支持。");
+                }
+                if (!"NARRATIVE".equals(purpose)) {
+                    if (version != StoryboardSkillVersion.V3) {
+                        throw failure("SHOT_PURPOSE_INVALID", boardNo, null, "全景续接镜头仅适用于分镜技能3.0。");
+                    }
+                    continue;
+                }
+                narrativeShots.add(shot);
+                narrativeIndexes.add(shotIndex);
+            }
+            if (narrativeShots.isEmpty()) {
+                throw failure("NARRATIVE_SHOT_REQUIRED", boardNo, null, "每条分镜至少需要一个承载原文的叙事镜头。");
+            }
+            if (version == StoryboardSkillVersion.V3) validateContinuity(shots, boardIndex, boards.size());
+            List<Integer> narrativeAnchors = anchors(narrativeShots, narrativeIndexes, byId, boardNo,
+                start.ordinal, end.ordinal, boardPath, findings);
+            List<Integer> anchors = new ArrayList<>(java.util.Collections.nCopies(shots.size(), null));
+            for (int index = 0; index < narrativeIndexes.size(); index++) {
+                anchors.set(narrativeIndexes.get(index), narrativeAnchors.get(index));
+            }
             List<List<String>> soundIds = new ArrayList<>();
             for (int shotIndex = 0; shotIndex < shots.size(); shotIndex++) {
                 ObjectNode shot = (ObjectNode) shots.get(shotIndex);
                 String shotPath = boardPath + ".shots[" + shotIndex + "]";
                 normalized += putIfChanged(shot, "shotNo", shotIndex + 1, shotPath + ".shotNo",
                     "SHOT_NUMBER_NORMALIZED", findings);
-                normalized += putIfChanged(shot, "sourceAnchor", segments.get(anchors.get(shotIndex)).id(),
-                    shotPath + ".sourceAnchor", "SOURCE_ANCHOR_DERIVED", findings);
+                if (anchors.get(shotIndex) == null) {
+                    if (shot.remove("sourceAnchor") != null) normalized++;
+                } else {
+                    normalized += putIfChanged(shot, "sourceAnchor", segments.get(anchors.get(shotIndex)).id(),
+                        shotPath + ".sourceAnchor", "SOURCE_ANCHOR_DERIVED", findings);
+                }
                 if (shot.has("dialogue") || shot.has("narration") || shot.has("innerOs")) {
                     findings.add(StoryboardValidationResult.repair("UTTERANCE_REPLACED", shotPath,
                         "模型提交的台词字段已移除，将从可信原文注入。", null));
@@ -127,9 +158,9 @@ final class StoryboardNormalizer {
             for (int ordinal = start.ordinal; ordinal <= end.ordinal; ordinal++) {
                 EpisodeSourceSegment sound = segments.get(ordinal);
                 if (!isSound(sound.type())) continue;
-                int owner = shots.size() - 1;
+                int owner = narrativeIndexes.get(narrativeIndexes.size() - 1);
                 for (int shotIndex = 0; shotIndex < anchors.size(); shotIndex++) {
-                    if (anchors.get(shotIndex) >= ordinal) {
+                    if (anchors.get(shotIndex) != null && anchors.get(shotIndex) >= ordinal) {
                         owner = shotIndex;
                         break;
                     }
@@ -150,8 +181,29 @@ final class StoryboardNormalizer {
             StoryboardValidationResult.immutable(findings));
     }
 
+    private void validateContinuity(ArrayNode shots, int boardIndex, int boardCount) {
+        for (int index = 0; index < shots.size(); index++) {
+            JsonNode shot = shots.get(index);
+            String purpose = shot.path("shotPurpose").asText("NARRATIVE");
+            if ("NARRATIVE".equals(purpose)) continue;
+            boolean correctPosition = "CONTINUITY_START".equals(purpose)
+                ? boardIndex > 0 && index == 0
+                : boardIndex < boardCount - 1 && index == shots.size() - 1;
+            if (!correctPosition || shot.path("durationSeconds").decimalValue().compareTo(new BigDecimal("2")) != 0) {
+                throw failure("CONTINUITY_STRUCTURE_INVALID", boardIndex + 1, null,
+                    "全景续接镜头必须为2秒；START仅用于非首组首镜，END仅用于非末组末镜。");
+            }
+        }
+        if (boardIndex > 0 && !"CONTINUITY_START".equals(shots.get(0).path("shotPurpose").asText())
+            || boardIndex < boardCount - 1 && !"CONTINUITY_END".equals(shots.get(shots.size() - 1).path("shotPurpose").asText())) {
+            throw failure("CONTINUITY_STRUCTURE_INVALID", boardIndex + 1, null,
+                "相邻分镜必须包含2秒全景续接：非首组以START开始，非末组以END结束。");
+        }
+    }
+
     private List<Integer> anchors(
         ArrayNode shots,
+        List<Integer> originalIndexes,
         Map<String, IndexedSegment> byId,
         int boardNo,
         int from,
@@ -169,7 +221,7 @@ final class StoryboardNormalizer {
                 continue;
             }
             IndexedSegment anchor = byId.get(id);
-            String path = boardPath + ".shots[" + shotIndex + "].sourceAnchor";
+            String path = boardPath + ".shots[" + originalIndexes.get(shotIndex) + "].sourceAnchor";
             if (anchor == null) {
                 values.add(null);
                 findings.add(StoryboardValidationResult.repair("SOURCE_ANCHOR_UNKNOWN", path,

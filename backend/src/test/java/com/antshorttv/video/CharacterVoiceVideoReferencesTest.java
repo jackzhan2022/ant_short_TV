@@ -30,6 +30,34 @@ class CharacterVoiceVideoReferencesTest {
     }
 
     @Test
+    void v3LabelsOnlyRealBoundVoicesAsVoiceAssets() {
+        when(voices.choicesForVideo(1L, 2L, 20L)).thenReturn(List.of(choice(10, 100, 50)));
+        media(50);
+        var result = service.append(1L, 2L, 20L, List.of());
+        assertThat(result.prompt("分镜3.0", result.references(), true))
+            .contains("• 音色资产：", "角色10的声音是音频1", "形态100");
+        assertThat(result.prompt("旧版", result.references())).contains("角色音色：").doesNotContain("• 音色资产：");
+        assertThat(new CharacterVoiceVideoReferences.Augmentation(List.of(), List.of()).prompt("无绑定", List.of(), true))
+            .isEqualTo("无绑定");
+    }
+
+    @Test
+    void v3FillsVoiceAssetsInTheOpeningLockModuleWithoutDuplicatingIt() {
+        when(voices.choicesForVideo(1L, 2L, 20L)).thenReturn(List.of(choice(10, 100, 50)));
+        media(50);
+        var result = service.append(1L, 2L, 20L, List.of());
+        String template = "🎬 本镜资产锁定：\n• 人物资产：角色10为图片1；\n"
+            + "• 音色资产：平台已绑定的角色参考音频由视频生成阶段注入。\n\n人物站位图是，根据造型匹配人物资产。\n完整画面描述：对峙。";
+        String prompt = result.prompt(template, result.references(), true);
+        assertThat(prompt).containsOnlyOnce("• 音色资产：").contains("角色10的声音是音频1")
+            .doesNotContain("由视频生成阶段注入");
+        assertThat(prompt.indexOf("角色10的声音是音频1")).isLessThan(prompt.indexOf("人物站位图是"));
+        assertThat(new CharacterVoiceVideoReferences.Augmentation(List.of(), List.of()).prompt(template, List.of(), true))
+            .contains("• 音色资产：本镜未绑定角色参考音频。")
+            .doesNotContain("角色10的声音是", "由视频生成阶段注入");
+    }
+
+    @Test
     void deduplicatesSharedVoiceButKeepsEveryCharacterAndShapeAssociation() {
         when(voices.choicesForVideo(1L, 2L, 20L)).thenReturn(List.of(choice(10, 100, 50), choice(11, 101, 50)));
         media(50);

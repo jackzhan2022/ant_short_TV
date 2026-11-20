@@ -109,6 +109,371 @@ class StoryboardToolDataServiceTest {
     }
 
     @Test
+    void v3RejectsSpeechThatCannotFitItsAssignedShotWithoutReplacingSavedBoards() throws Exception {
+        String spoken = "郑怡（咄咄逼人）：\"第二，做人要有点边界感！不能主动联系我，晚上八点后更不能给承泽打电话！他现在是我老公，不是你们随叫随到的跑腿！\"";
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        jdbc.update("update script_episode set content=? where id=?", spoken, episodeId);
+        ToolExecutionContext trusted = context();
+        trusted.runState().put("currentEpisodeContent", spoken);
+        trusted.runState().put("currentEpisodeSourceSegments", segmenter.segment(spoken));
+        ObjectNode payload = (ObjectNode) validPayload();
+        ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
+        board.put("sourceTo", "S0001");
+        ArrayNode shots = (ArrayNode) board.path("shots");
+        while (shots.size() > 2) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("sourceAnchor", "S0001").put("durationSeconds", 11);
+        ((ObjectNode) shots.get(1)).put("sourceAnchor", "S0001").put("durationSeconds", 4);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(trusted, payload))
+            .hasMessageContaining("台词时长不足");
+        assertThat(jdbc.queryForObject("select visual_description from storyboard where episode_id=? and deleted_at is null",
+            String.class, episodeId)).isEqualTo("old storyboard");
+    }
+
+    @Test
+    void v3SavesOneFifteenSecondShotWithOriginalDialogue() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3',visual_style=null where id=?", projectId);
+        JsonNode payload = validPayload();
+        ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+        while (shots.size() > 1) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 15);
+        assertThat(service.saveEpisodeStoryboards(context(), payload).path("saved").asBoolean()).isTrue();
+        var row = jdbc.queryForMap("select duration_seconds,shot_plan_json from storyboard where episode_id=? and deleted_at is null", episodeId);
+        JsonNode saved = json.readTree(row.get("shot_plan_json").toString());
+        assertThat(row.get("duration_seconds")).isEqualTo(15);
+        assertThat(saved.path("shots").size()).isEqualTo(1);
+        assertThat(saved.path("shots").get(0).path("durationSeconds").asInt()).isEqualTo(15);
+        assertThat(saved.path("shots").get(0).path("dialogue").asText()).contains("Serena: No...");
+    }
+
+    @Test
+    void v3SavesLongSpeechAcrossGroupsWithExactWordsAndSpeaker() throws Exception {
+        String utterance = "“第二，做人要有点边界感！不能主动联系我，晚上八点后更不能给承泽打电话！他现在是我老公，不是你们随叫随到的跑腿！”";
+        String spoken = "郑怡（咄咄逼人）：" + utterance;
+        var segments = segmenter.segmentStoryboardV3(spoken,
+            new EpisodeSourceSegmenter.SegmentationContext(Set.of("郑怡"), Set.of()));
+        assertThat(segments.size()).isGreaterThan(1);
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        jdbc.update("update script_episode set content=? where id=?", spoken, episodeId);
+        ToolExecutionContext trusted = context();
+        trusted.runState().put("currentEpisodeContent", spoken);
+        trusted.runState().put("currentEpisodeSourceSegments", segments);
+        ObjectNode payload = (ObjectNode) validPayload();
+        ObjectNode template = ((ObjectNode) payload.path("storyboards").get(0)).deepCopy();
+        ArrayNode boards = payload.putArray("storyboards");
+        for (int index = 0; index < segments.size(); index++) {
+            ObjectNode board = template.deepCopy();
+            board.put("storyboardNo", index + 1).put("sourceTo", segments.get(index).id());
+            ObjectNode shot = ((ObjectNode) template.path("shots").get(0)).deepCopy();
+            shot.put("positioning", "郑怡站在前景").put("action", "郑怡保持原说话姿态");
+            ArrayNode shots = board.putArray("shots");
+            if (index > 0) shots.add(shot.deepCopy().put("durationSeconds", 2).put("shotPurpose", "CONTINUITY_START"));
+            shots.add(shot.deepCopy().put("durationSeconds", 15 - (index > 0 ? 2 : 0) - (index < segments.size() - 1 ? 2 : 0))
+                .put("sourceAnchor", segments.get(index).id()));
+            if (index < segments.size() - 1) shots.add(shot.deepCopy().put("durationSeconds", 2).put("shotPurpose", "CONTINUITY_END"));
+            boards.add(board);
+        }
+        assertThat(service.saveEpisodeStoryboards(trusted, payload).path("saved").asBoolean()).isTrue();
+        var rows = jdbc.queryForList("select duration_seconds,video_prompt,shot_plan_json from storyboard where episode_id=? and deleted_at is null order by storyboard_no", episodeId);
+        assertThat(rows).hasSize(segments.size());
+        StringBuilder restored = new StringBuilder();
+        for (int index = 0; index < rows.size(); index++) {
+            var row = rows.get(index);
+            var speech = segmenter.speechText(segments, index);
+            assertThat(row.get("duration_seconds")).isEqualTo(15);
+            assertThat(row.get("video_prompt").toString()).contains(
+                "郑怡（咄咄逼人）的台词配音是：「" + speech.utterance() + "」");
+            JsonNode plan = json.readTree(row.get("shot_plan_json").toString());
+            String assigned = java.util.stream.StreamSupport.stream(plan.path("shots").spliterator(), false)
+                .map(shot -> shot.path("dialogue").asText()).filter(value -> !value.isEmpty())
+                .collect(java.util.stream.Collectors.joining());
+            assertThat(assigned).isEqualTo(segments.get(index).text());
+            restored.append(speech.utterance());
+        }
+        assertThat(restored.toString()).isEqualTo(utterance);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"CHARACTER", "PROP"})
+    void v3PreservesDistinctVariantsOfOneAssetInTheSameGroup(String assetType) throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        Long assetId = "CHARACTER".equals(assetType)
+            ? insertCharacter("Serena", "serena") : insertProp("手机", "phone");
+        Long firstVariant = insertVariant(assetType, assetId);
+        jdbc.update("""
+            insert into asset_visual_variant
+              (tenant_id,project_id,asset_type,asset_id,name,source_type,generation_status,
+               current_image_url,is_primary,created_by,created_at,updated_at)
+            values (?,?,?,?,'回放形态','MANUAL','COMPLETED','/replay.png',false,?,now(),now())
+            """, tenantId, projectId, assetType, assetId, userId);
+        Long secondVariant = jdbc.queryForObject(
+            "select id from asset_visual_variant where tenant_id=? and project_id=? and asset_type=? and asset_id=? and name='回放形态'",
+            Long.class, tenantId, projectId, assetType, assetId);
+        ObjectNode payload = (ObjectNode) validPayload();
+        ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
+        ArrayNode shots = (ArrayNode) board.path("shots");
+        while (shots.size() > 1) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 15);
+        ArrayNode references = (ArrayNode) board.path("usedAssetKeys")
+            .path("CHARACTER".equals(assetType) ? "characters" : "props");
+        String key = ("CHARACTER".equals(assetType) ? "c_" : "p_") + assetId;
+        references.addObject().put("assetKey", key).put("variantKey", "v_" + firstVariant)
+            .put("role", "VISIBLE").put("sourceName", "现场资产");
+        references.addObject().put("assetKey", key).put("variantKey", "v_" + secondVariant)
+            .put("role", "VISIBLE").put("sourceName", "回放资产");
+
+        assertThat(service.saveEpisodeStoryboards(context(), payload).path("saved").asBoolean()).isTrue();
+        Long storyboardId = currentStoryboardId();
+        assertThat(jdbc.queryForList("""
+            select variant_id from storyboard_asset_reference
+             where storyboard_id=? and retired_at is null order by sort_order
+            """, Long.class, storyboardId)).containsExactly(firstVariant, secondVariant);
+        JsonNode document = json.readTree(jdbc.queryForObject(
+            "select prompt_document_json from storyboard where id=?", String.class, storyboardId));
+        assertThat(java.util.stream.StreamSupport.stream(document.path("nodes").spliterator(), false)
+            .filter(node -> "mention".equals(node.path("type").asText()))
+            .map(node -> node.path("sourceId").asLong()).toList())
+            .containsExactly(firstVariant, secondVariant);
+        var compiled = promptCompiler.compile(document, List.of(
+            new StoryboardPromptCompiler.BindingReference(assetType, assetId, firstVariant, "现场资产", "VISIBLE", 0),
+            new StoryboardPromptCompiler.BindingReference(assetType, assetId, secondVariant, "回放资产", "VISIBLE", 1)));
+        assertThat(compiled.references().stream().map(reference -> reference.sourceId()).toList())
+            .containsExactly(firstVariant, secondVariant);
+        assertThat(compiled.text()).contains("现场资产为", "回放资产为");
+
+        for (int lockedCount : new int[] {1, 2}) {
+            jdbc.update("""
+                update storyboard_asset_reference set locked_by_user=true,source_type='MANUAL'
+                 where storyboard_id=? and retired_at is null and sort_order<?
+                """, storyboardId, lockedCount);
+            assertThat(service.saveEpisodeStoryboards(context(), payload).path("saved").asBoolean()).isTrue();
+            storyboardId = currentStoryboardId();
+            assertThat(jdbc.queryForList("""
+                select variant_id from storyboard_asset_reference
+                 where storyboard_id=? and retired_at is null order by sort_order
+                """, Long.class, storyboardId)).containsExactly(firstVariant, secondVariant);
+            assertThat(jdbc.queryForObject("""
+                select count(*) from storyboard_asset_reference
+                 where storyboard_id=? and retired_at is null and locked_by_user=true
+                """, Integer.class, storyboardId)).isEqualTo(lockedCount);
+        }
+
+        references.remove(1);
+        references.addObject().put("assetKey", key).put("role", "VISIBLE");
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class, failure ->
+                assertThat(failure.details().get("validationCode")).isEqualTo("ASSET_REFERENCE_DUPLICATE"));
+        assertThat(currentStoryboardId()).isEqualTo(storyboardId);
+    }
+
+    @Test
+    void legacySkillStillRejectsRepeatedAssetKeysWithDifferentVariantKeys() throws Exception {
+        Long assetId = insertCharacter("Serena", "serena");
+        Long variant = insertVariant("CHARACTER", assetId);
+        ObjectNode payload = (ObjectNode) validPayload();
+        ArrayNode references = (ArrayNode) payload.path("storyboards").get(0).path("usedAssetKeys").path("characters");
+        references.addObject().put("assetKey", "c_" + assetId).put("variantKey", "v_" + variant).put("role", "VISIBLE");
+        references.addObject().put("assetKey", "c_" + assetId).put("variantKey", "v_999999999").put("role", "VISIBLE");
+
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .isInstanceOfSatisfying(WorkflowToolValidationException.class, failure ->
+                assertThat(failure.details().get("validationCode")).isEqualTo("ASSET_REFERENCE_DUPLICATE"));
+        assertPriorStoryboardUnchanged();
+    }
+
+    @Test
+    void v3RejectsFourteenAndSixteenSecondTotalsWithoutReplacingExistingBoards() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        for (int total : new int[] {14, 16}) {
+            JsonNode payload = validPayload();
+            ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+            while (shots.size() > 2) shots.remove(shots.size() - 1);
+            for (JsonNode shot : shots) ((ObjectNode) shot).put("durationSeconds", total / 2);
+            assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+                .hasMessageContaining("必须为 15 秒");
+        }
+        assertThat(jdbc.queryForObject("select visual_description from storyboard where episode_id=? and deleted_at is null",
+            String.class, episodeId)).isEqualTo("old storyboard");
+    }
+
+    @Test
+    void v3DoesNotSilentlyClampAnInvalidSingleShotIntoAValidFifteenSecondClip() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        JsonNode payload = validPayload();
+        ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+        while (shots.size() > 1) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 16);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .hasMessageContaining("内部镜头时长必须大于 0 且不超过 15 秒");
+    }
+
+    @Test
+    void v3SupportsPositiveSubsecondShotsButRejectsZeroDuration() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        JsonNode payload = validPayload();
+        ArrayNode shots = (ArrayNode) payload.path("storyboards").get(0).path("shots");
+        while (shots.size() > 2) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 0);
+        ((ObjectNode) shots.get(1)).put("durationSeconds", 15);
+        assertThatThrownBy(() -> service.saveEpisodeStoryboards(context(), payload))
+            .hasMessageContaining("大于 0");
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 0.5);
+        ((ObjectNode) shots.get(1)).put("durationSeconds", 14.5);
+        assertThat(service.saveEpisodeStoryboards(context(), payload).path("saved").asBoolean()).isTrue();
+        JsonNode plan = json.readTree(jdbc.queryForObject(
+            "select shot_plan_json from storyboard where episode_id=? and deleted_at is null", String.class, episodeId));
+        assertThat(plan.path("shots").get(0).path("durationSeconds").decimalValue()).isEqualByComparingTo("0.5");
+        assertThat(plan.path("shots").get(1).path("durationSeconds").decimalValue()).isEqualByComparingTo("14.5");
+    }
+
+    @Test
+    void v3SavesTheOriginalBenchmarkExampleAcrossThreeFifteenSecondGroups() throws Exception {
+        JsonNode fixture;
+        try (var stream = getClass().getResourceAsStream("/storyboard-v3-benchmark.json")) {
+            fixture = json.readTree(stream);
+        }
+        ObjectNode payload = (ObjectNode) fixture.path("payload");
+        payload.put("episodeFingerprint", "fp-1");
+        var assetKeys = java.util.Map.of(
+            "c_1", "c_" + insertCharacter("张正阳", "张正阳"),
+            "c_2", "c_" + insertCharacter("杨梓", "杨梓"),
+            "s_1", "s_" + insertScene("废弃仓库", "废弃仓库"),
+            "p_1", "p_" + insertProp("手机", "手机"),
+            "p_2", "p_" + insertProp("手机卡", "手机卡"));
+        for (JsonNode board : payload.path("storyboards")) {
+            for (JsonNode group : board.path("usedAssetKeys")) {
+                for (JsonNode reference : group) {
+                    ((ObjectNode) reference).put("assetKey", assetKeys.get(reference.path("assetKey").asText()));
+                }
+            }
+        }
+        new WorkflowToolSchemaValidator().validate(
+            new ScreenplayToolConfiguration().saveEpisodeStoryboardsTool(null, json).inputSchema(), payload);
+        String benchmarkSource = fixture.path("source").asText();
+        ToolExecutionContext trusted = context();
+        trusted.runState().put("currentEpisodeContent", benchmarkSource);
+        trusted.runState().put("currentEpisodeSourceSegments", segmenter.segment(benchmarkSource));
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        jdbc.update("update script_episode set content=? where id=?", benchmarkSource, episodeId);
+        assertThat(service.saveEpisodeStoryboards(trusted, payload).path("saved").asBoolean()).isTrue();
+        var rows = jdbc.queryForList("select duration_seconds,video_prompt,shot_plan_json from storyboard where episode_id=? and deleted_at is null order by storyboard_no", episodeId);
+        assertThat(rows).hasSize(3);
+        String all = rows.stream().map(row -> row.get("video_prompt").toString())
+            .collect(java.util.stream.Collectors.joining("\n"));
+        assertThat(all).containsOnlyOnce("张正阳的台词配音是：「你敢耍我？！」")
+            .containsOnlyOnce("张正阳的台词配音是：「我会让你付出代价...」")
+            .containsOnlyOnce("杨梓的台词配音是：「怎么？这就发火了？」")
+            .contains("掌心血液沿指缝滑落", "第一声脚步", "第二声脚步", "第三声脚步",
+                "将手机卡放入上衣的口袋", "皮鞋踩碎玻璃")
+            .doesNotContain("[站位]", "[动作]", "[表演]", "[声音]");
+        JsonNode previousEnd = null;
+        for (var row : rows) {
+            assertThat(row.get("duration_seconds")).isEqualTo(15);
+            JsonNode plan = json.readTree(row.get("shot_plan_json").toString());
+            assertThat(row.get("video_prompt").toString()).contains("完整画面描述：" + plan.path("visualSummary").asText());
+            JsonNode shots = plan.path("shots");
+            if (previousEnd != null) {
+                for (String field : List.of("positioning", "action", "performance", "camera", "cameraMovement", "soundEffects")) {
+                    assertThat(shots.get(0).path(field)).isEqualTo(previousEnd.path(field));
+                }
+            }
+            for (JsonNode shot : shots) {
+                if (!"NARRATIVE".equals(shot.path("shotPurpose").asText())) {
+                    assertThat(shot.path("soundSegmentIds").isEmpty()).isTrue();
+                    assertThat(shot.path("dialogue").asText()).isEmpty();
+                }
+            }
+            previousEnd = shots.get(shots.size() - 1);
+        }
+        assertThat(rows.get(2).get("video_prompt").toString()).contains("【00:12至00:15】", "极慢动作", "定格")
+            .doesNotContain("321卡");
+    }
+
+    @Test
+    void v3RendersOriginalContinuousTemplateWithSummaryAndSilentMarker() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        JsonNode payload = validPayload();
+        ObjectNode board = (ObjectNode) payload.path("storyboards").get(0);
+        board.put("visualSummary", "展示Serena的愤怒爆发。");
+        ArrayNode shots = (ArrayNode) board.path("shots");
+        while (shots.size() > 2) shots.remove(shots.size() - 1);
+        ObjectNode first = (ObjectNode) shots.get(0);
+        first.put("durationSeconds", 12).put("sourceAnchor", "S0003")
+            .put("shotTitle", "Serena摔手机中景")
+            .put("positioning", "Serena位于中景层画面正中面向镜头，")
+            .put("action", "猛地将手机摔碎在地上，")
+            .put("performance", "咬紧下颌线，脖颈青筋暴起")
+            .put("camera", "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T2")
+            .put("cameraMovement", "中景+仰视+纵向快速推镜")
+            .put("soundEffects", "玻璃碎裂声+急促呼吸声");
+        ((ObjectNode) shots.get(1)).put("durationSeconds", 3).put("sourceAnchor", "S0003")
+            .put("shotTitle", "最后三秒定格").put("action", "定格在原文结束时的姿态。");
+        service.saveEpisodeStoryboards(context(), payload);
+        var row = jdbc.queryForMap("select video_prompt,shot_plan_json from storyboard where episode_id=? and deleted_at is null", episodeId);
+        String prompt = row.get("video_prompt").toString();
+        assertThat(prompt).contains("完整画面描述：展示Serena的愤怒爆发。",
+            "【00:00至00:12】⚠️摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T2，Serena摔手机中景",
+            "Serena位于中景层画面正中面向镜头，猛地将手机摔碎在地上，[微表情：咬紧下颌线，脖颈青筋暴起]，中景+仰视+纵向快速推镜，玻璃碎裂声+急促呼吸声，Serena的台词配音是：「No...」",
+            "【配音：无】，台词：「无」负面提示词：（无背景音乐，无字幕 ）。")
+            .doesNotContain("[站位]", "[动作]", "[表演]", "[情绪]", "[声音]");
+        assertThat(prompt.indexOf("完整画面描述：")).isLessThan(prompt.indexOf("【00:00至00:12】"));
+        JsonNode saved = json.readTree(row.get("shot_plan_json").toString());
+        assertThat(saved.path("visualSummary").asText()).isEqualTo("展示Serena的愤怒爆发。");
+        assertThat(saved.path("shots").get(0).path("soundEffects").asText()).isEqualTo("玻璃碎裂声+急促呼吸声");
+        assertThat(saved.path("shots").get(1).path("dialogue").asText()).isEmpty();
+    }
+
+    @Test
+    void v3RendersBenchmarkStyleTimedBlocksAndProductionCuesWithTrustedSounds() throws Exception {
+        jdbc.update("update project set storyboard_skill_version='V3' where id=?", projectId);
+        JsonNode payload = validPayload();
+        long character = insertCharacter("Serena", "serena");
+        long variant = insertVariant("CHARACTER", character);
+        ((ArrayNode) payload.path("storyboards").get(0).path("usedAssetKeys").path("characters"))
+            .addObject().put("assetKey", "c_" + character).put("variantKey", "v_" + variant).put("role", "VISIBLE");
+        ArrayNode boards = (ArrayNode) payload.path("storyboards");
+        ObjectNode first = (ObjectNode) boards.get(0);
+        ObjectNode second = first.deepCopy();
+        first.put("sourceTo", "S0001");
+        ArrayNode firstShots = (ArrayNode) first.path("shots");
+        while (firstShots.size() > 2) firstShots.remove(firstShots.size() - 1);
+        ((ObjectNode) firstShots.get(0)).put("durationSeconds", 13).put("sourceAnchor", "S0001");
+        ((ObjectNode) firstShots.get(1)).put("durationSeconds", 2).put("shotPurpose", "CONTINUITY_END");
+        second.put("sourceTo", "S0003");
+        boards.add(second);
+        ArrayNode shots = (ArrayNode) second.path("shots");
+        while (shots.size() > 2) shots.remove(shots.size() - 1);
+        ((ObjectNode) shots.get(0)).put("durationSeconds", 2).put("shotPurpose", "CONTINUITY_START");
+        ((ObjectNode) shots.get(1)).put("durationSeconds", 13).put("sourceAnchor", "S0003");
+        for (JsonNode shot : shots) ((ObjectNode) shot).put("camera", "摄影机：ARRI ALEXA 65；焦段：50mm；光圈：T4；固定镜头");
+        ((ObjectNode) shots.get(0)).remove("camera");
+        String faithfulSource = "开场\nSerena: Serena, meet at 18:30; bring $20.\n结束";
+        ToolExecutionContext trusted = context();
+        trusted.runState().put("currentEpisodeContent", faithfulSource);
+        trusted.runState().put("currentEpisodeSourceSegments", segmenter.segment(faithfulSource));
+        jdbc.update("update script_episode set content=? where id=?", faithfulSource, episodeId);
+        service.saveEpisodeStoryboards(trusted, payload);
+        var row = jdbc.queryForMap("select video_prompt,shot_plan_json,prompt_document_json from storyboard where episode_id=? and storyboard_no=2 and deleted_at is null", episodeId);
+        String prompt = row.get("video_prompt").toString();
+        assertThat(prompt).contains("【镜02】 时间范围：00:00至00:15", "🎬 本镜资产锁定", "延长视频生成以下内容",
+            "dark thriller atmosphere", "Kodak Vision3 500T", "【00:00至00:02】", "【00:02至00:15】",
+            "Serena的台词配音是：「Serena, meet at 18:30; bring $20.」", "【配音：321开始】，台词：「321开始」", "负面提示词：（无背景音乐，无字幕 ）。")
+            .contains("音色资产", "远景+俯视+固定镜头")
+            .doesNotContain("321卡", "画风: 现代都市通用", StoryboardToolDataService.FIXED_MEDIA_CONSTRAINT);
+        assertThat(jdbc.queryForObject("select video_prompt from storyboard where episode_id=? and storyboard_no=1 and deleted_at is null", String.class, episodeId))
+            .contains("【00:13至00:15】", "【配音：321卡】，台词：「321卡」").doesNotContain("321开始");
+        assertThat(prompt.indexOf("摄影机：ARRI ALEXA 65")).isLessThan(prompt.indexOf("Serena的台词配音是："));
+        var savedShots = json.readTree(row.get("shot_plan_json").toString()).path("shots");
+        assertThat(savedShots.get(0).path("dialogue").asText()).isEmpty();
+        assertThat(savedShots.get(1).path("dialogue").asText()).contains("Serena: Serena, meet at 18:30; bring $20.");
+        assertThat(json.readTree(row.get("prompt_document_json").toString()).path("version").asInt()).isEqualTo(2);
+        var compiled = promptCompiler.compile(json.readTree(row.get("prompt_document_json").toString()),
+            List.of(new StoryboardPromptCompiler.BindingReference("CHARACTER", character, variant, "Serena", "VISIBLE", 0)));
+        assertThat(compiled.text()).contains("Serena为图片1", "Serena的台词配音是：「Serena, meet at 18:30; bring $20.」")
+            .doesNotContain("台词：「Serena:");
+        assertThat(compiled.references()).hasSize(1);
+    }
+
+    @Test
     void atomicallyReplacesEpisodeAndRendersConfirmedPromptWithRoundedCompatibilityDuration() throws Exception {
         JsonNode saved = service.saveEpisodeStoryboards(context(), validPayload());
 

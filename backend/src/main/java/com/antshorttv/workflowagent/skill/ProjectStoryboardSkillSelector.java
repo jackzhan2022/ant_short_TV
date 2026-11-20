@@ -23,7 +23,7 @@ public class ProjectStoryboardSkillSelector {
         StoryboardSkillVersion version = StoryboardSkillVersion.resolve(project.storyboardSkillVersion);
         if (version == StoryboardSkillVersion.V1) return configured;
         java.util.Set<String> productionSkills = java.util.Set.of(
-            StoryboardSkillVersion.V1.skillCode(), StoryboardSkillVersion.V2.skillCode(),
+            StoryboardSkillVersion.V1.skillCode(), StoryboardSkillVersion.V2.skillCode(), StoryboardSkillVersion.V3.skillCode(),
             "short-drama-storyboard-planning", "short-drama-storyboard-material-reference",
             "short-drama-seedance-video-prompt");
         java.util.ArrayList<String> selected = new java.util.ArrayList<>();
