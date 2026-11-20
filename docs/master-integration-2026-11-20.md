@@ -21,4 +21,11 @@ Original workspace (tracked and untracked) backup: Git stash `0c3a308fa6ffbc199a
 
 ## Validation
 
-Validation results will be recorded after all dependency branches are reconciled.
+- Backend clean compilation and trend tests: 36 tests discovered, 35 passed, 1 live-network test intentionally skipped. Full H2 Flyway migration succeeded through V182 (176 migrations).
+- Backend Gemini/OpenAI adapters, drama library/persistence and WeChat authorization regression: 54 passed, 0 failures/errors.
+- Frontend final `npm run lint` (Biome + TypeScript): passed; 14 existing warnings and 4 infos. `antd lint ./src`: passed; 8 deprecation and 9 usage warnings (new antd deprecates existing List components).
+- Frontend production build on Umi 4.7.34 / Node 24.22.1: passed.
+- Dependency compatibility: upgraded pagination moves handlers to accessible controls. Updated three test selectors to click actual buttons; all 32 tests in messages, tenants and commercial orders passed on rerun.
+- Baseline comparison at 9b7e7811 using its original dependencies: `src/app.test.tsx` (App context wrapper) and `src/pages/projects/list/index.test.tsx` (member Select mock) already fail. Baseline subset: 43 passed, 2 failed; baseline tenants: 12 passed.
+- Archived Pages site verified against all 118 source Git blobs. All 53 local branch refs and 51 remote refs were checked by commit SHA as ancestors of master; Git snapshot/stash recovery refs are intentionally preserved separately.
+- Full frontend suite initial run: 185 files / 1516 tests; 180 files and 1511 tests passed, 5 failed, duration 839.86s. Three failures were pagination selectors and are resolved by the 32-test rerun above. The remaining two failures reproduce on the pre-integration master baseline. A second full-suite run was not performed after these test-only selector edits.
