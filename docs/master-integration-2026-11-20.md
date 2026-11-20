@@ -17,6 +17,8 @@ Original workspace (tracked and untracked) backup: Git stash `0c3a308fa6ffbc199a
 - GitHub Actions dependency branch: merged pinned checkout, setup-node, setup-utoo and react-doctor updates at the relocated `frontend/.github/workflows/` paths.
 - npm dependency branch: upgrades are applied to `frontend/package.json` and its lockfile. Root `package.json` remains the current multi-service command entry point. Frontend Node engines now match jsdom 30 requirements: `^22.22.2 || ^24.15.0 || >=26.0.0`; verification uses Node 24.22.1.
 
+- `origin/gh-pages`: incorporated the unrelated Git history and preserved its complete latest site tree (`f1b24ab6`, 2026-09-02) under `docs/archive/github-pages-20260902/`; no Pages deployment is performed.
+
 ## Validation
 
 Validation results will be recorded after all dependency branches are reconciled.
