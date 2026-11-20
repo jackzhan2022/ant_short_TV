@@ -1,6 +1,6 @@
 # 项目详情与剧本页读取优化
 
-日期：2026-10-20。对应 `GET /api/projects/52` 和 `GET /api/projects/52/script-page-workspace`。修改仅在本地，未部署或重启线上服务。
+日期：2026-10-20。对应 `GET /api/projects/52` 和 `GET /api/projects/52/script-page-workspace`。本记录先完成本地验证，随后经用户授权于同日部署，发布记录见 `docs/feedback-performance-release-2026-10-20.md`。
 
 ## 修改
 
